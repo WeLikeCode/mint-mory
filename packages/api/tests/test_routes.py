@@ -1,0 +1,669 @@
+"""
+Route tests for the MintMory HTTP API.
+
+Each test runs against a fresh temp SQLite DB (never ``~/.mintmory``): the
+``client`` fixture points ``MINTMORY_DB`` at a ``tmp_path`` file, resets the
+module-level ``_store`` cache, and drives the app through a ``TestClient``
+context manager so the lifespan opens/closes the store.
+
+Conformance: every JSON response is validated by constructing the matching
+``types.py`` model from it (``MemoryRecord(**resp.json())`` etc.). Since the
+OpenAPI spec is derived from ``types.py``, a successful round-trip through the
+canonical model is a dependency-free proxy for OpenAPI conformance.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+
+import pytest
+from fastapi.testclient import TestClient
+from mintmory.api import app as app_module
+from mintmory.core.types import (
+    ConceptLink,
+    DreamReport,
+    MemoryRecord,
+    MemoryStats,
+    MemorySummary,
+    NoteResult,
+    QuerySession,
+    SearchResponse,
+)
+
+
+@pytest.fixture
+def client(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """A TestClient backed by a throwaway DB, with the global store reset."""
+    db_file = tmp_path / "api_test.db"  # type: ignore[operator]
+    monkeypatch.setenv("MINTMORY_DB", str(db_file))
+    # Reset any cached global store from a previous test/run.
+    monkeypatch.setattr(app_module, "_store", None)
+    with TestClient(app_module.app) as test_client:
+        yield test_client
+    monkeypatch.setattr(app_module, "_store", None)
+
+
+# ---------------------------------------------------------------------------
+# helpers
+# ---------------------------------------------------------------------------
+
+
+def _create_memory(client: TestClient, **overrides: object) -> dict[str, object]:
+    body: dict[str, object] = {
+        "content": "The Acme parking integration uses OAuth 2.0 with PKCE.",
+        "category": "fact",
+    }
+    body.update(overrides)
+    resp = client.post("/memories", json=body)
+    assert resp.status_code == 201, resp.text
+    data: dict[str, object] = resp.json()
+    return data
+
+
+# ---------------------------------------------------------------------------
+# Memories — create / get round-trip
+# ---------------------------------------------------------------------------
+
+
+def test_add_memory_returns_201_and_conformant_record(client: TestClient) -> None:
+    resp = client.post(
+        "/memories",
+        json={
+            "content": "User prefers dark mode in the dashboard.",
+            "category": "preference",
+            "source": "user",
+            "confidence": 0.9,
+            "verified": True,
+            "metadata": {"project_id": "acme"},
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    record = MemoryRecord(**resp.json())  # OpenAPI-conformance proxy
+    assert record.content == "User prefers dark mode in the dashboard."
+    assert record.category.value == "preference"
+    assert record.source.value == "user"
+    assert record.confidence == 0.9
+    assert record.verified is True
+    assert record.metadata == {"project_id": "acme"}
+    # Server-side defaults / derived fields.
+    assert record.is_active is True
+    assert record.is_archived is False
+    assert record.usefulness_score == 0.0
+
+
+def test_add_then_get_round_trip_preserves_content(client: TestClient) -> None:
+    created = _create_memory(client)
+    memory_id = created["id"]
+
+    resp = client.get(f"/memories/{memory_id}")
+    assert resp.status_code == 200, resp.text
+    fetched = MemoryRecord(**resp.json())
+    assert fetched.id == memory_id
+    assert fetched.content == created["content"]
+    assert fetched.category.value == "fact"
+
+
+def test_add_memory_runs_entity_extraction(client: TestClient) -> None:
+    created = _create_memory(client)
+    # Entity extraction should populate entity_ids server-side.
+    assert isinstance(created["entity_ids"], list)
+    assert created["entity_ids"], "expected at least one extracted entity"
+
+
+def test_add_memory_rejects_missing_required_field(client: TestClient) -> None:
+    resp = client.post("/memories", json={"content": "no category here"})
+    assert resp.status_code == 422
+
+
+def test_add_memory_rejects_bad_category(client: TestClient) -> None:
+    resp = client.post("/memories", json={"content": "bad cat", "category": "not_a_category"})
+    assert resp.status_code == 422
+
+
+def test_get_missing_memory_returns_404(client: TestClient) -> None:
+    resp = client.get("/memories/does-not-exist")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Memories — PATCH
+# ---------------------------------------------------------------------------
+
+
+def test_patch_updates_fields_and_returns_record(client: TestClient) -> None:
+    created = _create_memory(client)
+    memory_id = created["id"]
+
+    resp = client.patch(
+        f"/memories/{memory_id}",
+        json={"verified": True, "confidence": 0.5},
+    )
+    assert resp.status_code == 200, resp.text
+    updated = MemoryRecord(**resp.json())
+    assert updated.verified is True
+    assert updated.confidence == 0.5
+    # Unchanged fields preserved.
+    assert updated.content == created["content"]
+
+
+def test_patch_content_triggers_entity_reextraction(client: TestClient) -> None:
+    created = _create_memory(client)
+    memory_id = created["id"]
+    resp = client.patch(
+        f"/memories/{memory_id}",
+        json={"content": "Acme Corp deployed Kubernetes on GCP."},
+    )
+    assert resp.status_code == 200, resp.text
+    updated = MemoryRecord(**resp.json())
+    assert updated.content == "Acme Corp deployed Kubernetes on GCP."
+
+
+def test_patch_missing_memory_returns_404(client: TestClient) -> None:
+    resp = client.patch("/memories/nope", json={"verified": True})
+    assert resp.status_code == 404
+
+
+def test_patch_with_empty_body_returns_422(client: TestClient) -> None:
+    created = _create_memory(client)
+    resp = client.patch(f"/memories/{created['id']}", json={})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Memories — DELETE (archive)
+# ---------------------------------------------------------------------------
+
+
+def test_delete_archives_and_returns_204(client: TestClient) -> None:
+    created = _create_memory(client)
+    memory_id = created["id"]
+
+    resp = client.delete(f"/memories/{memory_id}")
+    assert resp.status_code == 204
+    assert resp.content == b""
+
+    # Record is retained but archived.
+    fetched = client.get(f"/memories/{memory_id}")
+    assert fetched.status_code == 200
+    record = MemoryRecord(**fetched.json())
+    assert record.is_archived is True
+    assert record.is_active is False
+
+
+def test_delete_missing_memory_returns_404(client: TestClient) -> None:
+    resp = client.delete("/memories/missing")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Search
+# ---------------------------------------------------------------------------
+
+
+def test_search_returns_searchresponse_shape(client: TestClient) -> None:
+    _create_memory(client, content="OAuth 2.0 parking integration with PKCE flow.")
+    _create_memory(client, content="The weather in Cluj is sunny today.")
+
+    resp = client.post("/memories/search", json={"query": "OAuth parking", "limit": 5})
+    assert resp.status_code == 200, resp.text
+    parsed = SearchResponse(**resp.json())  # conformance
+    assert parsed.session_id
+    assert parsed.total_found == len(parsed.memories)
+    # FTS should surface the OAuth memory.
+    contents = [m.content for m in parsed.memories]
+    assert any("OAuth" in c for c in contents)
+
+
+def test_search_session_is_retrievable(client: TestClient) -> None:
+    _create_memory(client, content="OAuth integration details.")
+    resp = client.post("/memories/search", json={"query": "OAuth"})
+    session_id = SearchResponse(**resp.json()).session_id
+
+    session_resp = client.get(f"/sessions/{session_id}")
+    assert session_resp.status_code == 200
+    session = QuerySession(**session_resp.json())
+    assert session.id == session_id
+    assert session.concluded is False
+
+
+def test_search_rejects_empty_query(client: TestClient) -> None:
+    resp = client.post("/memories/search", json={"query": ""})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Links
+# ---------------------------------------------------------------------------
+
+
+def test_create_link_and_list(client: TestClient) -> None:
+    src = _create_memory(client, content="OAuth 2.0 is used for auth.")
+    tgt = _create_memory(client, content="PKCE is required for OAuth.")
+
+    resp = client.post(
+        f"/memories/{src['id']}/links",
+        json={
+            "target_memory_id": tgt["id"],
+            "link_type": "depends_on",
+            "entity": "OAuth 2.0",
+            "strength": 0.8,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    link = ConceptLink(**resp.json())  # conformance
+    assert link.source_memory_id == src["id"]
+    assert link.target_memory_id == tgt["id"]
+    assert link.link_type.value == "depends_on"
+    assert link.source.value == "user"
+
+    # The link is listed for the source memory.
+    listed = client.get(f"/memories/{src['id']}/links")
+    assert listed.status_code == 200
+    links = [ConceptLink(**item) for item in listed.json()]
+    assert any(item.id == link.id for item in links)
+
+
+def test_create_symmetric_link_creates_reverse(client: TestClient) -> None:
+    src = _create_memory(client, content="Fact A about widgets.")
+    tgt = _create_memory(client, content="Fact B about widgets.")
+
+    resp = client.post(
+        f"/memories/{src['id']}/links",
+        json={"target_memory_id": tgt["id"], "link_type": "relates_to"},
+    )
+    assert resp.status_code == 201, resp.text
+
+    # The reverse link is visible from the target memory's perspective.
+    tgt_links = client.get(f"/memories/{tgt['id']}/links")
+    assert tgt_links.status_code == 200
+    reverse = [
+        ConceptLink(**item)
+        for item in tgt_links.json()
+        if item["source_memory_id"] == tgt["id"] and item["target_memory_id"] == src["id"]
+    ]
+    assert reverse, "expected a reverse link for the symmetric type"
+
+
+def test_get_links_min_strength_filter(client: TestClient) -> None:
+    src = _create_memory(client, content="Source memory.")
+    tgt = _create_memory(client, content="Target memory.")
+    client.post(
+        f"/memories/{src['id']}/links",
+        json={"target_memory_id": tgt["id"], "link_type": "uses", "strength": 0.2},
+    )
+    resp = client.get(f"/memories/{src['id']}/links", params={"min_strength": 0.5})
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_get_links_filter_by_type(client: TestClient) -> None:
+    src = _create_memory(client, content="Source memory two.")
+    tgt = _create_memory(client, content="Target memory two.")
+    client.post(
+        f"/memories/{src['id']}/links",
+        json={"target_memory_id": tgt["id"], "link_type": "uses"},
+    )
+    resp = client.get(f"/memories/{src['id']}/links", params={"link_type": "before"})
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_create_link_source_not_found_404(client: TestClient) -> None:
+    tgt = _create_memory(client)
+    resp = client.post(
+        "/memories/missing-src/links",
+        json={"target_memory_id": tgt["id"], "link_type": "uses"},
+    )
+    assert resp.status_code == 404
+
+
+def test_create_link_target_not_found_404(client: TestClient) -> None:
+    src = _create_memory(client)
+    resp = client.post(
+        f"/memories/{src['id']}/links",
+        json={"target_memory_id": "missing-tgt", "link_type": "uses"},
+    )
+    assert resp.status_code == 404
+
+
+def test_create_self_link_returns_422(client: TestClient) -> None:
+    src = _create_memory(client)
+    resp = client.post(
+        f"/memories/{src['id']}/links",
+        json={"target_memory_id": src["id"], "link_type": "uses"},
+    )
+    assert resp.status_code == 422
+
+
+def test_get_links_missing_memory_404(client: TestClient) -> None:
+    resp = client.get("/memories/missing/links")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Dream
+# ---------------------------------------------------------------------------
+
+
+def test_dream_light_returns_report(client: TestClient) -> None:
+    _create_memory(client, content="OAuth 2.0 memory one.")
+    _create_memory(client, content="OAuth 2.0 memory two.")
+
+    resp = client.post("/dream", json={"intensity": "light"})
+    assert resp.status_code == 200, resp.text
+    report = DreamReport(**resp.json())  # conformance
+    assert report.intensity.value == "light"
+    assert report.duration_ms >= 0.0
+    assert report.anomalies is not None
+
+
+def test_dream_full_returns_report(client: TestClient) -> None:
+    _create_memory(client, content="Memory for full dream.")
+    resp = client.post("/dream", json={"intensity": "full"})
+    assert resp.status_code == 200, resp.text
+    report = DreamReport(**resp.json())
+    assert report.intensity.value == "full"
+
+
+def test_dream_rejects_bad_intensity(client: TestClient) -> None:
+    resp = client.post("/dream", json={"intensity": "deep"})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Sessions — feedback
+# ---------------------------------------------------------------------------
+
+
+def test_session_feedback_applies_and_concludes(client: TestClient) -> None:
+    mem = _create_memory(client, content="OAuth feedback memory.")
+    search = client.post("/memories/search", json={"query": "OAuth"})
+    session_id = SearchResponse(**search.json()).session_id
+
+    resp = client.post(
+        f"/sessions/{session_id}/feedback",
+        json={
+            "confidence_rating": 4,
+            "useful_ids": [mem["id"]],
+            "stale_ids": [],
+            "reasoning": "It directly answered the question.",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    session = QuerySession(**resp.json())  # conformance
+    assert session.concluded is True
+    assert session.confidence_rating == 4
+    assert session.useful_ids == [mem["id"]]
+
+    # The useful memory got reinforced.
+    updated = MemoryRecord(**client.get(f"/memories/{mem['id']}").json())
+    assert updated.usefulness_score > 0.0
+    assert updated.reinforcement_count == 1
+
+
+def test_session_feedback_already_concluded_returns_409(client: TestClient) -> None:
+    mem = _create_memory(client, content="Conflict feedback memory.")
+    search = client.post("/memories/search", json={"query": "Conflict"})
+    session_id = SearchResponse(**search.json()).session_id
+
+    payload = {"confidence_rating": 3, "useful_ids": [mem["id"]], "stale_ids": []}
+    first = client.post(f"/sessions/{session_id}/feedback", json=payload)
+    assert first.status_code == 200
+    second = client.post(f"/sessions/{session_id}/feedback", json=payload)
+    assert second.status_code == 409
+
+
+def test_session_feedback_missing_session_returns_404(client: TestClient) -> None:
+    resp = client.post(
+        "/sessions/nope/feedback",
+        json={"confidence_rating": 3, "useful_ids": [], "stale_ids": []},
+    )
+    assert resp.status_code == 404
+
+
+def test_session_feedback_rejects_bad_confidence(client: TestClient) -> None:
+    search = client.post("/memories/search", json={"query": "anything"})
+    session_id = SearchResponse(**search.json()).session_id
+    resp = client.post(
+        f"/sessions/{session_id}/feedback",
+        json={"confidence_rating": 9, "useful_ids": [], "stale_ids": []},
+    )
+    assert resp.status_code == 422
+
+
+def test_get_missing_session_returns_404(client: TestClient) -> None:
+    resp = client.get("/sessions/missing")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Stats & summaries
+# ---------------------------------------------------------------------------
+
+
+def test_stats_returns_conformant_shape(client: TestClient) -> None:
+    _create_memory(client)
+    resp = client.get("/stats")
+    assert resp.status_code == 200, resp.text
+    stats = MemoryStats(**resp.json())  # conformance
+    assert stats.total_memories >= 1
+    assert stats.active >= 1
+
+
+def test_list_summaries_empty_by_default(client: TestClient) -> None:
+    resp = client.get("/summaries")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_summaries_round_trip_via_dreaming(client: TestClient) -> None:
+    # No summarizer is injected by the API, so dreaming creates none — the
+    # summary endpoints still return well-formed (empty / 404) responses.
+    client.post("/dream", json={"intensity": "light"})
+    listed = client.get("/summaries", params={"include_stale": True})
+    assert listed.status_code == 200
+    summaries = [MemorySummary(**item) for item in listed.json()]
+    assert summaries == []
+
+    missing = client.get("/summaries/OAuth%202.0")
+    assert missing.status_code == 404
+
+
+def test_get_summary_happy_path_and_stale_filter(client: TestClient) -> None:
+    # Summaries are produced only by dreaming with an injected summarizer, which
+    # the HTTP surface never wires up. Seed two summaries directly through the
+    # live store (inside the running lifespan) to exercise the read endpoints'
+    # happy path and the include_stale filter.
+    store = app_module.get_store()
+    store.upsert_summary(
+        MemorySummary(
+            concept="OAuth 2.0",
+            summary_text="OAuth 2.0 is used with PKCE across services.",
+            memory_count=3,
+            is_current=True,
+        )
+    )
+    store.upsert_summary(
+        MemorySummary(
+            concept="Legacy SDK",
+            summary_text="The legacy SDK is deprecated.",
+            memory_count=2,
+            is_current=False,
+        )
+    )
+
+    # GET /summaries/{concept} happy path.
+    resp = client.get("/summaries/OAuth%202.0")
+    assert resp.status_code == 200, resp.text
+    summary = MemorySummary(**resp.json())  # conformance
+    assert summary.concept == "OAuth 2.0"
+    assert summary.memory_count == 3
+    assert summary.is_current is True
+
+    # Default list excludes the non-current summary.
+    default_list = client.get("/summaries")
+    assert default_list.status_code == 200
+    concepts = {item["concept"] for item in default_list.json()}
+    assert concepts == {"OAuth 2.0"}
+
+    # include_stale=True surfaces both.
+    full_list = client.get("/summaries", params={"include_stale": True})
+    assert full_list.status_code == 200
+    all_concepts = {item["concept"] for item in full_list.json()}
+    assert all_concepts == {"OAuth 2.0", "Legacy SDK"}
+
+
+def test_get_store_raises_without_lifespan(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Defensive: get_store() outside a running lifespan must raise.
+    monkeypatch.setattr(app_module, "_store", None)
+    with pytest.raises(RuntimeError):
+        app_module.get_store()
+
+
+# ---------------------------------------------------------------------------
+# Notes — POST /notes
+# ---------------------------------------------------------------------------
+
+
+def test_post_notes_returns_201_and_conformant_note_result(client: TestClient) -> None:
+    """POST /notes with content only must return 201 and a valid NoteResult."""
+    resp = client.post(
+        "/notes",
+        json={"content": "Remember to renew the server TLS certificate before Q1 2027."},
+    )
+    assert resp.status_code == 201, resp.text
+    result = NoteResult(**resp.json())  # OpenAPI-conformance proxy
+    assert result.note.is_note is True
+    assert result.anchor_kind == "none"
+    assert result.anchor_memory_id is None
+    assert result.anchor_phrase is None
+
+
+def test_post_notes_idempotent_second_call_is_also_201(client: TestClient) -> None:
+    """Each POST /notes call creates a new note and returns 201 (not 200)."""
+    body = {"content": "Buy oat milk."}
+    r1 = client.post("/notes", json=body)
+    r2 = client.post("/notes", json=body)
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    # Two separate notes are created (different ids).
+    assert NoteResult(**r1.json()).note.id != NoteResult(**r2.json()).note.id
+
+
+def test_post_notes_with_when_stores_valid_from(client: TestClient) -> None:
+    """POST /notes with 'when' must set valid_from on the note record."""
+    resp = client.post(
+        "/notes",
+        json={"content": "Team hackathon.", "when": "2026-11-10T09:00:00"},
+    )
+    assert resp.status_code == 201, resp.text
+    result = NoteResult(**resp.json())
+    assert result.note.valid_from is not None
+    assert result.note.category.value == "temporal"
+
+
+def test_post_notes_with_about_sets_anchor_phrase(client: TestClient) -> None:
+    """POST /notes with 'about' must set anchor_phrase on the returned NoteResult."""
+    resp = client.post(
+        "/notes",
+        json={
+            "content": "Pack adapters for the trip.",
+            "about": "Japan travel",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    result = NoteResult(**resp.json())
+    assert result.anchor_phrase == "Japan travel"
+    assert result.anchor_kind in {"memory", "topic", "none"}
+
+
+def test_post_notes_missing_content_returns_422(client: TestClient) -> None:
+    """POST /notes without 'content' must return 422 (validation error)."""
+    resp = client.post("/notes", json={"about": "something"})
+    assert resp.status_code == 422
+
+
+def test_post_notes_empty_content_returns_422(client: TestClient) -> None:
+    """POST /notes with empty content (min_length=1 violated) must return 422."""
+    resp = client.post("/notes", json={"content": "", "category": "episodic"})
+    assert resp.status_code == 422
+
+
+def test_post_notes_invalid_category_returns_422(client: TestClient) -> None:
+    """POST /notes with an unrecognised category enum value must return 422."""
+    resp = client.post("/notes", json={"content": "Some note.", "category": "not_a_category"})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Notes — GET /notes
+# ---------------------------------------------------------------------------
+
+
+def test_get_notes_empty_returns_200_and_empty_list(client: TestClient) -> None:
+    """GET /notes on a store with no notes must return 200 with []."""
+    resp = client.get("/notes")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []
+
+
+def test_get_notes_returns_only_is_note_records(client: TestClient) -> None:
+    """GET /notes must exclude plain (non-note) memories."""
+    # Add a plain memory.
+    _create_memory(client, content="A plain memory, not a note.")
+    # Add a note via the notes route.
+    client.post("/notes", json={"content": "A genuine user note."})
+    resp = client.get("/notes")
+    assert resp.status_code == 200, resp.text
+    records = [MemoryRecord(**item) for item in resp.json()]
+    assert len(records) == 1
+    assert records[0].is_note is True
+
+
+def test_get_notes_upcoming_filter(client: TestClient) -> None:
+    """GET /notes?upcoming=true returns only notes with valid_from in the future."""
+    client.post("/notes", json={"content": "Far future note.", "when": "2099-12-31T00:00:00"})
+    client.post("/notes", json={"content": "Undated note."})
+    resp = client.get("/notes", params={"upcoming": True})
+    assert resp.status_code == 200, resp.text
+    records = [MemoryRecord(**item) for item in resp.json()]
+    assert len(records) >= 1
+    for rec in records:
+        assert rec.valid_from is not None
+
+
+def test_get_notes_overdue_filter(client: TestClient) -> None:
+    """GET /notes?overdue=true returns only notes with valid_from in the past."""
+    client.post("/notes", json={"content": "Past task.", "when": "2020-03-01T00:00:00"})
+    client.post("/notes", json={"content": "Future task.", "when": "2099-06-01T00:00:00"})
+    resp = client.get("/notes", params={"overdue": True})
+    assert resp.status_code == 200, resp.text
+    records = [MemoryRecord(**item) for item in resp.json()]
+    assert len(records) >= 1
+
+
+def test_get_notes_both_flags_returns_422(client: TestClient) -> None:
+    """GET /notes with both upcoming=true and overdue=true must return 422."""
+    resp = client.get("/notes", params={"upcoming": True, "overdue": True})
+    assert resp.status_code == 422
+
+
+def test_get_notes_limit_param(client: TestClient) -> None:
+    """GET /notes?limit=2 caps the number of returned notes."""
+    for i in range(5):
+        client.post("/notes", json={"content": f"Note {i} for limit test."})
+    resp = client.get("/notes", params={"limit": 2})
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) <= 2
+
+
+def test_get_notes_note_result_conforms_to_memory_record(client: TestClient) -> None:
+    """Each item returned by GET /notes must parse as a valid MemoryRecord."""
+    client.post("/notes", json={"content": "Conformance check note."})
+    resp = client.get("/notes")
+    assert resp.status_code == 200, resp.text
+    for item in resp.json():
+        record = MemoryRecord(**item)
+        assert record.is_note is True

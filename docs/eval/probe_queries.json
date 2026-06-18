@@ -1,0 +1,29 @@
+{
+  "_comment": "Tiny hand-labelled probe set for the fast metric harness (scripts/metrics.py). 'relevant_substrings' identify the memories that SHOULD be retrieved for each query; metrics.py resolves them to memory ids by case-insensitive content match. Directional, not absolute (see docs/EXPERIMENTS.md §9).",
+  "queries": [
+    {
+      "query": "iOS cancel endpoint bug",
+      "relevant_substrings": ["cancel endpoint", "does not send the delete", "iss-006", "iss-010", "cancel-endpoint bug", "cancel-bug"]
+    },
+    {
+      "query": "AXIS Victoriei credential count",
+      "relevant_substrings": ["victoriei", "523 cred", "520 cred"]
+    },
+    {
+      "query": "shorten reservation endpoint contract",
+      "relevant_substrings": ["shorten", "new_start_utc", "/shorten/"]
+    },
+    {
+      "query": "INGHub May 15 delivery scope",
+      "relevant_substrings": ["may 15", "inghub delivery", "delivery scope", "15 may 2026", "may-15"]
+    },
+    {
+      "query": "MongoDB infrastructure review TTL index",
+      "relevant_substrings": ["mongodb", "ttl index", "infrastructure review"]
+    },
+    {
+      "query": "Engie Living@ integration kickoff decision",
+      "relevant_substrings": ["living@", "kickoff", "ti-0002"]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "_comment": "Ground truth for the contradiction-resolution model comparison (scripts/compare_models.py). Each conflict names two DISTINCT memories by content substring; the correct resolution archives/supersedes the 'outdated' one and keeps the 'authoritative' one. IDs are resolved at runtime (UUIDs are non-deterministic). Substrings verified present + distinct in the agentic_support corpus.",
+  "conflicts": [
+    {
+      "name": "axis_victoriei_credentials",
+      "outdated_substring": "523 cred",
+      "authoritative_substring": "520 cred",
+      "note": "README credential summary (523) is stale; the live AXIS GetCredentialList (520) is authoritative."
+    },
+    {
+      "name": "openapi_path_count",
+      "outdated_substring": "35 paths",
+      "authoritative_substring": "'paths':36",
+      "note": "The 2026-05-01 pre-change review (35 paths) predates the canceledsimple/CancellationPushData additions (validation reported 'paths':36)."
+    }
+  ]
+}

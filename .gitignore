@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+*.egg-info/
+dist/
+build/
+.coverage
+.pytest_cache/
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# uv
+uv.lock
+.uv/
+
+# SQLite databases (dev only — test DBs should not be committed)
+*.db
+*.sqlite
+*.sqlite3
+!tests/fixtures/*.db
+
+# Embeddings cache
+.embeddings_cache/
+*.index
+*.npy
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env.local
+.env.production
+*.key
+*.pem
+
+# Docs build
+docs/_build/
+site/
+
+# Local test corpus (verbatim internal data) and scratch DBs — keep out of git history
+scripts/corpus_parts/
+*.db
+*.db-wal
+*.db-shm

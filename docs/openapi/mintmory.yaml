@@ -1,0 +1,2072 @@
+openapi: 3.1.0
+
+info:
+  title: MintMory Memory API
+  version: 0.1.0
+  description: |
+    HTTP API for MintMory, a typed memory system for LLM agents.
+
+    ## Design Model
+
+    MintMory follows a **Palantir Ontology-inspired** data model:
+
+    - **Object Types** → `MemoryRecord` (primary memory instances), `ConceptLink`
+      (typed edges between memories), `QuerySession` (decision-lineage audit records),
+      `MemorySummary` (LLM-synthesised concept digests).
+    - **Link Types** → 12 orthogonal `ConceptLinkType` values drawn from the memory
+      graph literature (KGFoller, AgentKB, Recall-and-Reflect, StructGPT, Memento,
+      MemFree). Includes `annotates` (asymmetric: note → item).
+    - **Action Types** → exposed both as MCP tools (primary transport) and as the REST
+      endpoints documented here.
+    - **Decision Lineage** → every search creates a `QuerySession`; the LLM self-reports
+      which memories were useful or stale via `POST /sessions/{id}/feedback`.
+
+    ## Transports
+
+    This REST API and the MCP tool layer are **parallel transports over the same service
+    layer** — every endpoint maps 1-to-1 to an MCP tool. Prefer the MCP transport when
+    operating inside an LLM agent context; use REST for tooling, dashboards, and
+    service-to-service integration.
+
+    ## Scoring Model
+
+    Memory retrieval rank uses a 7-factor composite score (arxiv 2606.12945):
+
+    ```
+    effective_score = base_relevance
+                    + usefulness_score × 0.3
+                    - staleness_score  × 0.2
+                    + 0.1 × e^(−0.01 × days_since_last_access)
+    ```
+
+    `usefulness_score` and `staleness_score` are updated automatically by the
+    feedback cycle; `dreaming` recalculates graph links and may archive or
+    rehabilitate memories.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: mcp://mintmory
+    description: |
+      MCP transport (primary). Use this when the agent runtime supports the Model
+      Context Protocol. Tool names mirror endpoint semantics — e.g. `memory:add`,
+      `memory:search`, `dream:run`. The REST and MCP surfaces share the same
+      request/response schemas.
+
+tags:
+  - name: Memories
+    description: |
+      CRUD operations on `MemoryRecord` objects. The primary object type in the
+      MintMory ontology — every piece of knowledge the agent stores is a
+      `MemoryRecord`.
+  - name: Search
+    description: |
+      Semantic vector search with optional graph traversal (search-around).
+      Returns a `SearchResponse` and creates a `QuerySession` for feedback tracking.
+  - name: Links
+    description: |
+      Read and create `ConceptLink` edges between `MemoryRecord` vertices.
+      Links carry typed semantics (`ConceptLinkType`), strength, and confidence.
+  - name: Sessions
+    description: |
+      `QuerySession` retrieval and LLM-assessed feedback submission. Implements
+      Palantir Decision Lineage — tracks what was retrieved, what was used, and
+      what was stale.
+  - name: Dream
+    description: |
+      Dreaming consolidation process. Runs in two intensities:
+      `light` (anomaly detection + concept linking + summary updates) and
+      `full` (light + contradiction resolution + archival + rehabilitation).
+  - name: Stats
+    description: Aggregated health and usage statistics for the memory store.
+  - name: Summaries
+    description: |
+      LLM-generated concept summaries. Created automatically during dreaming;
+      read-only from the API surface.
+  - name: Notes
+    description: |
+      User-authored personal notes (``is_note=true``). Notes carry higher authority
+      than agent-inferred memories: they are exempt from automatic archival and win
+      contradiction resolution against inferred memories. Use ``POST /notes`` for
+      capture and ``GET /notes`` for listing. To mark a note done, archive it via
+      ``DELETE /memories/{id}``.
+
+paths:
+
+  # ---------------------------------------------------------------------------
+  # Memories
+  # ---------------------------------------------------------------------------
+
+  /memories:
+    post:
+      operationId: addMemory
+      summary: Add a new memory
+      description: |
+        Stores a new `MemoryRecord`. The service will:
+        1. Generate a ULID-format `id` if none is provided.
+        2. Run entity extraction to populate `entity_ids`.
+        3. Run contradiction detection against recent active memories; sets
+           `flagged_for_review` and `contradicts_ids` if conflicts are found.
+        4. Infer initial `ConceptLink` edges from the extracted entities.
+
+        Returns `409 Conflict` if a memory with semantically identical content
+        already exists (cosine similarity ≥ 0.98) and deduplication is enabled.
+      tags:
+        - Memories
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryCreate'
+            examples:
+              basicFact:
+                summary: Add a simple fact memory
+                value:
+                  content: "The Acme parking integration uses OAuth 2.0 with PKCE and
+                    requires the `parking:read` scope."
+                  category: fact
+                  source: agent
+                  confidence: 0.95
+                  metadata:
+                    project_id: "acme-parking"
+                    session_id: "ses_01HXYZ"
+      responses:
+        '201':
+          description: Memory created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryRecord'
+              examples:
+                created:
+                  summary: Created memory record
+                  value:
+                    id: "01HXYZ1234567890ABCDEFGHIJ"
+                    content: "The Acme parking integration uses OAuth 2.0 with PKCE and
+                      requires the `parking:read` scope."
+                    category: fact
+                    entity_ids: ["Acme", "OAuth 2.0", "PKCE", "parking:read"]
+                    confidence: 0.95
+                    source: agent
+                    verified: false
+                    valid_from: null
+                    valid_until: null
+                    usefulness_score: 0.0
+                    staleness_score: 0.0
+                    reinforcement_count: 0
+                    retrieval_count: 0
+                    is_stale: false
+                    is_active: true
+                    is_archived: false
+                    superseded_by: null
+                    flagged_for_review: false
+                    contradicts_ids: []
+                    created_at: "2026-06-15T10:00:00Z"
+                    updated_at: "2026-06-15T10:00:00Z"
+                    last_accessed_at: null
+                    metadata:
+                      project_id: "acme-parking"
+                      session_id: "ses_01HXYZ"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /memories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+
+    get:
+      operationId: getMemory
+      summary: Get memory by ID
+      description: |
+        Retrieves a single `MemoryRecord` by its ID. Increments `retrieval_count`
+        and updates `last_accessed_at` as a side-effect.
+      tags:
+        - Memories
+      responses:
+        '200':
+          description: The requested memory record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryRecord'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      operationId: updateMemory
+      summary: Update memory fields
+      description: |
+        Partially updates a `MemoryRecord`. Only the fields present in the request
+        body are changed. Updatable fields: `content`, `category`, `verified`,
+        `metadata`, `valid_from`, `valid_until`, `confidence`.
+
+        Setting `content` triggers a fresh entity extraction and contradiction
+        check. `updated_at` is always refreshed.
+      tags:
+        - Memories
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MemoryUpdate'
+      responses:
+        '200':
+          description: Updated memory record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryRecord'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    delete:
+      operationId: archiveMemory
+      summary: Archive a memory (soft delete)
+      description: |
+        Soft-deletes a `MemoryRecord` by setting `is_archived = true` and
+        `is_active = false`. The record is retained in storage for audit and
+        lineage purposes but excluded from searches by default.
+
+        To permanently remove a record, use the admin CLI — the HTTP API does
+        not expose hard-delete.
+      tags:
+        - Memories
+      responses:
+        '204':
+          description: Memory archived. No response body.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # Search
+  # ---------------------------------------------------------------------------
+
+  /memories/search:
+    post:
+      operationId: searchMemories
+      summary: Search memories
+      description: |
+        Performs semantic vector search over active memories, optionally followed
+        by graph traversal (search-around).
+
+        **Phase 1 — vector search**: embeds `query` and retrieves the top-`limit`
+        memories ranked by `effective_score` (composite: relevance + usefulness
+        - staleness + recency bonus).
+
+        **Phase 2 — search-around** (optional): traverses `ConceptLink` edges from
+        the Phase 1 anchor set using the `search_around` spec (link types, depth,
+        min_strength). Retrieved neighbours are unioned with the anchor set.
+        `search_around_ids` in the response identifies the graph-traversal additions.
+
+        Creates a `QuerySession` record; the returned `session_id` must be used in
+        `POST /sessions/{id}/feedback` to close the feedback loop.
+      tags:
+        - Search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+            examples:
+              basicSearch:
+                summary: Simple keyword search
+                value:
+                  query: "OAuth integration parking"
+                  limit: 5
+              searchAroundWithFilter:
+                summary: Search with graph traversal and filter
+                value:
+                  query: "parking integration"
+                  search_around:
+                    link_types: ["contradicts", "supersedes"]
+                    depth: 2
+                    min_strength: 0.4
+                  filter:
+                    category: fact
+                    active_only: true
+                    exclude_stale: true
+                    min_usefulness: 1.5
+                  limit: 10
+                  include_archived: false
+      responses:
+        '200':
+          description: Search results with session tracking ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+              examples:
+                results:
+                  summary: Successful search response
+                  value:
+                    session_id: "ses_01HXYZ9999"
+                    memories:
+                      - id: "01HXYZ1234567890ABCDEFGHIJ"
+                        content: "The Acme parking integration uses OAuth 2.0 with PKCE."
+                        category: fact
+                        entity_ids: ["Acme", "OAuth 2.0", "PKCE"]
+                        confidence: 0.95
+                        source: agent
+                        verified: false
+                        valid_from: null
+                        valid_until: null
+                        usefulness_score: 3.2
+                        staleness_score: 0.1
+                        reinforcement_count: 4
+                        retrieval_count: 12
+                        is_stale: false
+                        is_active: true
+                        is_archived: false
+                        superseded_by: null
+                        flagged_for_review: false
+                        contradicts_ids: []
+                        created_at: "2026-06-10T08:00:00Z"
+                        updated_at: "2026-06-14T09:15:00Z"
+                        last_accessed_at: "2026-06-15T09:55:00Z"
+                        metadata:
+                          project_id: "acme-parking"
+                    total_found: 1
+                    search_around_ids: []
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Links
+  # ---------------------------------------------------------------------------
+
+  /memories/{id}/links:
+    parameters:
+      - $ref: '#/components/parameters/MemoryId'
+
+    get:
+      operationId: getMemoryLinks
+      summary: Get all concept links for a memory
+      description: |
+        Returns every `ConceptLink` where this memory appears as either
+        `source_memory_id` or `target_memory_id`. The response is a flat list
+        of link objects; inspect `source_memory_id` and `target_memory_id` to
+        determine direction.
+
+        To filter by link type, use the `link_type` query parameter.
+      tags:
+        - Links
+      parameters:
+        - name: link_type
+          in: query
+          required: false
+          description: |
+            Filter results to only links of this type. When omitted, all 12
+            `ConceptLinkType` values are included.
+          schema:
+            $ref: '#/components/schemas/ConceptLinkType'
+        - name: min_strength
+          in: query
+          required: false
+          description: |
+            Exclude links with `strength` below this threshold (0–1).
+            Defaults to 0 (all links returned).
+          schema:
+            type: number
+            format: float
+            minimum: 0.0
+            maximum: 1.0
+            default: 0.0
+      responses:
+        '200':
+          description: List of concept links involving this memory.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConceptLink'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      operationId: createMemoryLink
+      summary: Create a manual concept link
+      description: |
+        Creates a new `ConceptLink` from this memory (as `source_memory_id`) to
+        another memory. The `link_type` determines the semantic relationship.
+
+        `source` is always set to `user` for links created via this endpoint.
+
+        For symmetric link types (`relates_to`, `contradicts`, `similar_to`) the
+        server will also create the reverse link automatically.
+      tags:
+        - Links
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConceptLinkCreate'
+      responses:
+        '201':
+          description: Concept link created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConceptLink'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Sessions
+  # ---------------------------------------------------------------------------
+
+  /sessions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+
+    get:
+      operationId: getSession
+      summary: Get a query session
+      description: |
+        Retrieves a `QuerySession` record by its ID. Includes all post-session
+        feedback fields if feedback has already been submitted (`concluded: true`).
+      tags:
+        - Sessions
+      responses:
+        '200':
+          description: The requested query session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuerySession'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sessions/{id}/feedback:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+
+    post:
+      operationId: submitSessionFeedback
+      summary: Submit LLM-assessed session feedback
+      description: |
+        Records the LLM's self-assessment of which memories were useful and which
+        were stale, closing the feedback loop for a `QuerySession`.
+
+        This endpoint implements **passive self-assessment** (Recall-and-Reflect
+        pattern): the LLM calls it automatically after answering a user query —
+        no human interaction is required.
+
+        Side-effects:
+        - `concluded` on the session is set to `true`.
+        - `usefulness_score` of memories in `useful_ids` is incremented.
+        - `staleness_score` of memories in `stale_ids` is incremented; memories
+          may be automatically flagged as `is_stale` if threshold is crossed.
+        - `reinforcement_count` on useful memories is incremented.
+
+        Returns `409 Conflict` if feedback was already submitted for this session.
+      tags:
+        - Sessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionFeedback'
+      responses:
+        '200':
+          description: Updated query session with feedback applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuerySession'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Dream
+  # ---------------------------------------------------------------------------
+
+  /dream:
+    post:
+      operationId: runDream
+      summary: Trigger the dreaming consolidation process
+      description: |
+        Runs the dreaming pipeline — an offline consolidation pass that improves
+        memory graph quality without user interaction.
+
+        **`light` intensity** (fast, ~seconds):
+        1. Anomaly detection — finds high-staleness/useful memories, never-accessed
+           memories, and memories flagged for contradiction review.
+        2. Concept linking — infers new `ConceptLink` edges from shared entities.
+        3. Summary updates — regenerates `MemorySummary` records for changed concepts.
+
+        **`full` intensity** (thorough, ~minutes on large stores):
+        Steps 1–3 from `light`, plus:
+        4. Contradiction resolution — runs `BatchConflictResolver` over all
+           `flagged_for_review` memories; may `UPDATE`, `DELETE`, or leave as `NONE`.
+        5. Archival sweep — archives memories whose `staleness_score` exceeds
+           threshold and `reinforcement_count` is zero.
+        6. Rehabilitation — re-activates archived memories that have become
+           referenced by newer memories.
+
+        The endpoint is **synchronous** — it blocks until the dream run completes
+        and returns a `DreamReport`. For large memory stores prefer running
+        dreams on a schedule (e.g. nightly cron) rather than on every agent turn.
+      tags:
+        - Dream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DreamRequest'
+            examples:
+              lightDream:
+                summary: Light consolidation pass
+                value:
+                  intensity: light
+              fullDream:
+                summary: Full consolidation pass
+                value:
+                  intensity: full
+      responses:
+        '200':
+          description: Dream completed; report of all actions taken.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DreamReport'
+              examples:
+                lightResult:
+                  summary: Light dream report
+                  value:
+                    intensity: light
+                    duration_ms: 842.5
+                    new_links: 7
+                    new_summaries: 2
+                    contradictions_resolved: 0
+                    memories_archived: 0
+                    memories_rehabilitated: 0
+                    anomalies:
+                      high_staleness_useful: []
+                      never_accessed: ["01HXYZ0000000000AAAAAAAAA1"]
+                      contradictions: []
+                fullResult:
+                  summary: Full dream report
+                  value:
+                    intensity: full
+                    duration_ms: 14230.1
+                    new_links: 23
+                    new_summaries: 5
+                    contradictions_resolved: 3
+                    memories_archived: 8
+                    memories_rehabilitated: 1
+                    anomalies:
+                      high_staleness_useful: ["01HXYZ0000000000AAAAAAAAB1"]
+                      never_accessed: ["01HXYZ0000000000AAAAAAAAA1"]
+                      contradictions: ["01HXYZ0000000000AAAAAAAAC1", "01HXYZ0000000000AAAAAAAAC2"]
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Notes
+  # ---------------------------------------------------------------------------
+
+  /notes:
+    post:
+      operationId: createNote
+      summary: Create a user-authored note
+      description: |
+        Stores a user-authored note (``is_note=true``, ``source=user``,
+        ``verified=true``). Notes are higher-authority than agent-inferred
+        memories: they win contradiction resolution and are exempt from
+        automatic staleness archival.
+
+        The optional ``about`` field is resolved conservatively to an existing
+        memory — if a dominant match is found, an ``annotates`` link is created;
+        otherwise the anchor phrase's entities are folded into the note's
+        ``entity_ids`` (topic anchor). The raw ``about`` text is always stored in
+        ``metadata.anchor``.
+
+        ``when`` and ``until`` must already be ISO-8601 datetimes (the client/agent
+        converts natural language to ISO; MintMory does no date parsing).
+
+        Returns the created ``NoteResult`` with anchor resolution details.
+      tags:
+        - Notes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NoteCreate'
+            examples:
+              simpleNote:
+                summary: Simple personal note
+                value:
+                  content: "Remember to renew the Acme API key before July 1st."
+              anchoredNote:
+                summary: Note anchored to an existing memory
+                value:
+                  content: "The parking OAuth integration is due for a security audit."
+                  about: "Acme parking OAuth integration"
+                  when: "2026-07-01T00:00:00Z"
+      responses:
+        '201':
+          description: Note created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NoteResult'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+    get:
+      operationId: listNotes
+      summary: List user-authored notes
+      description: |
+        Returns notes (``is_note=true``) ordered newest-first by default.
+        Supports optional temporal views:
+
+        - ``upcoming=true``: notes with ``valid_from`` in the future, sorted
+          soonest-first. Useful for reminder-style notes.
+        - ``overdue=true``: non-archived notes with ``valid_from`` in the past,
+          sorted by ``valid_from`` ascending (most overdue first).
+
+        ``upcoming`` and ``overdue`` are mutually exclusive — passing both returns
+        ``422 Unprocessable Entity``.
+
+        The ``about`` filter matches notes whose ``entity_ids`` contain the term
+        (case-insensitive) or whose ``metadata.anchor`` contains it as a substring.
+      tags:
+        - Notes
+      parameters:
+        - name: about
+          in: query
+          required: false
+          description: |
+            Filter to notes whose ``entity_ids`` or ``metadata.anchor`` contain
+            this term (case-insensitive substring match on anchor, membership
+            check on entity_ids).
+          schema:
+            type: string
+            nullable: true
+        - name: upcoming
+          in: query
+          required: false
+          description: |
+            When ``true``, return only notes with ``valid_from`` in the future,
+            sorted soonest-first.
+          schema:
+            type: boolean
+            default: false
+        - name: overdue
+          in: query
+          required: false
+          description: |
+            When ``true``, return only non-archived notes with ``valid_from`` in
+            the past, sorted by ``valid_from`` ascending (most overdue first).
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of notes to return (1–500). Defaults to 50.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+      responses:
+        '200':
+          description: List of note records (``is_note=true``), newest-first by default.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemoryRecord'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Stats
+  # ---------------------------------------------------------------------------
+
+  /stats:
+    get:
+      operationId: getStats
+      summary: Get memory store statistics
+      description: |
+        Returns aggregated statistics for the entire memory store. Useful for
+        dashboards, health checks, and deciding when to run a dreaming pass.
+
+        `top_concepts` lists the 10 most frequently linked concept/entity strings,
+        sorted descending by link count.
+      tags:
+        - Stats
+      responses:
+        '200':
+          description: Current memory store statistics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemoryStats'
+
+  # ---------------------------------------------------------------------------
+  # Summaries
+  # ---------------------------------------------------------------------------
+
+  /summaries:
+    get:
+      operationId: listSummaries
+      summary: List all memory summaries
+      description: |
+        Returns all `MemorySummary` records ordered by `generated_at` descending.
+        Summaries are created and updated by the dreaming process; this endpoint
+        is read-only.
+
+        Only `is_current = true` summaries are returned by default. Set
+        `include_stale=true` to include summaries whose linked memories have
+        since become stale.
+      tags:
+        - Summaries
+      parameters:
+        - name: include_stale
+          in: query
+          required: false
+          description: |
+            When `true`, summaries with `is_current = false` are included in the
+            response. Defaults to `false`.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of memory summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MemorySummary'
+
+  /summaries/{concept}:
+    parameters:
+      - name: concept
+        in: path
+        required: true
+        description: |
+          The concept or entity name to retrieve a summary for. Case-sensitive;
+          must match the `concept` field stored during dreaming.
+        schema:
+          type: string
+          minLength: 1
+
+    get:
+      operationId: getSummaryByConcept
+      summary: Get summary for a specific concept
+      description: |
+        Returns the most recent `MemorySummary` for the given concept name.
+        Returns `404` if no summary exists for this concept yet — run dreaming
+        to generate summaries.
+      tags:
+        - Summaries
+      responses:
+        '200':
+          description: Memory summary for the concept.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MemorySummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+# ---------------------------------------------------------------------------
+# Components
+# ---------------------------------------------------------------------------
+
+components:
+
+  parameters:
+
+    MemoryId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Unique identifier of the `MemoryRecord`. ULID format (26 chars,
+        base32 Crockford), e.g. `01HXYZ1234567890ABCDEFGHIJ`.
+      schema:
+        type: string
+        minLength: 1
+
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: |
+        Unique identifier of the `QuerySession`. ULID format.
+      schema:
+        type: string
+        minLength: 1
+
+  schemas:
+
+    # -----------------------------------------------------------------------
+    # Enumerations
+    # -----------------------------------------------------------------------
+
+    MemoryCategory:
+      type: string
+      description: |
+        Object type classification for a memory. Maps to Palantir Ontology
+        'object type' concept. Sourced from MoPA, AgentKB, Recall-and-Reflect,
+        MemFree, and Memento research papers.
+      enum:
+        - identity
+        - preference
+        - skill
+        - context
+        - fact
+        - episodic
+        - temporal
+        - relationship
+      x-enum-descriptions:
+        identity: Persistent facts about the user or agent that rarely change.
+        preference: Stated or inferred preferences (communication style, tooling, etc.).
+        skill: How to do something — procedures, tool invocations, recipes, workflows.
+        context: Current working context, active project state, recent decisions.
+        fact: World-state facts, configuration values, API endpoints, URLs.
+        episodic: Something that happened in a specific past session or interaction.
+        temporal: Time-bounded fact with an explicit validity window (valid_from/valid_until).
+        relationship: A typed link between two real-world entities; stored as a ConceptLink.
+
+    ConceptLinkType:
+      type: string
+      description: |
+        Typed semantic relationship between two `MemoryRecord` vertices.
+        12 orthogonal, non-hierarchical types sourced from the memory graph
+        literature. Symmetric types are: `relates_to`, `contradicts`, `similar_to`.
+        `annotates` is asymmetric (note → item); the note is always the source.
+      enum:
+        - relates_to
+        - contradicts
+        - refines
+        - supersedes
+        - enables
+        - depends_on
+        - similar_to
+        - part_of
+        - uses
+        - before
+        - valid_until
+        - annotates
+      x-enum-descriptions:
+        relates_to: General connection with no specific direction. Symmetric.
+        contradicts: The two memories cannot both be true simultaneously. Symmetric.
+        refines: Target adds specificity or detail to the source. Inverse is 'generalizes'.
+        supersedes: Target replaces the source completely. Inverse is 'precedes'.
+        enables: Source made the target possible. Inverse is 'enabled_by'.
+        depends_on: Source requires the target to be true or exist. Inverse is 'supports'.
+        similar_to: Source is semantically like the target. Symmetric.
+        part_of: Source is contained within or belongs to the target. Inverse is 'contains'.
+        uses: Source actively uses or invokes the target. Inverse is 'used_by'.
+        before: Source occurred before the target in time. Inverse is 'after'.
+        valid_until: Source is true until the time encoded in the target's metadata.
+        annotates: A note (source) annotates an item (target). Asymmetric; inverse is 'annotated_by'.
+
+    LinkSource:
+      type: string
+      description: How a `ConceptLink` was created.
+      enum:
+        - extraction
+        - inference
+        - dreaming
+        - user
+      x-enum-descriptions:
+        extraction: Detected automatically during entity extraction when a memory was added.
+        inference: Inferred by the LLM reasoning step during memory ingestion.
+        dreaming: Created during a dreaming consolidation pass.
+        user: Explicitly created via the API or MCP by the user or calling agent.
+
+    MemorySource:
+      type: string
+      description: Who or what produced the memory content.
+      enum:
+        - user
+        - agent
+        - document
+        - inference
+      x-enum-descriptions:
+        user: Directly stated by a human user.
+        agent: Generated or stored by an LLM agent.
+        document: Extracted from a document or file.
+        inference: Derived by reasoning over other memories.
+
+    DreamIntensity:
+      type: string
+      description: |
+        Controls how deeply the dreaming consolidation process runs.
+        `light` is fast and safe to run frequently. `full` is thorough
+        but takes longer on large memory stores.
+      enum:
+        - light
+        - full
+      x-enum-descriptions:
+        light: Anomaly detection + concept linking + summary updates only.
+        full: Everything in light, plus contradiction resolution, archival sweep, and rehabilitation.
+
+    # -----------------------------------------------------------------------
+    # Core Object Types
+    # -----------------------------------------------------------------------
+
+    MemoryRecord:
+      type: object
+      description: |
+        Primary memory object. Equivalent to a Palantir Ontology object instance.
+        Every piece of knowledge stored in MintMory is a `MemoryRecord`.
+
+        IDs use ULID format (sortable, collision-resistant, base32 Crockford).
+        All timestamps are ISO-8601 UTC strings.
+      required:
+        - id
+        - content
+        - category
+        - entity_ids
+        - confidence
+        - source
+        - verified
+        - usefulness_score
+        - staleness_score
+        - reinforcement_count
+        - retrieval_count
+        - is_stale
+        - is_active
+        - is_archived
+        - is_note
+        - flagged_for_review
+        - contradicts_ids
+        - created_at
+        - updated_at
+        - metadata
+      properties:
+        id:
+          type: string
+          description: |
+            Unique ULID identifier for this memory. Auto-generated by the server
+            on creation.
+          example: "01HXYZ1234567890ABCDEFGHIJ"
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: |
+            The natural-language content of the memory. This is the text that is
+            embedded for semantic search. Must be between 1 and 10 000 characters.
+          example: "The Acme parking integration uses OAuth 2.0 with PKCE."
+        category:
+          $ref: '#/components/schemas/MemoryCategory'
+        entity_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            Regex-extracted entity strings (proper nouns, product names, identifiers)
+            found in `content`. Used to build `ConceptLink` edges during ingestion
+            and dreaming.
+          example: ["Acme", "OAuth 2.0", "PKCE"]
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: |
+            Agent's confidence that this memory is accurate (0 = uncertain,
+            1 = certain). Used in the composite retrieval score.
+          example: 0.95
+        source:
+          $ref: '#/components/schemas/MemorySource'
+        verified:
+          type: boolean
+          description: |
+            Whether this memory has been explicitly confirmed by the user or
+            another trusted process. Verified memories are weighted higher in
+            retrieval.
+          example: false
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            ISO-8601 UTC datetime from which this memory is considered valid.
+            Only set for `temporal` category memories or facts with a known
+            start date. `null` means valid from creation.
+          example: null
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            ISO-8601 UTC datetime after which this memory should no longer be
+            trusted. Only set for `temporal` category memories. `null` means
+            no expiry. Memories past this date are automatically flagged as stale.
+          example: null
+        usefulness_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 10.0
+          description: |
+            Cumulative usefulness score updated by the QuerySession feedback
+            cycle. Higher scores mean the agent found this memory helpful more
+            often. Used in composite retrieval scoring.
+          example: 3.2
+        staleness_score:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 10.0
+          description: |
+            Cumulative staleness score updated by the QuerySession feedback
+            cycle. Higher scores mean the agent frequently marked this memory
+            as stale or incorrect. Memories crossing a threshold are flagged
+            `is_stale = true`.
+          example: 0.1
+        reinforcement_count:
+          type: integer
+          minimum: 0
+          description: |
+            Number of times this memory was marked useful in feedback.
+            Incremented by `POST /sessions/{id}/feedback` when the memory
+            appears in `useful_ids`.
+          example: 4
+        retrieval_count:
+          type: integer
+          minimum: 0
+          description: |
+            Total number of times this memory has been returned in search
+            results. Incremented by `GET /memories/{id}` and `POST /memories/search`.
+          example: 12
+        is_stale:
+          type: boolean
+          description: |
+            `true` when `staleness_score` has crossed the configured threshold
+            or when `valid_until` is in the past. Stale memories are excluded
+            from searches by default (`MemoryFilter.exclude_stale = true`).
+          example: false
+        is_active:
+          type: boolean
+          description: |
+            `false` when the memory has been archived (`DELETE /memories/{id}`)
+            or superseded. Inactive memories are excluded from searches by default.
+          example: true
+        is_archived:
+          type: boolean
+          description: |
+            `true` when the memory was soft-deleted via `DELETE /memories/{id}`
+            or archived by the dreaming process. Archived memories are excluded
+            from searches unless `include_archived = true`.
+          example: false
+        superseded_by:
+          type: string
+          nullable: true
+          description: |
+            ID of the `MemoryRecord` that replaces this one. Set when dreaming
+            resolves a contradiction by creating a new memory. Implies
+            `is_active = false`.
+          example: null
+        flagged_for_review:
+          type: boolean
+          description: |
+            `true` when contradiction detection found this memory conflicts with
+            another. The dreaming process resolves flagged memories during a
+            `full` run.
+          example: false
+        contradicts_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of other `MemoryRecord` objects that conflict with this memory.
+            Populated by contradiction detection at add time and by dreaming.
+          example: []
+        is_note:
+          type: boolean
+          description: |
+            ``true`` for user-authored "remember this" notes created via
+            ``POST /notes`` or the ``memory_note`` MCP tool. Notes are exempt from
+            automatic staleness archival and win contradiction resolution over
+            agent-inferred memories. Default ``false`` for all inferred/document
+            memories.
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC datetime when this memory was first stored.
+          example: "2026-06-10T08:00:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: |
+            ISO-8601 UTC datetime of the last modification. Updated on `PATCH`
+            and when scores are adjusted by feedback.
+          example: "2026-06-14T09:15:00Z"
+        last_accessed_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            ISO-8601 UTC datetime when this memory was last returned in a search
+            or retrieved directly. Used to compute the recency bonus in scoring.
+            `null` for memories that have never been retrieved.
+          example: "2026-06-15T09:55:00Z"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Arbitrary JSON metadata for application-level extensions such as
+            `project_id`, `session_id`, custom tags, or source URLs. Not
+            indexed for semantic search but available in the full record.
+          example:
+            project_id: "acme-parking"
+            session_id: "ses_01HXYZ"
+
+    MemoryCreate:
+      type: object
+      description: |
+        Request body for adding a new memory (`POST /memories`). Only `content`
+        and `category` are required; all other fields have server-side defaults.
+      required:
+        - content
+        - category
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The natural-language content of the memory to store.
+          example: "The Acme parking integration uses OAuth 2.0 with PKCE."
+        category:
+          $ref: '#/components/schemas/MemoryCategory'
+        source:
+          $ref: '#/components/schemas/MemorySource'
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 1.0
+          description: Agent's confidence that this memory is accurate.
+          example: 0.95
+        verified:
+          type: boolean
+          default: false
+          description: Whether this memory has already been verified by the user.
+          example: false
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: Start of validity window for temporal memories.
+          example: null
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: End of validity window for temporal memories.
+          example: null
+        metadata:
+          type: object
+          additionalProperties: true
+          default: {}
+          description: Arbitrary application-level metadata.
+          example:
+            project_id: "acme-parking"
+
+    MemoryUpdate:
+      type: object
+      description: |
+        Request body for `PATCH /memories/{id}`. All fields are optional;
+        only provided fields are updated. At least one field must be present.
+      minProperties: 1
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: |
+            New content for the memory. Triggers fresh entity extraction and
+            contradiction detection.
+          example: "The Acme parking integration uses OAuth 2.0 with PKCE (updated)."
+        category:
+          $ref: '#/components/schemas/MemoryCategory'
+        verified:
+          type: boolean
+          description: Update the verified flag.
+          example: true
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: Update the confidence score.
+          example: 0.85
+        valid_from:
+          type: string
+          format: date-time
+          nullable: true
+          description: Update the validity start datetime.
+          example: null
+        valid_until:
+          type: string
+          format: date-time
+          nullable: true
+          description: Update the validity end datetime.
+          example: "2027-01-01T00:00:00Z"
+        metadata:
+          type: object
+          additionalProperties: true
+          description: |
+            Replaces the entire `metadata` object. To merge rather than replace,
+            read the current value first and send the merged object.
+          example:
+            project_id: "acme-parking"
+            reviewed: true
+
+    ConceptLink:
+      type: object
+      description: |
+        Typed edge between two `MemoryRecord` vertices. Implements the Palantir
+        'object-backed link type' pattern — the link itself is a first-class object
+        with its own properties (strength, confidence, source, timestamps).
+      required:
+        - id
+        - source_memory_id
+        - target_memory_id
+        - link_type
+        - entity
+        - strength
+        - confidence
+        - source
+        - verified
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          description: Unique ULID identifier for this link.
+          example: "01HXYZ9999999999LINK000001"
+        source_memory_id:
+          type: string
+          description: |
+            ID of the source `MemoryRecord` in this directed edge. For symmetric
+            link types (`relates_to`, `contradicts`, `similar_to`) the source/target
+            distinction is arbitrary.
+          example: "01HXYZ1234567890ABCDEFGHIJ"
+        target_memory_id:
+          type: string
+          description: ID of the target `MemoryRecord` in this directed edge.
+          example: "01HXYZ0000000000TARGETMEM1"
+        link_type:
+          $ref: '#/components/schemas/ConceptLinkType'
+        entity:
+          type: string
+          description: |
+            The shared entity or concept string that triggered this link.
+            Empty string for user-created links where no entity anchor is applicable.
+          example: "OAuth 2.0"
+        strength:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: |
+            How strong the relationship is (0 = very weak, 1 = very strong).
+            Dreaming and feedback update this value over time.
+          example: 0.75
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          description: |
+            How confident the system is that the link is correct (0 = uncertain,
+            1 = certain). Lower for inferred links; higher for user-created links.
+          example: 0.9
+        source:
+          $ref: '#/components/schemas/LinkSource'
+        verified:
+          type: boolean
+          description: Whether this link has been confirmed by a user or trusted process.
+          example: false
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC datetime when this link was created.
+          example: "2026-06-10T08:05:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC datetime of the last modification to this link.
+          example: "2026-06-14T09:20:00Z"
+
+    ConceptLinkCreate:
+      type: object
+      description: |
+        Request body for `POST /memories/{id}/links`. Creates a `ConceptLink`
+        from the path memory (`source_memory_id`) to `target_memory_id`.
+        `source` is always set to `user` by the server.
+      required:
+        - target_memory_id
+        - link_type
+      properties:
+        target_memory_id:
+          type: string
+          description: ID of the target `MemoryRecord` for this link.
+          example: "01HXYZ0000000000TARGETMEM1"
+        link_type:
+          $ref: '#/components/schemas/ConceptLinkType'
+        entity:
+          type: string
+          default: ""
+          description: Optional entity or concept anchor for this link.
+          example: "OAuth 2.0"
+        strength:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.5
+          description: Relationship strength (0–1). Defaults to 0.5 for user-created links.
+          example: 0.8
+        confidence:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 1.0
+          description: |
+            Confidence that the link is correct. Defaults to 1.0 for
+            user-created links (user is always authoritative).
+          example: 1.0
+
+    SearchAroundSpec:
+      type: object
+      description: |
+        Graph traversal specification for search-around queries. When present in
+        a `SearchRequest`, the search runs in two phases: vector search for anchors,
+        then `ConceptLink` traversal from those anchors.
+      properties:
+        link_types:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConceptLinkType'
+          default: []
+          description: |
+            Restrict traversal to these link types. Empty array (default) means
+            traverse all 11 link types.
+          example: ["contradicts", "supersedes"]
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 3
+          default: 1
+          description: |
+            Number of hops to traverse from each anchor memory. Values above 3
+            are rejected — deeper traversals on a dense graph can be expensive.
+          example: 2
+        min_strength:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.0
+          description: |
+            Only traverse links with `strength` ≥ this value. Defaults to 0
+            (all links). Set to e.g. 0.5 to follow only confident links.
+          example: 0.4
+
+    MemoryFilter:
+      type: object
+      description: |
+        Structured post-search filter applied after the vector search phase.
+        Equivalent to a Palantir ObjectSet filter predicate. All fields are
+        optional; omitted fields impose no constraint.
+      properties:
+        category:
+          $ref: '#/components/schemas/MemoryCategory'
+        source:
+          $ref: '#/components/schemas/MemorySource'
+        verified_only:
+          type: boolean
+          default: false
+          description: When `true`, only return memories where `verified = true`.
+          example: false
+        active_only:
+          type: boolean
+          default: true
+          description: When `true` (default), exclude inactive (`is_active = false`) memories.
+          example: true
+        exclude_stale:
+          type: boolean
+          default: true
+          description: When `true` (default), exclude stale (`is_stale = true`) memories.
+          example: true
+        entity:
+          type: string
+          nullable: true
+          description: |
+            Filter to memories whose `entity_ids` list contains this exact string.
+            Case-sensitive.
+          example: "OAuth 2.0"
+        min_usefulness:
+          type: number
+          format: float
+          nullable: true
+          description: |
+            Exclude memories with `usefulness_score` below this threshold (0–10).
+            Useful for retrieving only well-validated memories.
+          example: 1.5
+        max_staleness:
+          type: number
+          format: float
+          nullable: true
+          description: |
+            Exclude memories with `staleness_score` above this threshold (0–10).
+            A stricter alternative to `exclude_stale` when you want a numeric cut-off.
+          example: 3.0
+
+    SearchRequest:
+      type: object
+      description: |
+        Request body for `POST /memories/search`. The primary query interface.
+        Supports semantic vector search, structured filtering, and optional
+        graph traversal (search-around).
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          description: |
+            Natural-language search query. The server embeds this string and
+            retrieves memories by cosine similarity in vector space.
+          example: "parking integration OAuth"
+        search_around:
+          $ref: '#/components/schemas/SearchAroundSpec'
+        filter:
+          $ref: '#/components/schemas/MemoryFilter'
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 10
+          description: |
+            Maximum number of memories to return. Applies to the vector search
+            phase; search-around additions are not capped by this limit.
+          example: 10
+        include_archived:
+          type: boolean
+          default: false
+          description: |
+            When `true`, archived memories (`is_archived = true`) are included
+            in the candidate set. Default is `false` — archived memories are
+            invisible to normal queries.
+          example: false
+
+    SearchResponse:
+      type: object
+      description: Response from `POST /memories/search`.
+      required:
+        - session_id
+        - memories
+        - total_found
+        - search_around_ids
+      properties:
+        session_id:
+          type: string
+          description: |
+            ID of the `QuerySession` created for this search. Pass this to
+            `POST /sessions/{id}/feedback` to close the feedback loop after
+            the agent has used the memories.
+          example: "ses_01HXYZ9999"
+        memories:
+          type: array
+          items:
+            $ref: '#/components/schemas/MemoryRecord'
+          description: |
+            Retrieved memories, ordered by descending `effective_score`.
+            Includes both vector-search anchors and graph-traversal additions.
+        total_found:
+          type: integer
+          description: |
+            Total number of candidate memories found before `limit` was applied.
+            Use this to detect when important results may have been truncated.
+          example: 14
+        search_around_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories that were added to the result set by graph traversal
+            (Phase 2) rather than vector search (Phase 1). Useful for understanding
+            why a memory was retrieved.
+          example: ["01HXYZ0000000000NEIGHBOUR1"]
+        notes_on_results:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/MemoryRecord'
+          description: |
+            Mapping of ``{result_memory_id: [annotating note records]}`` populated
+            by Phase-3 reverse ``annotates`` traversal. For each primary result
+            memory, any user-authored notes that annotate it (via an ``annotates``
+            link) are included here — up to ``auto_include_cap`` (default 3) per
+            result. Default is an empty object (no annotating notes found). These
+            notes are a separate context channel: they do not consume ``limit``
+            slots, are not counted in ``total_found``, and do not bump retrieval
+            counters.
+          default: {}
+          example: {}
+
+    QuerySession:
+      type: object
+      description: |
+        Audit record for every memory search. Implements Palantir Decision Lineage:
+        captures what was queried, what was retrieved, and (after feedback) what
+        was actually useful vs. stale.
+      required:
+        - id
+        - query_text
+        - created_at
+        - useful_ids
+        - stale_ids
+        - concluded
+      properties:
+        id:
+          type: string
+          description: Unique ULID identifier for this session.
+          example: "ses_01HXYZ9999"
+        query_text:
+          type: string
+          description: The original query string that triggered this session.
+          example: "parking integration OAuth"
+        created_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC datetime when the search was performed.
+          example: "2026-06-15T10:00:00Z"
+        confidence_rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          nullable: true
+          description: |
+            LLM's self-assessed confidence in its answer (1 = very uncertain,
+            5 = very confident). Set by `POST /sessions/{id}/feedback`.
+            `null` until feedback is submitted.
+          example: 4
+        reasoning:
+          type: string
+          nullable: true
+          description: |
+            LLM's free-text explanation of its confidence rating and which
+            memories were most helpful or problematic. Set by feedback.
+          example: "Three highly relevant memories found; one was slightly outdated."
+        useful_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories the LLM found helpful when formulating its answer.
+            Set by `POST /sessions/{id}/feedback`.
+          example: ["01HXYZ1234567890ABCDEFGHIJ"]
+        stale_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories the LLM identified as stale or incorrect.
+            Set by `POST /sessions/{id}/feedback`. These memories will have
+            their `staleness_score` incremented.
+          example: []
+        concluded:
+          type: boolean
+          description: |
+            `false` until `POST /sessions/{id}/feedback` is called. A session
+            that is not concluded within the TTL window (default 24 h) is
+            automatically marked concluded with no useful/stale feedback.
+          example: false
+
+    SessionFeedback:
+      type: object
+      description: |
+        Request body for `POST /sessions/{id}/feedback`. The LLM submits this
+        automatically after answering a user query (passive self-assessment).
+      required:
+        - confidence_rating
+        - useful_ids
+        - stale_ids
+      properties:
+        confidence_rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: |
+            LLM's self-assessed confidence in its answer on a 1–5 scale:
+            1 = very uncertain, 5 = very confident.
+          example: 4
+        reasoning:
+          type: string
+          nullable: true
+          description: |
+            Optional free-text explanation of the confidence rating and
+            what was helpful or problematic. Stored in the session for audit.
+          example: "Three memories directly answered the question."
+        useful_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories that contributed to the answer. Each will have
+            `usefulness_score` incremented and `reinforcement_count` incremented.
+          example: ["01HXYZ1234567890ABCDEFGHIJ"]
+        stale_ids:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories that appeared stale, incorrect, or misleading.
+            Each will have `staleness_score` incremented.
+          example: []
+
+    DreamRequest:
+      type: object
+      description: Request body for `POST /dream`.
+      required:
+        - intensity
+      properties:
+        intensity:
+          $ref: '#/components/schemas/DreamIntensity'
+
+    NoteCreate:
+      type: object
+      description: |
+        Request body for ``POST /notes``. Only ``content`` is required.
+
+        ``when`` and ``until`` must be ISO-8601 datetimes — the client/agent
+        converts natural language to ISO before sending. MintMory does no date
+        parsing.
+
+        ``category`` defaults server-side to ``temporal`` when ``when`` is set,
+        otherwise ``episodic``.
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The note text (1–10 000 characters).
+          example: "Remember to renew the Acme API key before July 1st."
+        about:
+          type: string
+          nullable: true
+          description: |
+            Optional free-text anchor phrase describing what this note is about.
+            Resolved conservatively: a dominant matching memory becomes a hard
+            ``annotates`` link; otherwise the phrase's entities are folded into
+            the note's ``entity_ids`` (topic anchor). The raw phrase is always
+            stored in ``metadata.anchor``.
+          example: "Acme API key renewal"
+        when:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            ISO-8601 UTC datetime when this note is salient (e.g. a reminder
+            date). Stored in ``valid_from``. The agent must convert natural
+            language to ISO before sending.
+          example: "2026-07-01T00:00:00Z"
+        until:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            ISO-8601 UTC deadline for this note. Stored in ``valid_until``.
+          example: null
+        category:
+          $ref: '#/components/schemas/MemoryCategory'
+
+    NoteResult:
+      type: object
+      description: |
+        Outcome of ``POST /notes``. Describes the created note and what the
+        optional ``about`` anchor phrase resolved to.
+      required:
+        - note
+        - anchor_kind
+      properties:
+        note:
+          $ref: '#/components/schemas/MemoryRecord'
+          description: The created note record (``is_note=true``).
+        anchor_kind:
+          type: string
+          enum:
+            - memory
+            - topic
+            - none
+          description: |
+            How the ``about`` phrase was resolved:
+            - ``memory`` — a dominant matching memory was found; an ``annotates``
+              link was created and ``anchor_memory_id`` is set.
+            - ``topic`` — no dominant match; the phrase's entities were folded
+              into the note's ``entity_ids`` (``anchor_entities`` lists them).
+            - ``none`` — no ``about`` was supplied.
+          example: none
+        anchor_memory_id:
+          type: string
+          nullable: true
+          description: |
+            ID of the memory the note annotates. Set when ``anchor_kind="memory"``;
+            ``null`` otherwise.
+          example: null
+        anchor_entities:
+          type: array
+          items:
+            type: string
+          description: |
+            Entity strings folded into the note from the anchor phrase. Non-empty
+            when ``anchor_kind`` is ``"memory"`` (target's entities) or ``"topic"``
+            (phrase's own entities).
+          example: []
+        anchor_phrase:
+          type: string
+          nullable: true
+          description: |
+            The raw ``about`` text that was supplied. ``null`` when no ``about``
+            was given (``anchor_kind="none"``).
+          example: null
+
+    AnomalyReport:
+      type: object
+      description: |
+        Anomaly detection report from dreaming Step 1. Identifies memories
+        that warrant attention before the rest of the dream pipeline runs.
+      required:
+        - high_staleness_useful
+        - never_accessed
+        - contradictions
+      properties:
+        high_staleness_useful:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories that have both a high `staleness_score` and a
+            high `usefulness_score` — conflicting signals that warrant manual review.
+          example: []
+        never_accessed:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories that have never been retrieved (`retrieval_count = 0`).
+            Candidates for archival if they remain unaccessed after subsequent dreams.
+          example: ["01HXYZ0000000000AAAAAAAAA1"]
+        contradictions:
+          type: array
+          items:
+            type: string
+          description: |
+            IDs of memories currently flagged `flagged_for_review = true`.
+            A `full` dream will attempt to resolve these via `BatchConflictResolver`.
+          example: []
+
+    DreamReport:
+      type: object
+      description: |
+        Summary of actions taken during a dreaming consolidation run, returned
+        synchronously by `POST /dream`.
+      required:
+        - intensity
+        - duration_ms
+        - new_links
+        - new_summaries
+        - contradictions_resolved
+        - memories_archived
+        - memories_rehabilitated
+      properties:
+        intensity:
+          $ref: '#/components/schemas/DreamIntensity'
+        duration_ms:
+          type: number
+          format: float
+          description: Wall-clock time the dreaming run took in milliseconds.
+          example: 842.5
+        new_links:
+          type: integer
+          description: Number of new `ConceptLink` edges created during this run.
+          example: 7
+        new_summaries:
+          type: integer
+          description: |
+            Number of `MemorySummary` records created or updated during this run.
+          example: 2
+        contradictions_resolved:
+          type: integer
+          description: |
+            Number of contradiction conflicts resolved by `BatchConflictResolver`.
+            Always 0 for `light` intensity runs.
+          example: 0
+        memories_archived:
+          type: integer
+          description: |
+            Number of memories archived during the archival sweep.
+            Always 0 for `light` intensity runs.
+          example: 0
+        memories_rehabilitated:
+          type: integer
+          description: |
+            Number of previously archived memories re-activated because they
+            were referenced by newer content. Always 0 for `light` intensity.
+          example: 0
+        anomalies:
+          $ref: '#/components/schemas/AnomalyReport'
+
+    MemoryStats:
+      type: object
+      description: Aggregated statistics for the memory store, returned by `GET /stats`.
+      required:
+        - total_memories
+        - active
+        - stale
+        - archived
+        - concept_links
+        - memory_summaries
+        - avg_usefulness_score
+        - avg_staleness_score
+        - top_concepts
+      properties:
+        total_memories:
+          type: integer
+          description: Total number of `MemoryRecord` objects in the store (all states).
+          example: 1240
+        active:
+          type: integer
+          description: Memories with `is_active = true` and `is_archived = false`.
+          example: 1085
+        stale:
+          type: integer
+          description: Memories with `is_stale = true` (may overlap with active).
+          example: 87
+        archived:
+          type: integer
+          description: Memories with `is_archived = true`.
+          example: 155
+        concept_links:
+          type: integer
+          description: Total number of `ConceptLink` edges in the graph.
+          example: 3412
+        memory_summaries:
+          type: integer
+          description: Total number of `MemorySummary` records (current and stale).
+          example: 48
+        avg_usefulness_score:
+          type: number
+          format: float
+          description: Mean `usefulness_score` across all active, non-archived memories.
+          example: 2.37
+        avg_staleness_score:
+          type: number
+          format: float
+          description: Mean `staleness_score` across all active, non-archived memories.
+          example: 0.84
+        top_concepts:
+          type: array
+          description: |
+            Up to 10 most frequently linked concept/entity strings, sorted
+            descending by `ConceptLink` count. Each element is a [concept, count] pair.
+          items:
+            type: array
+            prefixItems:
+              - type: string
+                description: The concept or entity name.
+              - type: integer
+                description: Number of ConceptLink edges involving this concept.
+            minItems: 2
+            maxItems: 2
+          example:
+            - ["OAuth 2.0", 42]
+            - ["Acme", 38]
+            - ["parking integration", 31]
+
+    MemorySummary:
+      type: object
+      description: |
+        LLM-generated synthesis of all memories sharing a concept or entity string.
+        Created automatically during dreaming Step 3 (summary generation). Read-only
+        from the HTTP API; created and updated only by the dreaming process.
+      required:
+        - id
+        - concept
+        - summary_text
+        - memory_count
+        - is_current
+        - generated_at
+      properties:
+        id:
+          type: string
+          description: Unique ULID identifier for this summary.
+          example: "01HXYZ5555555555SUM000001"
+        concept:
+          type: string
+          description: |
+            The entity or concept name this summary covers. Matches strings from
+            `MemoryRecord.entity_ids`.
+          example: "OAuth 2.0"
+        summary_text:
+          type: string
+          description: |
+            LLM-generated natural-language synthesis of all memories containing
+            this concept. Represents the distilled knowledge about the concept.
+          example: "OAuth 2.0 is used across the Acme parking and identity integrations, always with PKCE. The required scope differs by service: `parking:read` for parking, `identity:write` for user management."
+        memory_count:
+          type: integer
+          description: Number of `MemoryRecord` objects that contributed to this summary.
+          example: 7
+        is_current:
+          type: boolean
+          description: |
+            `false` if any of the source memories have become stale or been
+            archived since the summary was generated. A `false` value signals
+            that the summary should be regenerated on the next dream run.
+          example: true
+        generated_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC datetime when this summary was generated by dreaming.
+          example: "2026-06-14T03:00:00Z"
+
+    # -----------------------------------------------------------------------
+    # Error types
+    # -----------------------------------------------------------------------
+
+    ErrorResponse:
+      type: object
+      description: Standard error envelope returned for all 4xx and 5xx responses.
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code.
+          example: "not_found"
+        message:
+          type: string
+          description: Human-readable description of the error.
+          example: "Memory with id '01HXYZ1234567890ABCDEFGHIJ' was not found."
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: |
+            Optional structured details (e.g. field-level validation errors).
+            Present for `400 ValidationError` and `422 UnprocessableEntity`.
+          example:
+            field: "confidence"
+            issue: "value 1.5 is above the maximum of 1.0"
+
+  responses:
+
+    ValidationError:
+      description: |
+        The request body or parameters failed schema validation. The `details`
+        field in the response body contains field-level error information.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: validation_error
+            message: "Request body is invalid."
+            details:
+              field: "confidence"
+              issue: "value 1.5 is above the maximum of 1.0"
+
+    NotFound:
+      description: |
+        The requested resource does not exist. This is returned for missing
+        memories, sessions, concept links, and summaries.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: not_found
+            message: "Memory with id '01HXYZ1234567890ABCDEFGHIJ' was not found."
+            details: null
+
+    Conflict:
+      description: |
+        The operation conflicts with existing state. Returned when:
+        - A memory with near-identical content already exists (dedup check).
+        - Feedback has already been submitted for a `QuerySession`.
+        - A `ConceptLink` between the two memories already exists with the same type.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: conflict
+            message: "A memory with near-identical content already exists."
+            details:
+              existing_id: "01HXYZ0000000000EXISTINGM1"
+              similarity: 0.99
+
+    UnprocessableEntity:
+      description: |
+        The request is syntactically valid but semantically unprocessable.
+        Examples: `valid_until` is before `valid_from`; `target_memory_id` on
+        a link points to the same memory as the source; `depth` is outside
+        the 1–3 range.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: unprocessable_entity
+            message: "valid_until must be after valid_from."
+            details:
+              valid_from: "2026-06-15T00:00:00Z"
+              valid_until: "2026-01-01T00:00:00Z"
