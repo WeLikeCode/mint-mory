@@ -35,3 +35,12 @@ A change is implemented against its `design.md`, reviewed adversarially, then it
   (`notes_on_results` channel); notes exempt from staleness auto-archival; "done"
   = explicit archive. Three new `MINTMORY_NOTE_*` knobs (bonus, cap, dominance).
   (proposed)
+- `add-agent-supplied-summaries` — agent-driven L3 summarisation without a
+  configured LLM backend: `collect_summary_jobs` / `apply_summary` on
+  `DreamingEngine` (core); `summary_jobs` + `summary_put` MCP tools; `mintmory
+  summary-jobs` + `mintmory summary-put` CLI commands; `GET /summaries/jobs` +
+  `PUT /summaries/{concept}` HTTP routes. The agent calls `summary_jobs` to
+  receive the pending concept work-list (same selection as `memory_dream`),
+  writes each summary text itself, and stores it with `summary_put` — no
+  `MINTMORY_LLM_*` backend required. `generate_summaries` is byte-for-byte
+  equivalent after the shared selection helper refactor. (implementing)

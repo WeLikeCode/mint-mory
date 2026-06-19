@@ -107,6 +107,32 @@ Discovery is standard for each transport — you don't hand-roll a protocol.
   bursty-write agent memory, Pattern A is fine. For many heavy writers, prefer a
   Pattern-B server so a single process orders the writes.
 
+## Agent-owned L3 summarisation
+
+Agents can own the L3 concept-summary step themselves — no separate LLM backend
+(`MINTMORY_LLM_*`) is needed. The flow is identical across all three transports:
+
+1. **Get the work-list.** Call `summary_jobs` (MCP), `mintmory summary-jobs`
+   (CLI), or `GET /summaries/jobs` (HTTP). MintMory returns only the concepts
+   that need a (re)summary — concepts with no existing summary or whose stored
+   `memory_count` has drifted from the current active count.
+2. **Write each summary.** The calling agent is the LLM; it synthesises the
+   supplied memory snippets into a short prose summary.
+3. **Store it.** Call `summary_put` (MCP), `mintmory summary-put` (CLI), or
+   `PUT /summaries/{concept}` (HTTP). MintMory persists the text and records the
+   current active memory count so the concept does not reappear on the next
+   work-list poll.
+
+This is especially useful in multi-agent setups where one agent (e.g. a
+long-running background worker that already carries an LLM context) periodically
+polls for summary work and writes summaries on behalf of the shared store — no
+extra Ollama / API-key configuration on the MintMory server side. The
+configured-LLM path (`memory_dream`) and the agent-supplied path coexist:
+`summary_put` simply overwrites whatever `memory_dream` last stored (idempotent
+upsert keyed on concept).
+
+---
+
 ## Isolation
 
 A shared instance is a **shared brain** — every agent sees the same store (one

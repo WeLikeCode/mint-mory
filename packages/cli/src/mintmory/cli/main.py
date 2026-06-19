@@ -12,6 +12,8 @@ Commands:
   mintmory mcp                    # start MCP server (stdio)
   mintmory note <content> [--about ...] [--when ISO] [--until ISO] [--category ...]
   mintmory notes [--about ...] [--upcoming] [--overdue] [--limit N]
+  mintmory summary-jobs [--all/--needed] [--limit N] [--json]
+  mintmory summary-put CONCEPT [TEXT] [--file PATH]
 """
 
 from __future__ import annotations
@@ -738,6 +740,77 @@ def notes(
         table.add_row(mem.id, mem.category.value, valid_from_str, mem.content)
     console.print(table)
     console.print(f"[dim]{len(records)} note(s)[/dim]")
+
+
+@app.command()
+def summary_jobs(
+    include_all: bool = typer.Option(
+        False, "--all/--needed", help="All qualifying concepts vs only those needing a (re)summary"
+    ),
+    limit: int = typer.Option(0, help="Max jobs (0 = no cap)"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON instead of a table"),
+) -> None:
+    """List L3 concept-summary jobs for the agent to write (agent-supplied L3)."""
+    from mintmory.core.config import load_settings
+    from mintmory.core.llm import build_dreaming_engine
+
+    settings = load_settings()
+    store = _get_store()
+    engine = build_dreaming_engine(
+        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+    )
+    jobs = engine.collect_summary_jobs(include_all=include_all)
+    if limit > 0:
+        jobs = jobs[:limit]
+
+    if json_out:
+        import json as _json
+
+        console.print_json(_json.dumps([j.model_dump(mode="json") for j in jobs]))
+        return
+
+    table = Table(title="Summary jobs")
+    table.add_column("concept", style="cyan", no_wrap=True)
+    table.add_column("memories", justify="right", style="green")
+    table.add_column("has_summary", style="magenta")
+    for j in jobs:
+        table.add_row(j.concept, str(j.memory_count), "yes" if j.current_summary else "no")
+    console.print(table)
+    console.print(f"[dim]{len(jobs)} job(s)[/dim]")
+
+
+@app.command()
+def summary_put(
+    concept: str = typer.Argument(..., help="Concept/entity name"),
+    text: str | None = typer.Argument(None, help="Summary text (omit to read --file or stdin)"),
+    file: Path | None = typer.Option(None, "--file", "-f", help="Read summary text from a file"),
+) -> None:
+    """Store an agent-supplied summary for a concept (text arg, --file, or stdin)."""
+    import sys
+
+    from mintmory.core.config import load_settings
+    from mintmory.core.llm import build_dreaming_engine
+
+    if text is not None:
+        summary_text = text
+    elif file is not None:
+        summary_text = file.read_text()
+    else:
+        summary_text = sys.stdin.read()
+    summary_text = summary_text.strip()
+    if not summary_text:
+        raise typer.BadParameter("empty summary text (provide TEXT, --file, or stdin)")
+
+    settings = load_settings()
+    store = _get_store()
+    engine = build_dreaming_engine(
+        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+    )
+    summary = engine.apply_summary(concept, summary_text)
+    console.print(
+        f"[green]Stored summary[/green] for [cyan]{summary.concept}[/cyan] "
+        f"[dim]({summary.memory_count} memories)[/dim]"
+    )
 
 
 @app.command()

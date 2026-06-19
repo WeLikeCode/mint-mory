@@ -28,6 +28,7 @@ from mintmory.core.types import (
     NoteResult,
     QuerySession,
     SearchResponse,
+    SummaryJob,
 )
 
 
@@ -667,3 +668,169 @@ def test_get_notes_note_result_conforms_to_memory_record(client: TestClient) -> 
     for item in resp.json():
         record = MemoryRecord(**item)
         assert record.is_note is True
+
+
+# ---------------------------------------------------------------------------
+# GET /summaries/jobs — agent-supplied L3
+# ---------------------------------------------------------------------------
+
+
+def test_get_summary_jobs_returns_200_not_shadowed_by_concept(client: TestClient) -> None:
+    """GET /summaries/jobs must return 200 (not a 404 from the {concept} handler)."""
+    resp = client.get("/summaries/jobs")
+    assert resp.status_code == 200, resp.text
+
+
+def test_get_summary_jobs_empty_db_returns_empty_list(client: TestClient) -> None:
+    """With no qualifying concepts the response is an empty JSON array."""
+    resp = client.get("/summaries/jobs")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []
+
+
+def test_get_summary_jobs_conforms_to_summary_job_model(client: TestClient) -> None:
+    """Each element returned by GET /summaries/jobs must parse as a SummaryJob."""
+    # A fresh DB has no qualifying concepts so the list is empty; we still assert
+    # the shape contract by confirming list[SummaryJob] parses without error.
+    resp = client.get("/summaries/jobs")
+    assert resp.status_code == 200, resp.text
+    jobs = [SummaryJob(**item) for item in resp.json()]
+    assert jobs == []
+
+
+def test_get_summary_jobs_include_all_param_accepted(client: TestClient) -> None:
+    """include_all=true query parameter must be accepted (no 422)."""
+    resp = client.get("/summaries/jobs", params={"include_all": "true"})
+    assert resp.status_code == 200, resp.text
+    assert isinstance(resp.json(), list)
+
+
+def test_get_summary_jobs_include_all_false_default(client: TestClient) -> None:
+    """include_all defaults to false; the query param is optional."""
+    resp = client.get("/summaries/jobs")
+    assert resp.status_code == 200, resp.text
+    # No assertion on contents here — just status and type.
+    assert isinstance(resp.json(), list)
+
+
+def test_get_summary_jobs_limit_param_accepted(client: TestClient) -> None:
+    """limit=0 (no cap) and limit=2 are both valid query params."""
+    for limit_val in ("0", "2"):
+        resp = client.get("/summaries/jobs", params={"limit": limit_val})
+        assert resp.status_code == 200, resp.text
+        assert isinstance(resp.json(), list)
+
+
+def test_get_summary_jobs_limit_negative_rejected(client: TestClient) -> None:
+    """limit < 0 must return 422 (ge=0 constraint)."""
+    resp = client.get("/summaries/jobs", params={"limit": "-1"})
+    assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# PUT /summaries/{concept} — agent-supplied L3
+# ---------------------------------------------------------------------------
+
+
+def test_put_summary_returns_200_and_conformant_memory_summary(client: TestClient) -> None:
+    """PUT /summaries/{concept} returns 200 and a valid MemorySummary."""
+    resp = client.put(
+        "/summaries/alphaplatform",
+        json={"summary_text": "Alpha platform handles routing."},
+    )
+    assert resp.status_code == 200, resp.text
+    summary = MemorySummary(**resp.json())  # OpenAPI-conformance proxy
+    assert summary.concept == "alphaplatform"
+    assert summary.summary_text == "Alpha platform handles routing."
+    assert summary.is_current is True
+    assert isinstance(summary.memory_count, int)
+
+
+def test_put_summary_text_stored_verbatim(client: TestClient) -> None:
+    """The summary text is stored verbatim (no stripping of prose)."""
+    text = "  Beta platform: fast, reliable, and scalable.  "
+    resp = client.put("/summaries/betaplatform", json={"summary_text": text})
+    assert resp.status_code == 200, resp.text
+    # apply_summary strips nothing — text stored verbatim as sent.
+    assert resp.json()["summary_text"] == text
+
+
+def test_put_summary_visible_via_get_summary(client: TestClient) -> None:
+    """After PUT /summaries/{concept}, GET /summaries/{concept} returns the stored summary."""
+    client.put(
+        "/summaries/gammaplatform",
+        json={"summary_text": "Gamma platform powers analytics."},
+    )
+    resp = client.get("/summaries/gammaplatform")
+    assert resp.status_code == 200, resp.text
+    summary = MemorySummary(**resp.json())
+    assert summary.concept == "gammaplatform"
+    assert summary.summary_text == "Gamma platform powers analytics."
+
+
+def test_put_summary_round_trip_then_list(client: TestClient) -> None:
+    """PUT then GET /summaries shows the concept in the default listing."""
+    client.put("/summaries/deltaplatform", json={"summary_text": "Delta platform is offline."})
+    listed = client.get("/summaries")
+    assert listed.status_code == 200
+    concepts = {item["concept"] for item in listed.json()}
+    assert "deltaplatform" in concepts
+
+
+def test_put_summary_idempotent_overwrite(client: TestClient) -> None:
+    """PUT twice for the same concept overwrites (INSERT OR REPLACE semantics)."""
+    client.put("/summaries/epsilonplatform", json={"summary_text": "First summary."})
+    resp2 = client.put("/summaries/epsilonplatform", json={"summary_text": "Second summary."})
+    assert resp2.status_code == 200
+    assert resp2.json()["summary_text"] == "Second summary."
+
+    # Only one record in the list for this concept.
+    listed = client.get("/summaries")
+    matching = [item for item in listed.json() if item["concept"] == "epsilonplatform"]
+    assert len(matching) == 1
+
+
+def test_put_summary_empty_text_returns_422(client: TestClient) -> None:
+    """summary_text with empty string violates min_length=1 -> 422."""
+    resp = client.put("/summaries/zetaplatform", json={"summary_text": ""})
+    assert resp.status_code == 422
+
+
+def test_put_summary_missing_body_returns_422(client: TestClient) -> None:
+    """PUT without a body returns 422 (summary_text is required)."""
+    resp = client.put("/summaries/etaplatform", json={})
+    assert resp.status_code == 422
+
+
+def test_put_summary_works_without_llm_backend(client: TestClient) -> None:
+    """PUT /summaries/{concept} succeeds with no LLM configured (provider=none default)."""
+    # The test fixture never sets MINTMORY_LLM_* -> provider=none.
+    resp = client.put("/summaries/thetaplatform", json={"summary_text": "No LLM needed."})
+    assert resp.status_code == 200
+
+
+def test_get_summary_jobs_after_put_does_not_resurface_concept(client: TestClient) -> None:
+    """Incremental rule: after PUT, jobs (default) must NOT re-surface the concept
+    on an unchanged DB (stored memory_count 0 == current active count 0)."""
+    client.put("/summaries/iotaplatform", json={"summary_text": "Iota platform syncs data."})
+    resp = client.get("/summaries/jobs")
+    assert resp.status_code == 200, resp.text
+    concepts = [item["concept"] for item in resp.json()]
+    assert "iotaplatform" not in concepts
+
+
+def test_get_summary_jobs_not_shadowed_by_concept_handler(client: TestClient) -> None:
+    """GET /summaries/jobs must not 404 via the GET /summaries/{concept} handler.
+
+    The literal path /summaries/jobs must resolve before the parametrised
+    /summaries/{concept} route — verifying the FastAPI route-ordering contract
+    required by design §5c.
+    """
+    # Seed a summary for 'jobs' as a concept to make the collision scenario realistic.
+    client.put("/summaries/jobs", json={"summary_text": "This is the concept named jobs."})
+
+    # GET /summaries/jobs must still return the list (200), not the concept summary.
+    resp = client.get("/summaries/jobs")
+    assert resp.status_code == 200, resp.text
+    # The response must be a list (array), not the MemorySummary dict for 'jobs'.
+    assert isinstance(resp.json(), list)

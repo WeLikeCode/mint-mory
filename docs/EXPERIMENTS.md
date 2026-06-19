@@ -466,6 +466,37 @@ Measured 2026-06-15 on the 6-query labelled probe set (mean recall@10).
 > intact for audit. The extraction-time stop-list (`entities.py`) is implemented
 > and available (opt-in via `ENTITY_EXTRA_STOPWORDS`) but unnecessary to clear F2.
 
+### 6.5a AGENT-SUPPLIED L3 SUMMARIES (alternative path, no backend)
+
+As of the `add-agent-supplied-summaries` change, the configured-LLM path
+(`memory_dream` / `mintmory dream`) is no longer the only way to write L3
+concept summaries. An agent can own the summarisation itself:
+
+1. Call `summary_jobs` (MCP tool), `mintmory summary-jobs` (CLI), or
+   `GET /summaries/jobs` (HTTP) to receive the list of concepts that need a
+   (re)summary — concepts with no current summary, or whose stored
+   `memory_count` no longer matches the current active count.
+2. Write a concise synthesis for each concept (you are the LLM).
+3. Send it back via `summary_put` (MCP), `mintmory summary-put` (CLI), or
+   `PUT /summaries/{concept}` (HTTP).
+
+This path calls no summarizer and requires no `MINTMORY_LLM_*` configuration
+(`MINTMORY_LLM_PROVIDER=none` is fine). The concept-selection policy
+(`MINTMORY_SUMMARY_MIN_MEMORIES`, `MINTMORY_SUMMARY_TOP_K`,
+`MINTMORY_SUMMARY_MAX_CONTENTS`, `MINTMORY_SUMMARY_MAX_CONTENT_CHARS`,
+`LINK_STOPLIST`) is respected identically to the LLM path — the same concepts
+and the same truncated/capped content snippets are presented to the agent.
+
+The two paths coexist: `memory_dream` still runs the configured-LLM path when
+a backend is set; `summary_put` simply overwrites whatever a prior dream or
+a prior agent-supplied write stored (idempotent upsert by concept).
+
+**Measurement note.** Because the agent-supplied path has no LLM call, L3
+latency is entirely network / I/O bound (one round-trip per concept). For
+agents that are already LLMs (e.g. Claude Code with the MintMory MCP), this
+eliminates the need for a separately configured Ollama / cloud-API backend
+and makes L3 summarisation available in zero-configuration deployments.
+
 ### 6.5 L3 SPEED experiments (F3)
 
 Measured with gemma4:e4b on 4 "fat" top-concepts (each ~20 notes) from the corpus.

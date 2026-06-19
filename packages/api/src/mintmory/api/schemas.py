@@ -109,3 +109,9 @@ class NoteCreate(BaseModel):
     when: datetime | None = None
     until: datetime | None = None
     category: MemoryCategory | None = None
+
+
+class SummaryPut(BaseModel):
+    """Request body for ``PUT /summaries/{concept}`` (agent-supplied L3 summary)."""
+
+    summary_text: str = Field(..., min_length=1)

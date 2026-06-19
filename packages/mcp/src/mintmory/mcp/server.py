@@ -16,6 +16,8 @@ Tools exposed (mapped 1:1 to HTTP endpoints in openapi/mintmory.yaml):
   session_feedback → POST /sessions/{id}/feedback
   summary_list     → GET  /summaries
   summary_get      → GET  /summaries/{concept}
+  summary_jobs     → GET  /summaries/jobs
+  summary_put      → PUT  /summaries/{concept}
 
 Implementation note: all tool handlers are thin wrappers over mintmory.core.
 Every tool returns a JSON-safe dict (or list of dicts) produced via
@@ -66,7 +68,10 @@ mcp: FastMCP[Any] = FastMCP(
         "Call session_feedback after each query session to update usefulness scores. "
         "Call memory_dream periodically to consolidate and link concepts. "
         "Use memory_note for explicit user 'remember this' requests; it marks a note "
-        "that is exempt from auto-archival and wins contradictions over inferred memories."
+        "that is exempt from auto-archival and wins contradictions over inferred memories. "
+        "For L3 concept summaries you can supply the text yourself: call summary_jobs to get "
+        "the concepts (and their memories) that need summarising, write each summary, and send "
+        "it back with summary_put — no separate LLM backend required."
     ),
 )
 
@@ -302,6 +307,60 @@ def summary_get(concept: str) -> dict[str, Any] | None:
     if summary is None:
         return None
     result: dict[str, Any] = summary.model_dump(mode="json")
+    return result
+
+
+@mcp.tool()
+def summary_jobs(include_all: bool = False, limit: int = 0) -> list[dict[str, Any]]:
+    """List concept-summary jobs for YOU (the agent) to write (agent-supplied L3).
+
+    MintMory does NOT call an LLM for these — you are the LLM. Each job carries the
+    concept, the contributing memories' content, the current active memory_count,
+    and the existing summary (if any) so you can refine it. Write a concise
+    synthesis per concept and send it back with summary_put.
+
+    Args:
+        include_all: when False (default), only concepts that NEED a (re)summary
+            are returned (no current summary, or the memory_count drifted). When
+            True, every qualifying concept is returned.
+        limit: max jobs to return (0 = no cap). Applied AFTER selection, in the
+            engine's deterministic concept order.
+
+    Returns:
+        A list of SummaryJob dicts.
+    """
+    store = _get_store()
+    settings = load_settings()
+    engine = build_dreaming_engine(
+        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+    )
+    jobs = engine.collect_summary_jobs(include_all=include_all)
+    if limit > 0:
+        jobs = jobs[:limit]
+    return [job.model_dump(mode="json") for job in jobs]
+
+
+@mcp.tool()
+def summary_put(concept: str, summary_text: str) -> dict[str, Any]:
+    """Store YOUR summary text for a concept (agent-supplied L3 summary).
+
+    Persists summary_text verbatim as the concept's MemorySummary (memory_count
+    is recomputed server-side from the current active memories). Idempotent:
+    calling again for the same concept overwrites it. No LLM/backend is required.
+
+    Args:
+        concept: the concept/entity name (use a concept from summary_jobs).
+        summary_text: the synthesis YOU wrote for this concept.
+
+    Returns:
+        The stored MemorySummary as a dict.
+    """
+    store = _get_store()
+    settings = load_settings()
+    engine = build_dreaming_engine(
+        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+    )
+    result: dict[str, Any] = engine.apply_summary(concept, summary_text).model_dump(mode="json")
     return result
 
 

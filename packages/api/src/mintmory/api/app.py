@@ -26,9 +26,12 @@ from mintmory.api.schemas import (
     MemoryUpdate,
     NoteCreate,
     SessionFeedback,
+    SummaryPut,
 )
 from mintmory.core import session as session_module
+from mintmory.core.config import load_settings
 from mintmory.core.dreaming import DreamingEngine
+from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.storage import StorageAdapter
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
@@ -44,6 +47,7 @@ from mintmory.core.types import (
     QuerySession,
     SearchRequest,
     SearchResponse,
+    SummaryJob,
 )
 
 # ---------------------------------------------------------------------------
@@ -317,12 +321,48 @@ async def list_summaries(
     return [summary for summary in summaries if summary.is_current]
 
 
+@app.get("/summaries/jobs", response_model=list[SummaryJob], tags=["Summaries"])
+async def list_summary_jobs(
+    include_all: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Query(ge=0)] = 0,
+) -> list[SummaryJob]:
+    """Concept-summary jobs for an agent to write (agent-supplied L3).
+
+    ``include_all=false`` (default) returns only concepts needing a (re)summary.
+    ``limit=0`` means no cap.
+    """
+    settings = load_settings()
+    engine = build_dreaming_engine(
+        get_store(),
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+    )
+    jobs = engine.collect_summary_jobs(include_all=include_all)
+    if limit > 0:
+        jobs = jobs[:limit]
+    return jobs
+
+
 @app.get("/summaries/{concept}", response_model=MemorySummary, tags=["Summaries"])
 async def get_summary(concept: str) -> MemorySummary:
     result = get_store().get_summary(concept)
     if result is None:
         raise HTTPException(status_code=404, detail=f"No summary for concept '{concept}'")
     return result
+
+
+@app.put("/summaries/{concept}", response_model=MemorySummary, tags=["Summaries"])
+async def put_summary(concept: str, body: SummaryPut) -> MemorySummary:
+    """Store an agent-supplied summary for ``concept`` (idempotent upsert)."""
+    settings = load_settings()
+    engine = build_dreaming_engine(
+        get_store(),
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+    )
+    return engine.apply_summary(concept, body.summary_text)
 
 
 def main() -> None:

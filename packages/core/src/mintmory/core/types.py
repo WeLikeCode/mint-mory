@@ -337,6 +337,21 @@ class DreamReport(BaseModel):
     anomalies: AnomalyReport | None = None
 
 
+class SummaryJob(BaseModel):
+    """A single concept the active agent should summarise (agent-supplied L3).
+
+    Produced by ``DreamingEngine.collect_summary_jobs`` and exposed over the
+    transports. The agent writes ``summary_text`` itself (it IS an LLM) and sends
+    it back via the apply path — MintMory calls no LLM for this flow.
+    """
+
+    concept: str  # the entity/concept name (matches MemorySummary.concept)
+    memory_ids: list[str]  # contributing memory ids (scan order, capped to max_contents)
+    contents: list[str]  # the memories' content, truncated/capped per summary settings
+    memory_count: int  # active non-archived memory count for the concept (pre-cap)
+    current_summary: str | None = None  # existing summary_text, if any, so the agent can refine
+
+
 # ---------------------------------------------------------------------------
 # Embedding provider types (pluggable — local default, API as override)
 # ---------------------------------------------------------------------------

@@ -51,6 +51,7 @@ from mintmory.core.types import (
     LinkSource,
     MemoryRecord,
     MemorySummary,
+    SummaryJob,
 )
 
 if TYPE_CHECKING:
@@ -80,6 +81,23 @@ class _LinkCandidate:
     entity: str  # deterministic representative shared entity
     shared_count: int  # number of surviving shared entities
     strength: float
+
+
+@dataclass(frozen=True)
+class _SummarySelection:
+    """One concept selected for summarisation, with summarizer-ready inputs.
+
+    ``memory_count`` is the number of active, non-archived memories that mention
+    the (non-stoplisted) concept — i.e. ``len`` of the contents collected for the
+    concept BEFORE the ``max_contents`` cap. ``contents`` is the truncated,
+    capped list actually fed to a summarizer. ``memory_ids`` are the ids of the
+    contributing memories, in the same scan order, capped to ``max_contents``
+    (parallel to ``contents``)."""
+
+    concept: str
+    contents: list[str]  # truncated to max_content_chars, capped to max_contents
+    memory_count: int  # full active count for the concept (pre-cap)
+    memory_ids: list[str]  # contributing memory ids, scan order, capped to max_contents
 
 
 class DreamingEngine:
@@ -493,6 +511,74 @@ class DreamingEngine:
     # Step 3 — summary generation (idempotent via INSERT OR REPLACE on concept)
     # ------------------------------------------------------------------
 
+    def _select_summary_concepts(self) -> list[_SummarySelection]:
+        """Shared concept-selection + content-preparation for L3 summaries.
+
+        Implements the EXACT selection currently inline in ``generate_summaries``
+        (see design §0): active non-archived memories scanned ``ORDER BY id`` and
+        reloaded via ``get_memory``; per-concept contents collected for every
+        non-stoplisted entity; concepts kept when their content count >=
+        ``summary_settings.min_memories``; ``top_k`` cap (deterministic tiebreak by
+        concept); per-concept ``max_content_chars`` truncation then ``max_contents``
+        cap. Returns one ``_SummarySelection`` per kept concept in final sorted
+        concept order. Pure read — no writes, no summarizer/LLM call.
+        """
+        ss = self.summary_settings
+        stoplist = self.link_settings.stoplist
+        conn = self.adapter.connect()
+        rows = conn.execute(
+            "SELECT id, content, entity_ids FROM memories "
+            "WHERE is_active = 1 AND is_archived = 0 ORDER BY id"
+        ).fetchall()
+
+        entity_to_contents: dict[str, list[str]] = defaultdict(list)
+        entity_to_ids: dict[str, list[str]] = defaultdict(list)
+        for row in rows:
+            mem_record = self.adapter.get_memory(row["id"])
+            if mem_record is None:
+                continue
+            for entity in mem_record.entity_ids:
+                if entity in stoplist:
+                    continue
+                entity_to_contents[entity].append(mem_record.content)
+                entity_to_ids[entity].append(mem_record.id)
+
+        # Select concepts: enough memories, not stoplisted.
+        concepts = [
+            concept
+            for concept in sorted(entity_to_contents)
+            if len(entity_to_contents[concept]) >= ss.min_memories
+        ]
+
+        # top_k cap: keep the most-evidenced concepts (deterministic tiebreak by
+        # concept name so the kept set is stable across runs).
+        if ss.top_k > 0 and len(concepts) > ss.top_k:
+            concepts.sort(key=lambda c: (-len(entity_to_contents[c]), c))
+            concepts = sorted(concepts[: ss.top_k])
+
+        # Prepare the per-concept summarizer inputs (truncation + content cap)
+        # once, in deterministic concept order. ``concepts`` is already sorted.
+        selections: list[_SummarySelection] = []
+        for concept in concepts:
+            all_contents = entity_to_contents[concept]
+            all_ids = entity_to_ids[concept]
+            memory_count = len(all_contents)
+            contents = all_contents
+            if ss.max_content_chars > 0:
+                contents = [c[: ss.max_content_chars] for c in contents]
+            contents = contents[: ss.max_contents]
+            memory_ids = all_ids[: ss.max_contents]
+            selections.append(
+                _SummarySelection(
+                    concept=concept,
+                    contents=contents,
+                    memory_count=memory_count,
+                    memory_ids=memory_ids,
+                )
+            )
+
+        return selections
+
     def generate_summaries(self) -> int:
         """
         For each entity appearing in ``>= summary_min_memories`` active memories,
@@ -523,47 +609,7 @@ class DreamingEngine:
             return 0
 
         ss = self.summary_settings
-        stoplist = self.link_settings.stoplist
-        conn = self.adapter.connect()
-        rows = conn.execute(
-            "SELECT id, content, entity_ids FROM memories "
-            "WHERE is_active = 1 AND is_archived = 0 ORDER BY id"
-        ).fetchall()
-
-        entity_to_contents: dict[str, list[str]] = defaultdict(list)
-        for row in rows:
-            mem_record = self.adapter.get_memory(row["id"])
-            if mem_record is None:
-                continue
-            for entity in mem_record.entity_ids:
-                if entity in stoplist:
-                    continue
-                entity_to_contents[entity].append(mem_record.content)
-
-        # Select concepts: enough memories, not stoplisted.
-        concepts = [
-            concept
-            for concept in sorted(entity_to_contents)
-            if len(entity_to_contents[concept]) >= ss.min_memories
-        ]
-
-        # top_k cap: keep the most-evidenced concepts (deterministic tiebreak by
-        # concept name so the kept set is stable across runs).
-        if ss.top_k > 0 and len(concepts) > ss.top_k:
-            concepts.sort(key=lambda c: (-len(entity_to_contents[c]), c))
-            concepts = sorted(concepts[: ss.top_k])
-
-        # Prepare the per-concept summarizer inputs (truncation + content cap)
-        # once, in deterministic concept order. ``concepts`` is already sorted.
-        prepared: list[tuple[str, list[str], int]] = []
-        for concept in concepts:
-            all_contents = entity_to_contents[concept]
-            memory_count = len(all_contents)
-            contents = all_contents
-            if ss.max_content_chars > 0:
-                contents = [c[: ss.max_content_chars] for c in contents]
-            contents = contents[: ss.max_contents]
-            prepared.append((concept, contents, memory_count))
+        prepared = self._select_summary_concepts()
 
         # Lever B (docs/OBSERVABILITY.md §3): when concurrency > 1 fan the
         # INDEPENDENT summarizer calls out through a bounded thread pool. The
@@ -577,38 +623,110 @@ class DreamingEngine:
         if ss.concurrency > 1 and len(prepared) > 1:
             with ThreadPoolExecutor(max_workers=ss.concurrency) as pool:
                 summary_texts = list(
-                    pool.map(
-                        lambda item: summarizer(item[0], item[1]),
-                        prepared,
-                    )
+                    pool.map(lambda sel: summarizer(sel.concept, sel.contents), prepared)
                 )
         else:
-            summary_texts = [summarizer(concept, contents) for concept, contents, _ in prepared]
+            summary_texts = [summarizer(sel.concept, sel.contents) for sel in prepared]
 
         count = 0
-        for (concept, _contents, memory_count), summary_text in zip(
-            prepared, summary_texts, strict=True
-        ):
+        for sel, summary_text in zip(prepared, summary_texts, strict=True):
             # Idempotency (AGENTS.md §4.4): an unchanged DB must yield 0 on a
             # re-run. Skip the upsert (and the count) when an identical summary
             # already exists for this concept.
-            existing = self.adapter.get_summary(concept)
+            existing = self.adapter.get_summary(sel.concept)
             if (
                 existing is not None
                 and existing.summary_text == summary_text
-                and existing.memory_count == memory_count
+                and existing.memory_count == sel.memory_count
             ):
                 continue
             self.adapter.upsert_summary(
                 MemorySummary(
-                    concept=concept,
+                    concept=sel.concept,
                     summary_text=summary_text,
-                    memory_count=memory_count,
+                    memory_count=sel.memory_count,
                 )
             )
             count += 1
 
         return count
+
+    def collect_summary_jobs(self, include_all: bool = False) -> list[SummaryJob]:
+        """Return the L3 concept-summary jobs for the active agent to write.
+
+        Uses the SAME concept selection as ``generate_summaries`` (the shared
+        ``_select_summary_concepts`` helper), so the set of candidate concepts and
+        their truncated/capped contents are identical to what the configured-LLM path
+        would summarise. Does NOT call any summarizer/LLM and does NOT require one
+        configured (works with provider=none).
+
+        By DEFAULT (``include_all=False``) returns only concepts that NEED a
+        (re)summary — i.e. one of:
+          * no current ``MemorySummary`` exists for the concept, OR
+          * the stored summary's ``memory_count`` != the concept's current active
+            count (the evidence drifted; the summary is out of date).
+        With ``include_all=True`` returns one ``SummaryJob`` per qualifying concept
+        regardless of existing summaries. Order is the helper's sorted concept order.
+        """
+        jobs: list[SummaryJob] = []
+        for sel in self._select_summary_concepts():
+            existing = self.adapter.get_summary(sel.concept)
+            if not include_all:
+                needs = existing is None or existing.memory_count != sel.memory_count
+                if not needs:
+                    continue
+            jobs.append(
+                SummaryJob(
+                    concept=sel.concept,
+                    memory_ids=sel.memory_ids,
+                    contents=sel.contents,
+                    memory_count=sel.memory_count,
+                    current_summary=existing.summary_text if existing is not None else None,
+                )
+            )
+        return jobs
+
+    def _active_count_for_concept(self, concept: str) -> int:
+        """Active, non-archived memory count for one concept, using the SAME rule as
+        summary selection: a memory counts iff it is active + non-archived AND its
+        ``entity_ids`` contain ``concept`` AND ``concept`` is not in the linking
+        stoplist. Returns 0 for a stoplisted concept or one with no active memories.
+        """
+        if concept in self.link_settings.stoplist:
+            return 0
+        conn = self.adapter.connect()
+        rows = conn.execute(
+            "SELECT id FROM memories WHERE is_active = 1 AND is_archived = 0 ORDER BY id"
+        ).fetchall()
+        count = 0
+        for row in rows:
+            mem = self.adapter.get_memory(row["id"])
+            if mem is None:
+                continue
+            count += sum(1 for e in mem.entity_ids if e == concept)
+        return count
+
+    def apply_summary(self, concept: str, summary_text: str) -> MemorySummary:
+        """Persist an AGENT-SUPPLIED summary for one concept (BYO-LLM L3).
+
+        Builds a ``MemorySummary`` with ``memory_count`` recomputed from the concept's
+        CURRENT active count (the same count ``_select_summary_concepts`` would
+        report) and ``is_current=True``, ``generated_at`` defaulted to now, then
+        persists it via ``adapter.upsert_summary`` (INSERT OR REPLACE keyed on
+        ``concept``). Idempotent: re-applying overwrites the concept's summary.
+
+        Calls no summarizer/LLM; works with provider=none. The ``summary_text`` is
+        stored verbatim (the agent already produced clean prose — no ``<think>``
+        stripping, no prompt). Whitespace is left to the caller.
+        """
+        memory_count = self._active_count_for_concept(concept)
+        return self.adapter.upsert_summary(
+            MemorySummary(
+                concept=concept,
+                summary_text=summary_text,
+                memory_count=memory_count,
+            )
+        )
 
     # ------------------------------------------------------------------
     # Step 4 — contradiction resolution (FULL only, idempotent via flag guard)

@@ -32,6 +32,11 @@ useful when it is typed, linked, and queryable — not stored as opaque blobs.
 - **Dreaming.** Idempotent background consolidation: anomaly detection, concept
   linking (hub-aware pruning), LLM summaries, contradiction resolution, archival,
   rehabilitation. The LLM tier is optional and off by default.
+- **Agent-supplied summaries.** An alternative to the LLM-backed dreaming path:
+  call `summary_jobs` (MCP / CLI / HTTP) to get the concepts that need
+  summarising, write each summary yourself (you are the LLM), and send it back
+  with `summary_put`. No `MINTMORY_LLM_*` backend required — works with
+  `MINTMORY_LLM_PROVIDER=none`.
 - **Personal notes.** First-class user-authored "remember this" notes that are
   authoritative, anchorable to other memories, time-aware, and protected from
   auto-archival.
@@ -89,7 +94,7 @@ mintmory doctor                                        # one-shot health check
 
 Tools exposed: `memory_add`, `memory_search`, `memory_get`, `memory_archive`,
 `memory_stats`, `memory_dream`, `session_feedback`, `summary_list`,
-`summary_get`, `memory_note`, `notes_list`.
+`summary_get`, `summary_jobs`, `summary_put`, `memory_note`, `notes_list`.
 
 ### HTTP API
 
@@ -149,6 +154,13 @@ sensible local-first behaviour**. Common knobs:
 
 The LLM tier is OpenAI-compatible, so it works with Ollama, LM Studio, vLLM, or a
 hosted endpoint. It is **off by default** (fully offline).
+
+**Agent-supplied summaries** do not require an LLM tier. Use
+`mintmory summary-jobs` / `summary_jobs` (MCP) / `GET /summaries/jobs` to get
+the pending L3 summary work-list, write the text, and return it with
+`mintmory summary-put` / `summary_put` / `PUT /summaries/{concept}`. The
+selection policy (`MINTMORY_SUMMARY_*` settings, stoplist) is respected
+regardless of which path writes the summary.
 
 ---
 

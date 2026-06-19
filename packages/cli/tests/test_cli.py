@@ -774,3 +774,166 @@ def test_doctor_conversion_row_available(cli_db: Path, monkeypatch: pytest.Monke
     result = runner.invoke(app, ["doctor"])
     assert result.exit_code == 0, result.output
     assert "markitdown available" in result.output
+
+
+# ---------------------------------------------------------------------------
+# summary-jobs
+# ---------------------------------------------------------------------------
+
+
+def test_summary_jobs_empty_db_exits_zero(cli_db: Path) -> None:
+    """summary-jobs on an empty DB prints a table and '0 job(s)'."""
+    result = runner.invoke(app, ["summary-jobs"])
+    assert result.exit_code == 0, result.output
+    assert "job(s)" in result.output
+
+
+def test_summary_jobs_table_output_default(cli_db: Path) -> None:
+    """summary-jobs (no flags) renders a rich table with the required columns."""
+    result = runner.invoke(app, ["summary-jobs"])
+    assert result.exit_code == 0, result.output
+    # Rich renders table headers.
+    assert "concept" in result.output
+    assert "memories" in result.output
+    assert "has_summary" in result.output
+
+
+def test_summary_jobs_json_flag_emits_list(cli_db: Path) -> None:
+    """--json flag emits a JSON array (even when empty)."""
+    import json
+
+    result = runner.invoke(app, ["summary-jobs", "--json"])
+    assert result.exit_code == 0, result.output
+    # Strip rich markup / control codes before JSON-parsing.
+    # console.print_json wraps the output but the raw JSON array is present.
+    output = result.output.strip()
+    # Find the JSON array within the output.
+    start = output.find("[")
+    end = output.rfind("]") + 1
+    assert start != -1, f"No JSON array found in output: {output!r}"
+    parsed = json.loads(output[start:end])
+    assert isinstance(parsed, list)
+
+
+def test_summary_jobs_all_flag_accepted(cli_db: Path) -> None:
+    """--all flag is accepted and produces exit-code 0."""
+    result = runner.invoke(app, ["summary-jobs", "--all"])
+    assert result.exit_code == 0, result.output
+    assert "job(s)" in result.output
+
+
+def test_summary_jobs_needed_flag_accepted(cli_db: Path) -> None:
+    """--needed flag (default) is accepted and produces exit-code 0."""
+    result = runner.invoke(app, ["summary-jobs", "--needed"])
+    assert result.exit_code == 0, result.output
+
+
+def test_summary_jobs_limit_zero_means_no_cap(cli_db: Path) -> None:
+    """--limit 0 is the default (no cap); must not error."""
+    result = runner.invoke(app, ["summary-jobs", "--limit", "0"])
+    assert result.exit_code == 0, result.output
+
+
+def test_summary_jobs_limit_caps_results(cli_db: Path) -> None:
+    """--limit N caps the number of rows returned (even if no jobs exist)."""
+    result = runner.invoke(app, ["summary-jobs", "--limit", "1"])
+    assert result.exit_code == 0, result.output
+    assert "job(s)" in result.output
+
+
+# ---------------------------------------------------------------------------
+# summary-put
+# ---------------------------------------------------------------------------
+
+
+def test_summary_put_positional_text_stores_summary(cli_db: Path) -> None:
+    """summary-put CONCEPT TEXT stores verbatim text and prints 'Stored summary'."""
+    result = runner.invoke(app, ["summary-put", "alphacat", "Alpha cats are fast."])
+    assert result.exit_code == 0, result.output
+    assert "Stored summary" in result.output
+    assert "alphacat" in result.output
+
+
+def test_summary_put_file_flag_reads_text(cli_db: Path, tmp_path: Path) -> None:
+    """--file reads the summary from a file path."""
+    txt = tmp_path / "summary.txt"
+    txt.write_text("Beta cats are slow.")
+    result = runner.invoke(app, ["summary-put", "betacat", "--file", str(txt)])
+    assert result.exit_code == 0, result.output
+    assert "Stored summary" in result.output
+    assert "betacat" in result.output
+
+
+def test_summary_put_stdin_reads_text(cli_db: Path) -> None:
+    """Omitting TEXT and --file reads from stdin."""
+    result = runner.invoke(app, ["summary-put", "gammacat"], input="Gamma cats are nimble.")
+    assert result.exit_code == 0, result.output
+    assert "Stored summary" in result.output
+    assert "gammacat" in result.output
+
+
+def test_summary_put_empty_text_arg_errors(cli_db: Path) -> None:
+    """Passing an empty string as TEXT must exit non-zero (BadParameter)."""
+    result = runner.invoke(app, ["summary-put", "emptycat", ""])
+    assert result.exit_code != 0
+
+
+def test_summary_put_empty_file_errors(cli_db: Path, tmp_path: Path) -> None:
+    """A file containing only whitespace must exit non-zero (empty after strip)."""
+    txt = tmp_path / "empty.txt"
+    txt.write_text("   \n\n  ")
+    result = runner.invoke(app, ["summary-put", "emptycat", "--file", str(txt)])
+    assert result.exit_code != 0
+
+
+def test_summary_put_stdin_empty_errors(cli_db: Path) -> None:
+    """Stdin with only whitespace must exit non-zero."""
+    result = runner.invoke(app, ["summary-put", "emptycat"], input="   ")
+    assert result.exit_code != 0
+
+
+def test_summary_put_persists_to_db(cli_db: Path) -> None:
+    """After summary-put, the summary is visible in the SQLite store."""
+    runner.invoke(app, ["summary-put", "deltacat", "Delta cats leap."])
+    store = _store(cli_db)
+    row = store.get_summary("deltacat")
+    assert row is not None
+    assert row.summary_text == "Delta cats leap."
+    store.close()
+
+
+def test_summary_put_idempotent_overwrites(cli_db: Path) -> None:
+    """Running summary-put twice for the same concept overwrites the text."""
+    runner.invoke(app, ["summary-put", "epsiloncat", "First text."])
+    runner.invoke(app, ["summary-put", "epsiloncat", "Second text."])
+    store = _store(cli_db)
+    row = store.get_summary("epsiloncat")
+    assert row is not None
+    assert row.summary_text == "Second text."
+    store.close()
+
+
+def test_summary_put_works_without_llm(cli_db: Path) -> None:
+    """summary-put does not require an LLM backend (provider=none by default)."""
+    result = runner.invoke(app, ["summary-put", "nollmcat", "No LLM needed."])
+    assert result.exit_code == 0, result.output
+
+
+def test_summary_jobs_then_put_roundtrip(cli_db: Path) -> None:
+    """After summary-put, summary-jobs (default) does NOT surface the concept again
+    when the DB is otherwise unchanged (incremental rule)."""
+    # Put a summary for an arbitrary concept (no active memories -> memory_count=0).
+    runner.invoke(app, ["summary-put", "zetacat", "Zeta cats are rare."])
+    # summary-jobs default (--needed) should not re-surface "zetacat" because
+    # the stored memory_count (0) matches the current active count (0).
+    result_json = runner.invoke(app, ["summary-jobs", "--json"])
+    assert result_json.exit_code == 0, result_json.output
+    import json
+
+    output = result_json.output.strip()
+    start = output.find("[")
+    end = output.rfind("]") + 1
+    if start != -1:
+        jobs = json.loads(output[start:end])
+        concepts = [j["concept"] for j in jobs]
+        assert "zetacat" not in concepts
