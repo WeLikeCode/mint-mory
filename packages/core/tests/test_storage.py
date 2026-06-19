@@ -619,3 +619,29 @@ def test_update_content_field_does_call_embed(
     s.update_memory(record.id, content="completely different content")
     assert embed_call_count[0] == 1, "_embed was not called when content changed"
     s.close()
+
+
+# ---------------------------------------------------------------------------
+# Concurrent-writer safety — busy_timeout (multi-agent)
+# ---------------------------------------------------------------------------
+
+
+def test_busy_timeout_default_is_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fresh connection applies the code default busy_timeout (5s) when the env
+    var is unset, so competing writers wait instead of raising 'database is
+    locked'. (The repo conftest sets a small value for the suite; clear it here to
+    observe the real default.)"""
+    monkeypatch.delenv("MINTMORY_SQLITE_BUSY_TIMEOUT_MS", raising=False)
+    s = StorageAdapter(":memory:")
+    s.initialise()
+    timeout = s.connect().execute("PRAGMA busy_timeout").fetchone()[0]
+    assert timeout == 5000  # default 5s
+    s.close()
+
+
+def test_busy_timeout_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MINTMORY_SQLITE_BUSY_TIMEOUT_MS", "1234")
+    s = StorageAdapter(":memory:")
+    s.initialise()
+    assert s.connect().execute("PRAGMA busy_timeout").fetchone()[0] == 1234
+    s.close()

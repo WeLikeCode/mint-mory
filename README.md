@@ -97,6 +97,14 @@ Tools exposed: `memory_add`, `memory_search`, `memory_get`, `memory_archive`,
 mintmory serve --port 8080      # FastAPI + OpenAPI docs at /docs
 ```
 
+### Multiple agents, one memory
+
+Several agents can share one MintMory instance — either as **one MCP process per
+agent against a shared `.db`** (same machine), or as **a single shared server**
+(HTTP REST or MCP-over-SSE) for networked / many-agent setups. Concurrent access
+via MCP is supported in both forms. See **[`docs/multi-agent.md`](docs/multi-agent.md)**
+for the topologies, discovery, and concurrency tuning.
+
 ---
 
 ## Architecture
@@ -137,6 +145,7 @@ sensible local-first behaviour**. Common knobs:
 | `MINTMORY_LLM_PROVIDER` | `none` | enable summaries + contradiction resolution (`ollama`/`openai`) |
 | `MINTMORY_LLM_BASE_URL` / `_MODEL` / `_API_KEY` | — | OpenAI-compatible LLM tier |
 | `MINTMORY_NOTE_BONUS` | `0.05` | ranking boost for user notes |
+| `MINTMORY_SQLITE_BUSY_TIMEOUT_MS` | `5000` | how long a writer waits for a lock (multi-agent); `0` = fail fast |
 
 The LLM tier is OpenAI-compatible, so it works with Ollama, LM Studio, vLLM, or a
 hosted endpoint. It is **off by default** (fully offline).

@@ -26,6 +26,7 @@ an embedder is configured AND the extension loaded successfully.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from collections import Counter
 from collections.abc import Generator
@@ -103,6 +104,17 @@ def _iso(dt: datetime | None) -> str | None:
 
 def _bool(value: object) -> int:
     return 1 if value else 0
+
+
+def _busy_timeout_ms() -> int:
+    """SQLite ``busy_timeout`` in ms — how long a writer waits for a lock before
+    raising ``database is locked``. Default 5000ms makes concurrent writers (many
+    agents sharing one .db) queue instead of erroring. Override via
+    ``MINTMORY_SQLITE_BUSY_TIMEOUT_MS`` (0 = fail immediately, the old behaviour)."""
+    try:
+        return max(0, int(os.environ.get("MINTMORY_SQLITE_BUSY_TIMEOUT_MS", "5000")))
+    except ValueError:
+        return 5000
 
 
 def _sanitise_fts_query(query: str) -> str:
@@ -198,6 +210,10 @@ class StorageAdapter:
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA foreign_keys = ON")
             self._conn.execute("PRAGMA journal_mode = WAL")
+            # Concurrent-writer safety (multi-agent): wait for a lock instead of
+            # immediately raising "database is locked". WAL already lets readers
+            # run during a write; this makes competing writers queue.
+            self._conn.execute(f"PRAGMA busy_timeout = {_busy_timeout_ms()}")
             self._load_vec_extension(self._conn)
         return self._conn
 
