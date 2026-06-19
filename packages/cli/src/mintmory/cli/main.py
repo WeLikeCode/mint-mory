@@ -14,6 +14,8 @@ Commands:
   mintmory notes [--about ...] [--upcoming] [--overdue] [--limit N]
   mintmory summary-jobs [--all/--needed] [--limit N] [--json]
   mintmory summary-put CONCEPT [TEXT] [--file PATH]
+  mintmory image-jobs [--all/--needed] [--bytes/--no-bytes] [--limit N] [--json]
+  mintmory image-caption-put FILE_OR_ID [DESCRIPTION] [--file PATH]
 """
 
 from __future__ import annotations
@@ -490,6 +492,15 @@ def index_tree(
         False, "--dream/--no-dream", help="Run a light dream after indexing"
     ),
     limit: int = typer.Option(0, help="Stop after N files (0 = all; for smoke tests)"),
+    vision: bool = typer.Option(
+        False,
+        "--vision/--no-vision",
+        help=(
+            "Describe image files: extract SVG text inline; queue raster images as "
+            "agent jobs (provider=agent) or run the configured vision provider "
+            "(llm/ocr, future). Records index_mode='vision'."
+        ),
+    ),
 ) -> None:
     """Recurrently index a directory tree.
 
@@ -499,6 +510,12 @@ def index_tree(
     by ``--max-download-mb``). Idempotent via a per-path manifest: re-runs skip
     unchanged files and replace changed ones. Designed for cloud-backed
     (online-only) libraries.
+
+    Pass ``--vision`` to also handle image files: SVG text is extracted inline
+    (pure-Python, no model); raster images (png/jpg/etc) are queued as agent jobs
+    for provider=agent, or described inline for future llm/ocr providers. Records
+    ``index_mode='vision'`` in the manifest. Without ``--vision`` this command is
+    byte-for-byte unchanged.
     """
     import hashlib
     import json
@@ -519,9 +536,30 @@ def index_tree(
     conv = settings.convert
     store = _get_store()
 
+    # Vision: lazily import + validate the provider once before the walk, so
+    # a misconfigured llm/ocr provider fails fast with a clear message rather
+    # than a stack trace mid-walk.  ``vision_mod`` is only ever referenced
+    # inside the ``if vision:`` / ``elif want_vision:`` branches, so mypy can
+    # see the import is guarded. We import it into a local name to satisfy
+    # type checkers that the name is always defined when used.
+    if vision:
+        from mintmory.core import vision as vision_mod
+
+        try:
+            vision_mod.captioner_from_settings(settings.vision)
+        except NotImplementedError as _nie:
+            console.print(f"[red]error[/red]: {_nie}")
+            raise typer.Exit(code=1) from _nie
+    else:
+        vision_mod = None  # type: ignore[assignment]  # never accessed when vision=False
+
     scanned = added = updated = unchanged = converted = failed = pruned = 0
     downloaded = 0
     budget_hit = False
+    # Vision-specific counters (only relevant when --vision)
+    svg_described = 0
+    images_queued = 0
+    vision_skipped = 0
     seen: set[str] = set()
 
     for root in roots:
@@ -546,7 +584,33 @@ def index_tree(
                 )
                 want_binary = content and entry.suffix in ctypes and not budget_hit
                 do_content = text_eligible or want_binary
-                desired_mode = "content" if do_content else "metadata"
+
+                # Vision: third content mode — separate from text/binary.
+                # Proprietary formats (xd/vsdx/dwg/psd/eps) are skip-and-flagged.
+                # ``vision_mod`` is not None when vision=True (guard above).
+                want_vision = (
+                    vision
+                    and vision_mod is not None
+                    and entry.suffix in vision_mod.IMAGE_SUFFIXES
+                    and entry.suffix not in vision_mod.PROPRIETARY_IMAGE_SUFFIXES
+                )
+
+                if (
+                    vision
+                    and vision_mod is not None
+                    and entry.suffix in vision_mod.PROPRIETARY_IMAGE_SUFFIXES
+                ):
+                    vision_skipped += 1
+
+                # desired_mode: 'content' wins over 'vision' (an image that is
+                # also full-text converted keeps 'content'); 'vision' beats
+                # 'metadata' for image suffixes handled by --vision.
+                if do_content:
+                    desired_mode = "content"
+                elif want_vision:
+                    desired_mode = "vision"
+                else:
+                    desired_mode = "metadata"
 
                 existing = store.manifest_get(path_str)
                 if existing is not None and not force:
@@ -554,7 +618,10 @@ def index_tree(
                         existing["size"] == entry.size
                         and abs(existing["mtime"] - entry.mtime) < 1e-6
                     )
-                    covered = existing["index_mode"] == "content" or desired_mode == "metadata"
+                    # 'content' and 'vision' are both richer than 'metadata';
+                    # 'content' > 'vision' (if already content, don't downgrade).
+                    existing_mode = existing["index_mode"]
+                    covered = existing_mode in ("content", "vision") or desired_mode == "metadata"
                     if same and covered:
                         unchanged += 1
                         continue
@@ -617,6 +684,58 @@ def index_tree(
                     except ConversionError as exc:
                         console.print(f"[yellow]content skip[/yellow] {entry.name}: {exc}")
                         failed += 1
+                elif want_vision:
+                    # Vision branch: SVG → inline extraction; raster → queue for agent.
+                    # ``want_vision`` is True only when vision_mod is not None (see above).
+                    assert vision_mod is not None  # noqa: S101
+                    mode = "vision"
+                    if entry.suffix in vision_mod.SVG_SUFFIXES:
+                        # SVG: read bytes (counts against download budget for online-only),
+                        # extract embedded text via pure stdlib, store description inline.
+                        try:
+                            svg_bytes: bytes = b""
+                            if entry.online_only:
+                                if budget is not None and downloaded >= budget:
+                                    # budget exhausted; skip this SVG's byte read
+                                    mode = "metadata"
+                                    console.print(
+                                        f"[yellow]vision skip[/yellow] {entry.name}: "
+                                        "download budget exhausted"
+                                    )
+                                    failed += 1
+                                else:
+                                    svg_bytes = entry.path.read_bytes()
+                                    downloaded += len(svg_bytes)
+                                    if budget is not None and downloaded >= budget:
+                                        budget_hit = True
+                            else:
+                                svg_bytes = entry.path.read_bytes()
+                            if mode == "vision":
+                                svg_text = vision_mod.extract_svg_text(svg_bytes)
+                                if svg_text:
+                                    desc = vision_mod.image_caption_put(
+                                        store, file_record.id, svg_text, settings=settings.vision
+                                    )
+                                    new_ids.append(desc.record.id)
+                                    content_hash = hashlib.blake2b(
+                                        svg_text.encode("utf-8"), digest_size=16
+                                    ).hexdigest()
+                                    svg_described += 1
+                                # Empty SVG text: mode stays 'vision' (manifest marks it
+                                # as vision-attempted so a re-run doesn't re-attempt unless
+                                # the file changes). No description created.
+                        except OSError as exc:
+                            console.print(
+                                f"[yellow]vision skip[/yellow] {entry.name}: read error {exc}"
+                            )
+                            mode = "metadata"
+                            failed += 1
+                    else:
+                        # Raster image: queue for agent (provider=agent → no inline call).
+                        # captioner_from_settings already validated at the top; provider=agent
+                        # returns None, which means we just count the job and move on.
+                        images_queued += 1
+                        # mode already 'vision'; no bytes read, no description yet.
 
                 if existing is not None:
                     for old_id in json.loads(existing["memory_ids"]):
@@ -651,7 +770,7 @@ def index_tree(
     table = Table(title=f"index-tree [{collection}]")
     table.add_column("metric", style="cyan")
     table.add_column("value", justify="right")
-    for label, value in (
+    base_rows: list[tuple[str, str]] = [
         ("scanned", str(scanned)),
         ("new", str(added)),
         ("updated", str(updated)),
@@ -660,8 +779,14 @@ def index_tree(
         ("content-failed", str(failed)),
         ("pruned", str(pruned)),
         ("downloaded", human_size(downloaded)),
-    ):
+    ]
+    for label, value in base_rows:
         table.add_row(label, value)
+    if vision:
+        table.add_row("svg-described", str(svg_described))
+        table.add_row("images-queued", str(images_queued))
+        if vision_skipped:
+            table.add_row("vision-skipped", str(vision_skipped))
     if budget_hit:
         table.add_row("budget", "[yellow]reached — remaining files metadata-only[/yellow]")
     console.print(table)
@@ -811,6 +936,124 @@ def summary_put(
         f"[green]Stored summary[/green] for [cyan]{summary.concept}[/cyan] "
         f"[dim]({summary.memory_count} memories)[/dim]"
     )
+
+
+@app.command()
+def image_jobs(
+    include_all: bool = typer.Option(
+        False,
+        "--all/--needed",
+        help="All raster images vs only those needing a description",
+    ),
+    include_bytes: bool = typer.Option(
+        False,
+        "--bytes/--no-bytes",
+        help="Force-embed base64 for local files too (use when agent runs on a different host)",
+    ),
+    limit: int = typer.Option(0, help="Max jobs (0 = no cap)"),
+    json_out: bool = typer.Option(False, "--json", help="Emit JSON instead of a rich table"),
+) -> None:
+    """List image-description jobs for the agent (agent-supplied vision).
+
+    Returns raster image file-records from the index that need an agent-supplied
+    description (or all raster images with ``--all``). Each job carries the
+    image path, rel, mime, size, online_only flag, and optionally an inline
+    base64 payload (``--bytes`` or when the image is online-only). SVG and
+    proprietary image formats are never returned as agent jobs.
+
+    After describing an image, store the result with ``image-caption-put``.
+    """
+    import json as _json
+
+    from mintmory.core import vision as vision_mod
+    from mintmory.core.config import load_settings
+
+    settings = load_settings()
+    store = _get_store()
+    jobs = vision_mod.image_jobs(
+        store,
+        include_all=include_all,
+        include_bytes=include_bytes,
+        limit=limit,
+        settings=settings.vision,
+    )
+
+    if json_out:
+        console.print_json(_json.dumps([j.model_dump(mode="json") for j in jobs]))
+        return
+
+    table = Table(title="Image jobs")
+    table.add_column("file_id", style="cyan", no_wrap=True)
+    table.add_column("rel", style="white")
+    table.add_column("mime", style="magenta")
+    table.add_column("online_only", style="yellow")
+    table.add_column("has_desc", style="green")
+    table.add_column("bytes", style="blue")
+    for j in jobs:
+        table.add_row(
+            j.file_id,
+            j.rel,
+            j.mime,
+            "yes" if j.online_only else "no",
+            "yes" if j.current_description else "no",
+            "yes" if j.image_b64 else ("oversized" if j.oversized else "no"),
+        )
+    console.print(table)
+    console.print(f"[dim]{len(jobs)} image job(s)[/dim]")
+
+
+@app.command()
+def image_caption_put(
+    file_id_or_path: str = typer.Argument(..., help="Image file-record id or path"),
+    text: str | None = typer.Argument(None, help="Description (omit to read from --file or stdin)"),
+    file: Path | None = typer.Option(None, "--file", "-f", help="Read description from a file"),
+) -> None:
+    """Store an agent-supplied image description (text arg, --file, or stdin).
+
+    Persists the description as a context memory ANNOTATES-linked to the image
+    file-record. Idempotent: re-putting replaces the prior description, and the
+    image then drops out of the default ``image-jobs`` work-list. No vision
+    backend is required.
+
+    ``FILE_OR_ID`` may be the ``file_id`` from ``image-jobs`` (preferred) or
+    the image's absolute path. Description text may be given inline, read from
+    ``--file``, or piped via stdin.
+    """
+    import sys
+
+    from mintmory.core import vision as vision_mod
+    from mintmory.core.config import load_settings
+
+    if text is not None:
+        description = text
+    elif file is not None:
+        description = file.read_text()
+    else:
+        description = sys.stdin.read()
+
+    description = description.strip()
+    if not description:
+        raise typer.BadParameter(
+            "empty description (provide TEXT argument, --file, or pipe via stdin)"
+        )
+
+    settings = load_settings()
+    store = _get_store()
+    try:
+        result = vision_mod.image_caption_put(
+            store, file_id_or_path, description, settings=settings.vision
+        )
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    console.print(
+        f"[green]Stored description[/green] [bold]{result.record.id}[/bold] "
+        f"for [cyan]{result.source_image}[/cyan]"
+    )
+    if result.replaced_description_id is not None:
+        console.print(
+            f"  [dim]-> replaced (archived) [yellow]{result.replaced_description_id}[/yellow][/dim]"
+        )
 
 
 @app.command()

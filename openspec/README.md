@@ -44,3 +44,14 @@ A change is implemented against its `design.md`, reviewed adversarially, then it
   writes each summary text itself, and stores it with `summary_put` — no
   `MINTMORY_LLM_*` backend required. `generate_summaries` is byte-for-byte
   equivalent after the shared selection helper refactor. (implementing)
+- `add-image-understanding` — agent-supplied vision (G5): `image_jobs` /
+  `image_caption_put` core functions + MCP tools + CLI commands + HTTP routes
+  (`GET /images/jobs`, `PUT /images/{file_id}`); `index-tree --vision` flag for
+  SVG inline extraction (pure stdlib) and raster queueing; `VisionProvider` /
+  `VisionSettings` config (`MINTMORY_VISION_*`); `ImageJob` / `ImageDescription`
+  types; `get_annotating_descriptions` + `find_image_file_record` storage helpers;
+  `index_mode='vision'` CHECK widening (idempotent migration); optional `[image]`
+  (Pillow downscale) / `[ocr]` (future tesseract) extras; `llm`/`ocr` are a
+  compile-time seam that raises clearly in v1. No new required dependency; no model
+  call in the agent path; no change to existing search/notes/index-tree paths.
+  (implementing)

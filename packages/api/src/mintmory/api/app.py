@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mintmory.api.schemas import (
     ConceptLinkCreate,
     DreamRequest,
+    ImageCaptionPut,
     MemoryCreate,
     MemoryUpdate,
     NoteCreate,
@@ -39,6 +40,8 @@ from mintmory.core.types import (
     ConceptLinkType,
     DreamIntensity,
     DreamReport,
+    ImageDescription,
+    ImageJob,
     LinkSource,
     MemoryRecord,
     MemoryStats,
@@ -363,6 +366,58 @@ async def put_summary(concept: str, body: SummaryPut) -> MemorySummary:
         summary_settings=settings.summary,
     )
     return engine.apply_summary(concept, body.summary_text)
+
+
+# ---------------------------------------------------------------------------
+# Images
+# ---------------------------------------------------------------------------
+
+
+@app.get("/images/jobs", response_model=list[ImageJob], tags=["Images"])
+async def list_image_jobs(
+    include_all: Annotated[bool, Query()] = False,
+    include_bytes: Annotated[bool, Query()] = False,
+    limit: Annotated[int, Query(ge=0)] = 0,
+) -> list[ImageJob]:
+    """Image-description jobs for an agent (agent-supplied vision).
+
+    Returns the set of raster image file-records the calling agent should describe.
+    MintMory does NOT call a vision model — the agent IS the vision-capable model.
+    Each job carries path/rel/mime/size, the online_only flag, and either an inline
+    base64 ``image_b64`` or ``null`` meaning the agent should read the file at ``path``.
+    ``include_all=false`` (default) returns only images that still need a description.
+    ``limit=0`` means no cap.
+    """
+    from mintmory.core import vision as vision_mod
+
+    settings = load_settings()
+    return vision_mod.image_jobs(
+        get_store(),
+        include_all=include_all,
+        include_bytes=include_bytes,
+        limit=limit,
+        settings=settings.vision,
+    )
+
+
+@app.put("/images/{file_id}", response_model=ImageDescription, tags=["Images"])
+async def put_image_caption(file_id: str, body: ImageCaptionPut) -> ImageDescription:
+    """Store an agent-supplied description for the image file-record ``file_id``.
+
+    Persists the description as a context memory ANNOTATES-linked to the image
+    file-record. Idempotent: re-putting replaces the prior description (the image
+    then drops out of the default ``GET /images/jobs`` work-list). No vision backend
+    is required. Returns the stored ``ImageDescription`` with linkage facts.
+    """
+    from mintmory.core import vision as vision_mod
+
+    settings = load_settings()
+    try:
+        return vision_mod.image_caption_put(
+            get_store(), file_id, body.description, settings=settings.vision
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 def main() -> None:

@@ -353,6 +353,45 @@ class SummaryJob(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Image understanding types (G5 — agent-supplied vision)
+# ---------------------------------------------------------------------------
+
+
+class ImageJob(BaseModel):
+    """One indexed image the active agent should describe (agent-supplied vision).
+
+    Produced by ``vision.image_jobs`` and exposed over the transports. Mirrors
+    ``SummaryJob``: a pure data carrier (NOT persisted) describing one unit of
+    work. ``image_b64`` is populated (hybrid bytes) only when the file is
+    online-only OR ``include_bytes=True`` AND the file is within the size cap;
+    otherwise it is ``None`` and the agent reads the file at ``path``.
+    """
+
+    file_id: str  # the image FILE-RECORD memory id (what the description ANNOTATES)
+    path: str  # absolute source path (str), from the file-record metadata
+    rel: str  # POSIX path relative to the walk root, from the file-record metadata
+    mime: str  # best-effort MIME from the suffix, e.g. "image/png"
+    size: int  # on-disk byte size, from the file-record metadata
+    online_only: bool  # cloud placeholder (not downloaded locally)
+    image_b64: str | None = None  # base64 payload (hybrid rule §5); None => use path
+    current_description: str | None = None  # existing image_description text, if any
+    oversized: bool = False  # True when image_b64 omitted because size > cap
+
+
+class ImageDescription(BaseModel):
+    """The stored description of one image (the result of ``image_caption_put``).
+
+    Wraps the created/updated ``image_description`` MemoryRecord plus the linkage
+    facts, mirroring ``NoteResult``'s shape (record + what-it-anchored-to).
+    """
+
+    record: MemoryRecord  # the image_description memory (category=context, is_note=False)
+    file_id: str  # the image file-record this description ANNOTATES
+    source_image: str  # the image's absolute path (== file-record metadata["path"])
+    replaced_description_id: str | None = None  # prior description archived on re-put, if any
+
+
+# ---------------------------------------------------------------------------
 # Embedding provider types (pluggable — local default, API as override)
 # ---------------------------------------------------------------------------
 

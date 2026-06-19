@@ -540,6 +540,51 @@ the OUTDATED memory to archive.
 > the MiniMax upstream rejects it as an unknown model id.) MiniMax-M2.x are *thinking*
 > models — `build_summarizer` now strips `<think>…</think>` so summaries stay clean.
 
+### 6.10 IMAGE UNDERSTANDING — feature note (`add-image-understanding`, G5)
+
+This is not an experiment with before/after measurements — it is a feature addition.
+The notes below record the design choices that constrain what future experiments
+could measure.
+
+**What ships in v1:**
+
+- `image_jobs` / `image_caption_put` core functions, MCP tools, CLI commands, and
+  HTTP routes (`GET /images/jobs`, `PUT /images/{file_id}`).
+- `index-tree --vision` flag: SVG text extracted inline (pure stdlib,
+  `xml.etree.ElementTree`); raster images queued as agent jobs
+  (`index_mode='vision'` manifest row, no model call).
+- `VisionProvider` enum (`agent` / `llm` / `ocr`) + `VisionSettings` group
+  (`MINTMORY_VISION_*`). Provider defaults to `agent`; `llm` and `ocr` are a seam
+  that raises `NotImplementedError` with clear guidance in v1.
+- Hybrid-bytes payload (`image_b64`): populated only for online-only files or
+  `include_bytes=True`, within `MINTMORY_VISION_MAX_IMAGE_MB` (default 8 MB cap);
+  oversized files set `oversized=True`. Optional Pillow downscale (`[image]` extra,
+  lazy import, `MINTMORY_VISION_DOWNSCALE_MAX_PX=1568`).
+- No-drift guarantee: `image_caption_put` archives prior active descriptions before
+  writing the new one; a subsequent default `image_jobs()` never re-surfaces the
+  same image.
+- One schema delta: `index_mode CHECK` widened to include `'vision'` via a
+  best-effort idempotent startup migration (mirrors `_ensure_is_note_column`).
+
+**What does NOT change:**
+
+- `index-tree` without `--vision` is byte-for-byte unchanged.
+- `get_annotating_notes` and `search()` are untouched (image descriptions are
+  `is_note=False` and surface through ordinary FTS/vector search).
+- No new required runtime dependency (Pillow + pytesseract are optional extras,
+  lazy-imported).
+
+**Potential future experiments (not scoped to v1):**
+
+| ID | Question | Lever | Metric |
+|---|---|---|---|
+| E-V1 | Does `image_b64` embed quality degrade above N MB (before downscale)? | `MINTMORY_VISION_MAX_IMAGE_MB` sweep | description quality vs payload size |
+| E-V2 | Does Pillow downscale at 1568 px preserve agent-description quality? | `MINTMORY_VISION_DOWNSCALE_MAX_PX` sweep (512 / 1024 / 1568 / off) | description quality, byte size |
+| E-V3 | How many images can a single `image_jobs` poll handle before the agent context is saturated? | `limit` + `include_bytes` | context window utilisation, job throughput |
+| E-V4 | Does the `llm` seam (future) produce better descriptions than `agent` for dense technical diagrams? | `MINTMORY_VISION_PROVIDER=llm` vs `agent` | description coverage of embedded text/labels |
+
+---
+
 ### 6.9 PERSONAL-NOTES KNOBS (`MINTMORY_NOTE_*`) — pending measurement
 
 These three knobs govern capture-authority, auto-include breadth, and anchor

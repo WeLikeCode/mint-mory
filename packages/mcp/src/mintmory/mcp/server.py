@@ -7,17 +7,19 @@ Three transports from one codebase (Serena MCP pattern):
   HTTP:    mintmory-api  (separate package, full REST + OpenAPI)
 
 Tools exposed (mapped 1:1 to HTTP endpoints in openapi/mintmory.yaml):
-  memory_add       → POST /memories
-  memory_get       → GET  /memories/{id}
-  memory_archive   → DELETE /memories/{id}
-  memory_search    → POST /memories/search
-  memory_stats     → GET  /stats
-  memory_dream     → POST /dream
-  session_feedback → POST /sessions/{id}/feedback
-  summary_list     → GET  /summaries
-  summary_get      → GET  /summaries/{concept}
-  summary_jobs     → GET  /summaries/jobs
-  summary_put      → PUT  /summaries/{concept}
+  memory_add         → POST /memories
+  memory_get         → GET  /memories/{id}
+  memory_archive     → DELETE /memories/{id}
+  memory_search      → POST /memories/search
+  memory_stats       → GET  /stats
+  memory_dream       → POST /dream
+  session_feedback   → POST /sessions/{id}/feedback
+  summary_list       → GET  /summaries
+  summary_get        → GET  /summaries/{concept}
+  summary_jobs       → GET  /summaries/jobs
+  summary_put        → PUT  /summaries/{concept}
+  image_jobs         → GET  /images/jobs
+  image_caption_put  → PUT  /images/{file_id}
 
 Implementation note: all tool handlers are thin wrappers over mintmory.core.
 Every tool returns a JSON-safe dict (or list of dicts) produced via
@@ -71,7 +73,10 @@ mcp: FastMCP[Any] = FastMCP(
         "that is exempt from auto-archival and wins contradictions over inferred memories. "
         "For L3 concept summaries you can supply the text yourself: call summary_jobs to get "
         "the concepts (and their memories) that need summarising, write each summary, and send "
-        "it back with summary_put — no separate LLM backend required."
+        "it back with summary_put — no separate LLM backend required. "
+        "For indexed images you can supply the description yourself: call image_jobs to get the "
+        "images needing a description, read each (inline base64 or via its path), write one "
+        "combined description, and send it back with image_caption_put — no vision backend needed."
     ),
 )
 
@@ -465,6 +470,81 @@ def notes_list(
     except ValueError as exc:
         return {"error": "bad_request", "message": str(exc)}
     return [m.model_dump(mode="json") for m in records]
+
+
+# ---------------------------------------------------------------------------
+# Image-understanding tools (agent-supplied vision, G5)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def image_jobs(
+    include_all: bool = False, include_bytes: bool = False, limit: int = 0
+) -> list[dict[str, Any]]:
+    """List indexed images for YOU (the agent) to describe (agent-supplied vision).
+
+    MintMory does NOT call a vision model for these — you are the vision-capable
+    model. Each job carries the image file-record id, its path/rel/mime/size, the
+    online_only flag, and EITHER an inline base64 ``image_b64`` (when the file is
+    online-only or include_bytes=True and within the size cap) OR ``image_b64:
+    null`` meaning you should read the file at ``path``. Write ONE combined
+    description per image (what it depicts + any legible text) and send it back
+    with image_caption_put.
+
+    Args:
+        include_all: when False (default), only raster images that still NEED a
+            description are returned; when True, every raster image file-record.
+        include_bytes: force-embed base64 even for local files (use when you run
+            on a different host than the MintMory DB and cannot read ``path``).
+        limit: max jobs (0 = no cap), applied after selection.
+
+    Returns:
+        A list of ImageJob dicts.
+    """
+    store = _get_store()
+    settings = load_settings()
+    from mintmory.core import vision as vision_mod  # lazy: optional dependency group
+
+    jobs = vision_mod.image_jobs(
+        store,
+        include_all=include_all,
+        include_bytes=include_bytes,
+        limit=limit,
+        settings=settings.vision,
+    )
+    return [j.model_dump(mode="json") for j in jobs]
+
+
+@mcp.tool()
+def image_caption_put(file_id_or_path: str, description: str) -> dict[str, Any]:
+    """Store YOUR description for one indexed image (agent-supplied vision).
+
+    Persists ``description`` (your combined "what it depicts + legible text" blob)
+    as a context memory ANNOTATES-linked to the image file-record. Idempotent:
+    re-putting replaces the prior description (the image then drops out of the
+    default image_jobs work-list). No vision backend is required.
+
+    Args:
+        file_id_or_path: the ImageJob ``file_id`` (preferred) or the image path.
+        description: your one-blob description (non-empty).
+
+    Returns:
+        An ImageDescription dict (the stored record + linkage facts), or an error
+        dict with ``error`` and ``message`` keys on failure.
+    """
+    if not description.strip():
+        return {"error": "bad_request", "message": "description must be non-empty"}
+    store = _get_store()
+    settings = load_settings()
+    from mintmory.core import vision as vision_mod  # lazy: optional dependency group
+
+    try:
+        result = vision_mod.image_caption_put(
+            store, file_id_or_path, description, settings=settings.vision
+        )
+    except KeyError as exc:
+        return {"error": "not_found", "message": str(exc)}
+    return result.model_dump(mode="json")
 
 
 # ---------------------------------------------------------------------------

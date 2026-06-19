@@ -37,6 +37,13 @@ useful when it is typed, linked, and queryable — not stored as opaque blobs.
   summarising, write each summary yourself (you are the LLM), and send it back
   with `summary_put`. No `MINTMORY_LLM_*` backend required — works with
   `MINTMORY_LLM_PROVIDER=none`.
+- **Agent-supplied image understanding (G5).** Close the image-description gap
+  without a vision backend: call `image_jobs` to get the indexed raster images
+  that still need a description, look at each (via its `path` or inline base64
+  for online-only files), write one combined description blob, and store it with
+  `image_caption_put`. SVG text is extracted automatically (pure-Python, no model).
+  Proprietary formats (`.psd`, `.xd`, …) remain metadata-only. Optional `[image]`
+  / `[ocr]` extras and future `llm`/`ocr` providers are a drop-in seam.
 - **Personal notes.** First-class user-authored "remember this" notes that are
   authoritative, anchorable to other memories, time-aware, and protected from
   auto-archival.
@@ -94,7 +101,8 @@ mintmory doctor                                        # one-shot health check
 
 Tools exposed: `memory_add`, `memory_search`, `memory_get`, `memory_archive`,
 `memory_stats`, `memory_dream`, `session_feedback`, `summary_list`,
-`summary_get`, `summary_jobs`, `summary_put`, `memory_note`, `notes_list`.
+`summary_get`, `summary_jobs`, `summary_put`, `memory_note`, `notes_list`,
+`image_jobs`, `image_caption_put`.
 
 ### HTTP API
 
@@ -161,6 +169,59 @@ the pending L3 summary work-list, write the text, and return it with
 `mintmory summary-put` / `summary_put` / `PUT /summaries/{concept}`. The
 selection policy (`MINTMORY_SUMMARY_*` settings, stoplist) is respected
 regardless of which path writes the summary.
+
+---
+
+## Image Understanding (agent-supplied vision, G5)
+
+MintMory does not require a vision model backend. The agent that already holds the
+image in context is the vision capability. The loop works identically over all three
+transports:
+
+1. **Index the tree.** Run `mintmory index-tree --vision /path/to/folder`. SVG files
+   have their embedded `<text>` / `<title>` / `<desc>` content extracted automatically
+   (pure stdlib, no model). Raster images (`.jpg`, `.png`, `.gif`, `.webp`, …) are
+   queued as agent jobs and recorded in the manifest with `index_mode=vision`.
+   Proprietary formats (`.xd`, `.vsdx`, `.psd`, …) are skipped and flagged
+   (`vision-skipped`) — they remain metadata-only.
+
+2. **Get the work-list.** Call `image_jobs` (MCP), `mintmory image-jobs` (CLI), or
+   `GET /images/jobs` (HTTP). Only raster images that do NOT yet have an active
+   description are returned by default (`include_all=False`). Each job carries the
+   `file_id`, `path`, `rel`, `mime`, `size`, and `online_only` flag. For
+   online-only (cloud-placeholder) images, or when `include_bytes=True`, the
+   response also includes an inline base64 `image_b64` payload within the configured
+   size cap (`MINTMORY_VISION_MAX_IMAGE_MB`, default 8 MB); oversized images set
+   `oversized=True` and omit the payload so the agent can fall back to `path`.
+
+3. **Describe each image.** You (the calling agent) are the vision-capable model.
+   Write one combined description blob: what the image depicts plus any legible text.
+
+4. **Store the description.** Call `image_caption_put` (MCP), `mintmory
+   image-caption-put` (CLI), or `PUT /images/{file_id}` (HTTP). MintMory persists
+   the description as a searchable `context` memory ANNOTATES-linked to the image
+   file-record and archives any prior description (no-drift: the image drops from the
+   default `image_jobs` work-list immediately).
+
+**No vision backend is required for the `agent` path** (`MINTMORY_VISION_PROVIDER`
+defaults to `agent`). Future `llm` and `ocr` providers are a seam — selecting them
+raises a clear error in v1 with guidance to set `MINTMORY_VISION_PROVIDER=agent`.
+
+**Optional extras:**
+
+```bash
+uv sync --extra image   # Pillow: auto-downscale large embedded payloads (lazy import)
+uv sync --extra ocr     # pytesseract: reserved for the future 'ocr' vision provider
+```
+
+**Relevant env knobs** (`MINTMORY_VISION_*`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MINTMORY_VISION_PROVIDER` | `agent` | `agent` (no backend) / `llm` (future) / `ocr` (future) |
+| `MINTMORY_VISION_MAX_IMAGE_MB` | `8.0` | Max on-disk size to embed as base64 (0 = no cap) |
+| `MINTMORY_VISION_DOWNSCALE_MAX_PX` | `1568` | Longest-edge downscale target for embedded payloads (needs `[image]`; 0 = off) |
+| `MINTMORY_VISION_MAX_DOWNLOAD_MB` | `200.0` | Budget for downloading online-only image bytes (shared with `--max-download-mb`) |
 
 ---
 

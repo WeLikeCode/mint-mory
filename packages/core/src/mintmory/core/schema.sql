@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS index_manifest (
     size          INTEGER NOT NULL,
     mtime         REAL NOT NULL,
     content_hash  TEXT,                        -- NULL until content is downloaded+hashed
-    index_mode    TEXT NOT NULL DEFAULT 'metadata' CHECK (index_mode IN ('metadata','content')),
+    index_mode    TEXT NOT NULL DEFAULT 'metadata' CHECK (index_mode IN ('metadata','content','vision')),
     memory_ids    TEXT NOT NULL DEFAULT '[]',  -- JSON array of memory ids for this path
     online_only   INTEGER NOT NULL DEFAULT 0,
     last_seen     TEXT NOT NULL                -- ISO-8601 UTC of the last run that saw this path

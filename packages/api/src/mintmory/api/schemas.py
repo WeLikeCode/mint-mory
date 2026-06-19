@@ -115,3 +115,9 @@ class SummaryPut(BaseModel):
     """Request body for ``PUT /summaries/{concept}`` (agent-supplied L3 summary)."""
 
     summary_text: str = Field(..., min_length=1)
+
+
+class ImageCaptionPut(BaseModel):
+    """Request body for ``PUT /images/{file_id}`` (agent-supplied image description)."""
+
+    description: str = Field(..., min_length=1)

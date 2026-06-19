@@ -131,6 +131,27 @@ configured-LLM path (`memory_dream`) and the agent-supplied path coexist:
 `summary_put` simply overwrites whatever `memory_dream` last stored (idempotent
 upsert keyed on concept).
 
+## Agent-owned image descriptions (G5)
+
+Vision-capable agents can describe indexed images without a server-side vision
+backend. The loop is the same across all three transports:
+
+1. **Get the work-list.** Call `image_jobs` (MCP), `mintmory image-jobs` (CLI), or
+   `GET /images/jobs` (HTTP). Only raster images without an active description are
+   returned by default. Each job includes the image `path` (or an inline base64
+   `image_b64` for online-only files and when `include_bytes=True`).
+2. **Describe each image.** The calling agent is the vision model — write one combined
+   blob (what the image depicts + any legible text).
+3. **Store the description.** Call `image_caption_put` (MCP), `mintmory
+   image-caption-put` (CLI), or `PUT /images/{file_id}` (HTTP). The description is
+   persisted as a searchable memory ANNOTATES-linked to the image file-record, and
+   the image immediately drops from the default work-list (no-drift guarantee).
+
+This pairs naturally with multi-agent setups: a vision-capable agent (e.g. Claude
+via the MCP server) describes the images; a text-only background worker handles
+summaries; both operate on the same shared `.db` with no coordination beyond
+the SQLite WAL and MintMory's idempotent prepare/apply discipline.
+
 ---
 
 ## Isolation

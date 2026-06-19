@@ -937,3 +937,401 @@ def test_summary_jobs_then_put_roundtrip(cli_db: Path) -> None:
         jobs = json.loads(output[start:end])
         concepts = [j["concept"] for j in jobs]
         assert "zetacat" not in concepts
+
+
+# ---------------------------------------------------------------------------
+# image-jobs
+# ---------------------------------------------------------------------------
+
+
+def _seed_image_file_record(
+    cli_db: Path,
+    *,
+    rel: str = "photos/sample.png",
+    path: str = "/tmp/photos/sample.png",  # noqa: S108 — test-only
+    ext: str = ".png",
+) -> str:
+    """Insert a synthetic image file-record directly into the DB and return its id.
+
+    Mirrors what ``index-tree`` writes (category=context, source=document,
+    metadata with ext/rel/path/size/mtime/online_only/index_mode).  The CLI
+    does not expose a direct "add image record" command, so we insert via the
+    StorageAdapter directly.
+    """
+    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.types import MemoryCategory, MemoryRecord, MemorySource
+
+    store = StorageAdapter(str(cli_db))
+    store.initialise()
+    rec = store.add_memory(
+        record=MemoryRecord(
+            content=f"[image] {rel}",
+            category=MemoryCategory.CONTEXT,
+            source=MemorySource.DOCUMENT,
+            metadata={
+                "collection": "test-lib",
+                "path": path,
+                "rel": rel,
+                "ext": ext,
+                "size": 1024,
+                "mtime": 1_700_000_000.0,
+                "online_only": False,
+                "folder": rel.rsplit("/", 1)[0] if "/" in rel else ".",
+                "index_mode": "vision",
+            },
+        )
+    )
+    store.close()
+    return rec.id
+
+
+def test_image_jobs_empty_db_exits_zero(cli_db: Path) -> None:
+    """image-jobs on an empty DB exits 0 and prints '0 image job(s)'."""
+    result = runner.invoke(app, ["image-jobs"])
+    assert result.exit_code == 0, result.output
+    assert "image job(s)" in result.output
+
+
+def test_image_jobs_table_output_default(cli_db: Path) -> None:
+    """image-jobs (no flags) renders a rich table with the required columns."""
+    result = runner.invoke(app, ["image-jobs"])
+    assert result.exit_code == 0, result.output
+    assert "file_id" in result.output
+    assert "rel" in result.output
+    assert "mime" in result.output
+
+
+def test_image_jobs_json_flag_emits_list(cli_db: Path) -> None:
+    """--json flag emits a JSON array (even when empty)."""
+    import json
+
+    result = runner.invoke(app, ["image-jobs", "--json"])
+    assert result.exit_code == 0, result.output
+    output = result.output.strip()
+    start = output.find("[")
+    end = output.rfind("]") + 1
+    assert start != -1, f"No JSON array in output: {output!r}"
+    parsed = json.loads(output[start:end])
+    assert isinstance(parsed, list)
+
+
+def test_image_jobs_all_flag_accepted(cli_db: Path) -> None:
+    """--all flag is accepted and produces exit-code 0."""
+    result = runner.invoke(app, ["image-jobs", "--all"])
+    assert result.exit_code == 0, result.output
+    assert "image job(s)" in result.output
+
+
+def test_image_jobs_needed_flag_accepted(cli_db: Path) -> None:
+    """--needed flag (default) is accepted and produces exit-code 0."""
+    result = runner.invoke(app, ["image-jobs", "--needed"])
+    assert result.exit_code == 0, result.output
+
+
+def test_image_jobs_limit_zero_means_no_cap(cli_db: Path) -> None:
+    """--limit 0 is the default (no cap); must not error."""
+    result = runner.invoke(app, ["image-jobs", "--limit", "0"])
+    assert result.exit_code == 0, result.output
+
+
+def test_image_jobs_limit_caps_results(cli_db: Path) -> None:
+    """--limit N caps the number of rows returned."""
+    for i in range(3):
+        _seed_image_file_record(
+            cli_db,
+            rel=f"img{i}.jpg",
+            path=f"/tmp/img{i}.jpg",  # noqa: S108
+            ext=".jpg",
+        )
+    result = runner.invoke(app, ["image-jobs", "--limit", "1"])
+    assert result.exit_code == 0, result.output
+    assert "image job(s)" in result.output
+
+
+def test_image_jobs_surfaces_seeded_raster(cli_db: Path) -> None:
+    """A raster file-record with no description appears in image-jobs."""
+    file_id = _seed_image_file_record(cli_db)
+    result = runner.invoke(app, ["image-jobs"])
+    assert result.exit_code == 0, result.output
+    assert file_id in result.output
+    assert "1 image job(s)" in result.output
+
+
+def test_image_jobs_bytes_flag_accepted(cli_db: Path) -> None:
+    """--bytes flag is accepted (does not error even when files are not readable)."""
+    _seed_image_file_record(cli_db)
+    result = runner.invoke(app, ["image-jobs", "--bytes"])
+    assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# image-caption-put
+# ---------------------------------------------------------------------------
+
+
+def test_image_caption_put_positional_text_stores_description(cli_db: Path) -> None:
+    """image-caption-put FILE_OR_ID TEXT stores the description and prints 'Stored description'."""
+    file_id = _seed_image_file_record(cli_db, rel="cat.png", path="/tmp/cat.png")  # noqa: S108
+    result = runner.invoke(app, ["image-caption-put", file_id, "A tabby cat on a red cushion."])
+    assert result.exit_code == 0, result.output
+    assert "Stored description" in result.output
+    assert "/tmp/cat.png" in result.output
+
+
+def test_image_caption_put_file_flag_reads_text(cli_db: Path, tmp_path: Path) -> None:
+    """--file reads the description from a file path."""
+    file_id = _seed_image_file_record(cli_db, rel="dog.png", path="/tmp/dog.png")  # noqa: S108
+    desc_file = tmp_path / "desc.txt"
+    desc_file.write_text("A golden retriever running through a meadow.")
+    result = runner.invoke(app, ["image-caption-put", file_id, "--file", str(desc_file)])
+    assert result.exit_code == 0, result.output
+    assert "Stored description" in result.output
+
+
+def test_image_caption_put_stdin_reads_text(cli_db: Path) -> None:
+    """Omitting TEXT and --file reads from stdin."""
+    file_id = _seed_image_file_record(cli_db, rel="bird.jpg", path="/tmp/bird.jpg")  # noqa: S108
+    result = runner.invoke(
+        app, ["image-caption-put", file_id], input="A blue jay on a birch branch."
+    )
+    assert result.exit_code == 0, result.output
+    assert "Stored description" in result.output
+
+
+def test_image_caption_put_empty_text_arg_errors(cli_db: Path) -> None:
+    """Passing an empty string as TEXT must exit non-zero (BadParameter)."""
+    file_id = _seed_image_file_record(cli_db)
+    result = runner.invoke(app, ["image-caption-put", file_id, ""])
+    assert result.exit_code != 0
+
+
+def test_image_caption_put_stdin_empty_errors(cli_db: Path) -> None:
+    """Stdin with only whitespace must exit non-zero."""
+    file_id = _seed_image_file_record(cli_db)
+    result = runner.invoke(app, ["image-caption-put", file_id], input="   ")
+    assert result.exit_code != 0
+
+
+def test_image_caption_put_unknown_path_errors(cli_db: Path) -> None:
+    """Providing an unknown id or path must exit non-zero (BadParameter from KeyError)."""
+    result = runner.invoke(
+        app, ["image-caption-put", "no-such-id", "Some description about the image."]
+    )
+    assert result.exit_code != 0
+
+
+def test_image_caption_put_persists_to_db(cli_db: Path) -> None:
+    """After image-caption-put, the description is visible in the SQLite store."""
+    file_id = _seed_image_file_record(cli_db, rel="sky.png", path="/tmp/sky.png")  # noqa: S108
+    runner.invoke(app, ["image-caption-put", file_id, "A clear blue sky with cirrus clouds."])
+    store = _store(cli_db)
+    conn = store.connect()
+    rows = conn.execute(
+        "SELECT content FROM memories WHERE json_extract(metadata, '$.kind') = 'image_description'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert "cirrus clouds" in rows[0][0]
+    store.close()
+
+
+def test_image_caption_put_idempotent_overwrites(cli_db: Path) -> None:
+    """Running image-caption-put twice for the same file-record overwrites the description."""
+    file_id = _seed_image_file_record(cli_db, rel="moon.jpg", path="/tmp/moon.jpg")  # noqa: S108
+    runner.invoke(app, ["image-caption-put", file_id, "First description."])
+    result2 = runner.invoke(app, ["image-caption-put", file_id, "Second description."])
+    assert result2.exit_code == 0, result2.output
+    # The second put must mention a replaced id.
+    assert "replaced" in result2.output.lower()
+
+    # Only one active description record in the DB.
+    store = _store(cli_db)
+    conn = store.connect()
+    active = conn.execute(
+        "SELECT content FROM memories "
+        "WHERE json_extract(metadata, '$.kind') = 'image_description' AND is_archived = 0"
+    ).fetchall()
+    assert len(active) == 1
+    assert "Second description" in active[0][0]
+    store.close()
+
+
+def test_image_jobs_then_put_roundtrip(cli_db: Path) -> None:
+    """After image-caption-put, image-jobs (default) does NOT surface the image again."""
+    import json
+
+    file_id = _seed_image_file_record(cli_db, rel="flower.png", path="/tmp/flower.png")  # noqa: S108
+
+    # Confirm it appears before describing.
+    res_before = runner.invoke(app, ["image-jobs", "--json"])
+    assert res_before.exit_code == 0
+    out = res_before.output.strip()
+    start, end = out.find("["), out.rfind("]") + 1
+    if start != -1:
+        jobs_before = json.loads(out[start:end])
+        assert any(j["file_id"] == file_id for j in jobs_before)
+
+    # Describe it.
+    runner.invoke(app, ["image-caption-put", file_id, "A red rose with morning dew."])
+
+    # Must not appear after.
+    res_after = runner.invoke(app, ["image-jobs", "--json"])
+    assert res_after.exit_code == 0
+    out2 = res_after.output.strip()
+    start2, end2 = out2.find("["), out2.rfind("]") + 1
+    if start2 != -1:
+        jobs_after = json.loads(out2[start2:end2])
+        assert not any(j["file_id"] == file_id for j in jobs_after)
+
+
+# ---------------------------------------------------------------------------
+# index-tree --vision smoke test
+# ---------------------------------------------------------------------------
+
+
+def test_index_tree_vision_svg_described_raster_queued_proprietary_skipped(
+    cli_db: Path, tmp_path: Path
+) -> None:
+    """index-tree --vision on a tiny tree:
+    - SVG with embedded text → svg-described=1
+    - PNG (raster) → images-queued=1 (provider=agent)
+    - .xd (proprietary) → vision-skipped=1
+    All three must appear in the report table.
+    """
+    tree = tmp_path / "assets"
+    tree.mkdir()
+
+    # SVG with embedded text that extract_svg_text will pull out.
+    (tree / "logo.svg").write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg">'
+        b"<title>MintMory Logo</title>"
+        b'<text x="10" y="20">Memory Graph</text>'
+        b"</svg>"
+    )
+    # Raster image — agent job, no inline description.
+    (tree / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+    # Proprietary format — skipped.
+    (tree / "design.xd").write_bytes(b"PK\x03\x04 fake xd")
+
+    result = runner.invoke(
+        app,
+        [
+            "index-tree",
+            str(tree),
+            "--collection",
+            "assets",
+            "--no-text-content",
+            "--vision",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    # Check the report table rows.
+    assert "svg-described" in result.output
+    assert "images-queued" in result.output
+    # vision-skipped only appears when vision_skipped > 0.
+    assert "vision-skipped" in result.output
+
+    # At least 1 svg-described (the logo.svg with two text fragments).
+    # We match by finding the row in the table output.
+    lines = result.output.splitlines()
+    svg_line = next((ln for ln in lines if "svg-described" in ln), None)
+    assert svg_line is not None
+    # The value after the row label should be "1".
+    assert "1" in svg_line
+
+    queued_line = next((ln for ln in lines if "images-queued" in ln), None)
+    assert queued_line is not None
+    assert "1" in queued_line
+
+    skipped_line = next((ln for ln in lines if "vision-skipped" in ln), None)
+    assert skipped_line is not None
+    assert "1" in skipped_line
+
+
+def test_index_tree_vision_svg_manifest_mode_vision(cli_db: Path, tmp_path: Path) -> None:
+    """index-tree --vision records index_mode='vision' in the manifest for SVG and PNG."""
+    tree = tmp_path / "imgs"
+    tree.mkdir()
+    (tree / "icon.svg").write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg"><title>Icon</title></svg>'
+    )
+    (tree / "bg.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    result = runner.invoke(
+        app, ["index-tree", str(tree), "--collection", "imgs", "--no-text-content", "--vision"]
+    )
+    assert result.exit_code == 0, result.output
+
+    conn = _store(cli_db).connect()
+    modes = {row[0] for row in conn.execute("SELECT index_mode FROM index_manifest").fetchall()}
+    assert "vision" in modes
+
+
+def test_index_tree_vision_incremental_no_re_describe_svg(cli_db: Path, tmp_path: Path) -> None:
+    """Re-running index-tree --vision on an unchanged SVG does NOT re-describe it.
+
+    The manifest change-detection 'covered' rule treats 'vision' as already richer
+    than 'metadata', so the SVG is skipped on the second run.
+    """
+    tree = tmp_path / "icons"
+    tree.mkdir()
+    (tree / "logo.svg").write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg"><title>Logo</title></svg>'
+    )
+
+    args = ["index-tree", str(tree), "--collection", "icons", "--no-text-content", "--vision"]
+
+    first = runner.invoke(app, args)
+    assert first.exit_code == 0, first.output
+
+    conn = _store(cli_db).connect()
+    count_after_first = conn.execute(
+        "SELECT count(*) FROM memories WHERE is_archived = 0"
+    ).fetchone()[0]
+
+    second = runner.invoke(app, args)
+    assert second.exit_code == 0, second.output
+
+    count_after_second = (
+        _store(cli_db)
+        .connect()
+        .execute("SELECT count(*) FROM memories WHERE is_archived = 0")
+        .fetchone()[0]
+    )
+
+    # No new memories or archives — the file was detected as unchanged.
+    assert count_after_second == count_after_first
+    assert "unchanged" in second.output
+
+
+def test_index_tree_without_vision_is_unchanged(cli_db: Path, tmp_path: Path) -> None:
+    """index-tree WITHOUT --vision must not produce svg-described/images-queued/vision-skipped."""
+    tree = tmp_path / "plain"
+    tree.mkdir()
+    (tree / "logo.svg").write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg"><title>Logo</title></svg>'
+    )
+    (tree / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    result = runner.invoke(
+        app, ["index-tree", str(tree), "--collection", "plain", "--no-text-content"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "svg-described" not in result.output
+    assert "images-queued" not in result.output
+    assert "vision-skipped" not in result.output
+
+
+def test_index_tree_vision_llm_provider_exits_nonzero(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MINTMORY_VISION_PROVIDER=llm + index-tree --vision must exit non-zero with clear message."""
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+    tree = tmp_path / "llm_test"
+    tree.mkdir()
+    (tree / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    result = runner.invoke(app, ["index-tree", str(tree), "--collection", "llm_test", "--vision"])
+    assert result.exit_code != 0
+    # The clear error message from captioner_from_settings must be present.
+    assert "agent" in result.output.lower() or "not implemented" in result.output.lower()

@@ -90,6 +90,22 @@ tags:
       contradiction resolution against inferred memories. Use ``POST /notes`` for
       capture and ``GET /notes`` for listing. To mark a note done, archive it via
       ``DELETE /memories/{id}``.
+  - name: Images
+    description: |
+      Agent-supplied image understanding (G5). MintMory does NOT call a vision model
+      — the calling agent IS the vision-capable model.
+
+      Workflow:
+      1. Call ``GET /images/jobs`` to get the raster images that still need a
+         description. Each job carries path, rel, mime, size, online_only, and either
+         an inline base64 ``image_b64`` (for online-only or when ``include_bytes=true``)
+         or ``null`` (agent reads the file at ``path``).
+      2. For each job the agent reads the image (via ``image_b64`` or ``path``),
+         writes ONE combined description (what it depicts + any legible text), and
+         sends it back with ``PUT /images/{file_id}``.
+      3. After a successful ``PUT``, the image drops out of the default
+         ``GET /images/jobs`` work-list (no-drift property). No vision backend or
+         extra dependency is required.
 
 paths:
 
@@ -894,6 +910,135 @@ paths:
                 $ref: '#/components/schemas/MemorySummary'
         '400':
           $ref: '#/components/responses/ValidationError'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ---------------------------------------------------------------------------
+  # Images
+  # ---------------------------------------------------------------------------
+
+  /images/jobs:
+    get:
+      operationId: listImageJobs
+      summary: List image-description jobs for the agent (agent-supplied vision)
+      description: |
+        Returns the set of raster image file-records the calling agent should
+        describe. MintMory does NOT call a vision model — the agent IS the
+        vision-capable model.
+
+        Each ``ImageJob`` carries the image file-record id (``file_id``), its
+        ``path``, ``rel``, ``mime``, ``size``, and ``online_only`` flag. When the
+        file is online-only OR ``include_bytes=true`` and the file is within the
+        size cap, ``image_b64`` contains the base64-encoded file bytes (the agent
+        can read the image inline). Otherwise ``image_b64`` is ``null`` and the
+        agent should read the file at ``path``.
+
+        By default (``include_all=false``) only raster images that NEED a
+        (re)description are returned — i.e. those with no active
+        ``image_description`` memory ANNOTATES-linking them. After calling
+        ``PUT /images/{file_id}``, the image drops from the default listing
+        (no-drift property).
+
+        SVG and proprietary image suffixes are never returned as agent jobs (SVGs
+        are self-described from embedded text during ``index-tree --vision``).
+      tags:
+        - Images
+      parameters:
+        - name: include_all
+          in: query
+          required: false
+          description: |
+            When ``false`` (default), return only raster images that still need a
+            description. When ``true``, return every raster image file-record
+            regardless of existing descriptions.
+          schema:
+            type: boolean
+            default: false
+        - name: include_bytes
+          in: query
+          required: false
+          description: |
+            When ``true``, force-embed base64 bytes for local files too (use when
+            the agent runs on a different host than the MintMory DB and cannot read
+            ``path`` directly). Online-only files always get base64 embedded
+            (within the size cap) regardless of this flag.
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          required: false
+          description: |
+            Maximum number of jobs to return (0 = no cap). Applied after selection,
+            in deterministic sorted order (by ``rel`` then ``file_id``).
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of image-description jobs for the agent to process.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ImageJob'
+
+  /images/{file_id}:
+    parameters:
+      - name: file_id
+        in: path
+        required: true
+        description: |
+          The image file-record memory id (from ``ImageJob.file_id``). ULID format.
+        schema:
+          type: string
+          minLength: 1
+
+    put:
+      operationId: putImageCaption
+      summary: Store an agent-supplied image description
+      description: |
+        Persists the agent's combined description for the image identified by
+        ``file_id`` (the image file-record memory id from an ``ImageJob``).
+
+        The description is stored as a ``context`` memory (``is_note=false``,
+        ``source=document``) ANNOTATES-linked to the image file-record via the
+        MM-16 edge (``link_type=annotates``, ``source=inference``).
+
+        **Idempotent (no-drift guarantee):** before adding the new description,
+        any existing active ``image_description`` memories for this file-record
+        are archived. Re-putting REPLACES the prior description. After a
+        successful ``PUT``, a default ``GET /images/jobs`` will NOT return this
+        image again on an unchanged tree. ``replaced_description_id`` is set in
+        the response when a prior description was archived.
+
+        No vision backend is required — the agent supplies the text.
+      tags:
+        - Images
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageCaptionPut'
+            examples:
+              describeRasterImage:
+                summary: Store a description for a raster image
+                value:
+                  description: "A screenshot of the MintMory dashboard showing a memory graph with three connected nodes labelled 'OAuth 2.0', 'Acme', and 'parking:read'. Text visible: 'Active memories: 1085'."
+      responses:
+        '200':
+          description: The stored image description with linkage facts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageDescription'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
@@ -2139,6 +2284,161 @@ components:
             no ``<think>`` stripping or prompt injection. Must be at least 1
             character.
           example: "OAuth 2.0 is used across all Acme integrations, always with PKCE."
+
+    ImageJob:
+      type: object
+      description: |
+        One indexed raster image the active agent should describe (agent-supplied
+        vision). Produced by ``GET /images/jobs``. Mirrors ``SummaryJob``: a pure
+        data carrier (NOT persisted) describing one unit of work.
+
+        ``image_b64`` is populated (base64 of the file bytes) only when the file
+        is ``online_only`` OR ``include_bytes=true`` AND the file is within the
+        configured size cap. Otherwise ``image_b64`` is ``null`` and the agent
+        reads the file at ``path``. When the file exceeds the size cap,
+        ``oversized=true`` is flagged (``image_b64`` stays ``null``).
+
+        ``current_description`` is the existing agent-supplied description text
+        for this image, populated only when ``include_all=true`` surfaces an
+        already-described image.
+      required:
+        - file_id
+        - path
+        - rel
+        - mime
+        - size
+        - online_only
+      properties:
+        file_id:
+          type: string
+          description: |
+            The image file-record memory id. Use this as the path parameter for
+            ``PUT /images/{file_id}`` to store the description.
+          example: "01HXYZ1234567890ABCDEFGHIJ"
+        path:
+          type: string
+          description: |
+            Absolute source path on the host where MintMory is running (from the
+            file-record metadata). The agent reads the image here when
+            ``image_b64`` is ``null`` and the agent runs on the same host.
+          example: "/home/user/projects/acme/docs/diagram.png"
+        rel:
+          type: string
+          description: |
+            POSIX path relative to the walk root (from the file-record metadata).
+            Human-readable identifier for the image within its collection.
+          example: "docs/diagram.png"
+        mime:
+          type: string
+          description: |
+            Best-effort MIME type derived from the file suffix (e.g.
+            ``"image/png"``, ``"image/jpeg"``, ``"image/gif"``,
+            ``"image/webp"``, ``"image/bmp"``). Defaults to
+            ``"application/octet-stream"`` for unknown suffixes.
+          example: "image/png"
+        size:
+          type: integer
+          description: On-disk byte size of the image (from the file-record metadata).
+          example: 204800
+        online_only:
+          type: boolean
+          description: |
+            ``true`` when the file is a cloud placeholder not yet downloaded to the
+            local filesystem. Online-only files always have ``image_b64`` populated
+            (within budget) because the agent cannot read them from ``path``.
+          example: false
+        image_b64:
+          type: string
+          nullable: true
+          description: |
+            Base64-encoded file bytes (ASCII). Populated when ``online_only=true``
+            OR ``include_bytes=true`` was requested, subject to the size cap.
+            ``null`` when the agent should read the file at ``path`` instead.
+            When ``oversized=true``, this is always ``null``.
+          example: null
+        current_description:
+          type: string
+          nullable: true
+          description: |
+            The existing image description text for this image (if any). Non-null
+            only when ``include_all=true`` surfaces an already-described image,
+            so the agent can refine rather than re-describe from scratch.
+            ``null`` for images that have not yet been described.
+          example: null
+        oversized:
+          type: boolean
+          description: |
+            ``true`` when ``image_b64`` was omitted because the file size exceeds
+            the configured ``MINTMORY_VISION_MAX_IMAGE_MB`` cap. The agent should
+            fall back to reading the file at ``path``.
+          default: false
+          example: false
+
+    ImageDescription:
+      type: object
+      description: |
+        The stored description of one image — the result of ``PUT /images/{file_id}``.
+        Wraps the created/updated ``image_description`` memory record plus the
+        linkage facts, mirroring ``NoteResult``'s shape (record + what-it-anchored-to).
+
+        ``record`` is the new ``image_description`` memory (``category=context``,
+        ``is_note=false``, ``source=document``). The description is also directly
+        searchable via ``POST /memories/search`` — it is an ordinary context memory
+        in the graph.
+
+        ``replaced_description_id`` is set when a prior active description existed
+        and was archived before the new one was added (the idempotent no-drift
+        guarantee).
+      required:
+        - record
+        - file_id
+        - source_image
+      properties:
+        record:
+          $ref: '#/components/schemas/MemoryRecord'
+          description: |
+            The newly created image description memory record (``is_note=false``,
+            ``category=context``, ``source=document``,
+            ``metadata.kind="image_description"``).
+        file_id:
+          type: string
+          description: |
+            The image file-record memory id this description ANNOTATES (the
+            ``file_id`` from the ``ImageJob``). An ``annotates`` ConceptLink with
+            ``source=inference`` connects the description to this file-record.
+          example: "01HXYZ1234567890ABCDEFGHIJ"
+        source_image:
+          type: string
+          description: |
+            The absolute path of the source image (from the file-record's
+            ``metadata["path"]``).
+          example: "/home/user/projects/acme/docs/diagram.png"
+        replaced_description_id:
+          type: string
+          nullable: true
+          description: |
+            ID of the prior active image description that was archived when this
+            new description was stored (the first archived record when multiple
+            existed). ``null`` when no prior description existed.
+          example: null
+
+    ImageCaptionPut:
+      type: object
+      description: |
+        Request body for ``PUT /images/{file_id}`` (agent-supplied image description).
+        The agent supplies one combined blob — what the image depicts plus any
+        legible text visible in it. Stored verbatim; the agent owns whitespace.
+      required:
+        - description
+      properties:
+        description:
+          type: string
+          minLength: 1
+          description: |
+            The agent's combined description of the image: what it depicts, any
+            legible text visible in it, and any other relevant details. One blob;
+            no structured ``{caption, ocr}`` split. Must be at least 1 character.
+          example: "A screenshot of the MintMory dashboard showing a memory graph with three connected nodes labelled 'OAuth 2.0', 'Acme', and 'parking:read'. Text visible: 'Active memories: 1085'."
 
     # -----------------------------------------------------------------------
     # Error types

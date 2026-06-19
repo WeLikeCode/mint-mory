@@ -22,6 +22,8 @@ from mintmory.api import app as app_module
 from mintmory.core.types import (
     ConceptLink,
     DreamReport,
+    ImageDescription,
+    ImageJob,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -834,3 +836,251 @@ def test_get_summary_jobs_not_shadowed_by_concept_handler(client: TestClient) ->
     assert resp.status_code == 200, resp.text
     # The response must be a list (array), not the MemorySummary dict for 'jobs'.
     assert isinstance(resp.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# Images — GET /images/jobs + PUT /images/{file_id}
+# ---------------------------------------------------------------------------
+
+
+def _seed_image_file_record(
+    client: TestClient,
+    *,
+    rel: str = "photos/sample.png",
+    path: str = "/tmp/photos/sample.png",  # noqa: S108 — test-only, no real file
+    ext: str = ".png",
+) -> str:
+    """Seed a synthetic image file-record via POST /memories and return its id.
+
+    Replicates the metadata shape ``index-tree`` writes so that ``image_jobs``
+    discovers it.  No real file needs to exist for the discovery tests.
+    """
+    resp = client.post(
+        "/memories",
+        json={
+            "content": f"[image] {rel}",
+            "category": "context",
+            "source": "document",
+            "metadata": {
+                "collection": "test-lib",
+                "path": path,
+                "rel": rel,
+                "ext": ext,
+                "size": 1024,
+                "mtime": 1_700_000_000.0,
+                "online_only": False,
+                "folder": rel.rsplit("/", 1)[0] if "/" in rel else ".",
+                "index_mode": "vision",
+            },
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    file_id: str = resp.json()["id"]
+    assert file_id
+    return file_id
+
+
+def test_get_image_jobs_returns_200_on_empty_db(client: TestClient) -> None:
+    """GET /images/jobs returns 200 and an empty list on a fresh DB."""
+    resp = client.get("/images/jobs")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == []
+
+
+def test_get_image_jobs_conforms_to_image_job_model(client: TestClient) -> None:
+    """Each element from GET /images/jobs must parse as an ImageJob."""
+    resp = client.get("/images/jobs")
+    assert resp.status_code == 200, resp.text
+    jobs = [ImageJob(**item) for item in resp.json()]
+    assert jobs == []
+
+
+def test_get_image_jobs_query_params_accepted(client: TestClient) -> None:
+    """include_all, include_bytes, and limit query params are accepted without 422."""
+    for params in (
+        {},
+        {"include_all": "true"},
+        {"include_bytes": "true"},
+        {"limit": "5"},
+        {"include_all": "false", "limit": "0"},
+    ):
+        resp = client.get("/images/jobs", params=params)
+        assert resp.status_code == 200, f"params={params!r}: {resp.text}"
+        assert isinstance(resp.json(), list)
+
+
+def test_get_image_jobs_limit_negative_rejected(client: TestClient) -> None:
+    """limit < 0 violates ge=0 → 422."""
+    resp = client.get("/images/jobs", params={"limit": "-1"})
+    assert resp.status_code == 422
+
+
+def test_get_image_jobs_surfaces_unseeded_raster(client: TestClient) -> None:
+    """A raster file-record with no description appears in GET /images/jobs."""
+    file_id = _seed_image_file_record(client)
+    resp = client.get("/images/jobs")
+    assert resp.status_code == 200, resp.text
+    jobs = resp.json()
+    assert len(jobs) == 1
+    job = ImageJob(**jobs[0])  # conformance
+    assert job.file_id == file_id
+    assert job.mime == "image/png"
+    assert job.online_only is False
+    assert job.image_b64 is None
+    assert job.oversized is False
+    assert job.current_description is None
+
+
+def test_put_image_caption_returns_200_and_conformant_image_description(
+    client: TestClient,
+) -> None:
+    """PUT /images/{file_id} returns 200 and a valid ImageDescription."""
+    file_id = _seed_image_file_record(client, rel="cat.png", path="/tmp/cat.png")  # noqa: S108
+    resp = client.put(
+        f"/images/{file_id}",
+        json={"description": "A tabby cat sitting on a red cushion."},
+    )
+    assert resp.status_code == 200, resp.text
+    desc = ImageDescription(**resp.json())  # OpenAPI-conformance proxy
+    assert desc.file_id == file_id
+    assert desc.record.is_note is False
+    assert desc.record.metadata.get("kind") == "image_description"
+    assert desc.replaced_description_id is None  # first put — nothing to replace
+
+
+def test_put_image_caption_text_stored_verbatim(client: TestClient) -> None:
+    """The description text is stored verbatim (no trimming)."""
+    file_id = _seed_image_file_record(client, rel="dog.png", path="/tmp/dog.png")  # noqa: S108
+    text = "  A golden retriever running through a meadow.  "
+    resp = client.put(f"/images/{file_id}", json={"description": text})
+    assert resp.status_code == 200, resp.text
+    # Core stores verbatim; transport does not strip.
+    assert resp.json()["record"]["content"] == text
+
+
+def test_put_image_caption_unknown_file_id_returns_404(client: TestClient) -> None:
+    """PUT /images/{file_id} with an unknown id returns 404."""
+    resp = client.put(
+        "/images/no-such-file-id",
+        json={"description": "Some description."},
+    )
+    assert resp.status_code == 404
+
+
+def test_put_image_caption_empty_description_returns_422(client: TestClient) -> None:
+    """PUT /images/{file_id} with empty description violates min_length=1 → 422."""
+    file_id = _seed_image_file_record(client)
+    resp = client.put(f"/images/{file_id}", json={"description": ""})
+    assert resp.status_code == 422
+
+
+def test_put_image_caption_missing_description_returns_422(client: TestClient) -> None:
+    """PUT /images/{file_id} without a body field returns 422."""
+    file_id = _seed_image_file_record(client)
+    resp = client.put(f"/images/{file_id}", json={})
+    assert resp.status_code == 422
+
+
+def test_put_image_caption_round_trip_then_jobs_empty(client: TestClient) -> None:
+    """After PUT /images/{file_id}, GET /images/jobs must NOT re-surface that image.
+
+    This is the no-drift guarantee: image_caption_put archives prior descriptions
+    and creates a new active one, so the needs-redescribe predicate is satisfied.
+    """
+    file_id = _seed_image_file_record(client, rel="bird.jpg", path="/tmp/bird.jpg")  # noqa: S108
+
+    # Confirm the image appears in the default jobs list before describing.
+    resp_before = client.get("/images/jobs")
+    assert resp_before.status_code == 200
+    job_ids_before = [j["file_id"] for j in resp_before.json()]
+    assert file_id in job_ids_before
+
+    # Store a description.
+    put_resp = client.put(
+        f"/images/{file_id}",
+        json={"description": "A blue jay perched on a birch branch."},
+    )
+    assert put_resp.status_code == 200, put_resp.text
+
+    # The image must no longer appear in the default jobs list.
+    resp_after = client.get("/images/jobs")
+    assert resp_after.status_code == 200
+    job_ids_after = [j["file_id"] for j in resp_after.json()]
+    assert file_id not in job_ids_after, (
+        "image must be absent from default /images/jobs after a successful PUT"
+    )
+
+
+def test_put_image_caption_idempotent_replaces_prior(client: TestClient) -> None:
+    """Re-putting a description archives the old one and sets replaced_description_id."""
+    file_id = _seed_image_file_record(client, rel="flower.png", path="/tmp/flower.png")  # noqa: S108
+
+    # First describe.
+    first = client.put(
+        f"/images/{file_id}", json={"description": "A red rose against a white background."}
+    )
+    assert first.status_code == 200
+    first_desc_id: str = first.json()["record"]["id"]
+
+    # Second describe — must archive the first.
+    second = client.put(f"/images/{file_id}", json={"description": "A red rose with morning dew."})
+    assert second.status_code == 200
+    second_data = second.json()
+    assert second_data["replaced_description_id"] == first_desc_id
+
+    # After the second put the image still does not reappear in jobs.
+    jobs_resp = client.get("/images/jobs")
+    assert jobs_resp.status_code == 200
+    assert all(j["file_id"] != file_id for j in jobs_resp.json())
+
+
+def test_get_image_jobs_include_all_surfaces_described_image(client: TestClient) -> None:
+    """include_all=true returns already-described images with current_description set."""
+    file_id = _seed_image_file_record(client, rel="sky.webp", path="/tmp/sky.webp", ext=".webp")
+
+    client.put(
+        f"/images/{file_id}", json={"description": "A sunset over the ocean with orange hues."}
+    )
+
+    resp = client.get("/images/jobs", params={"include_all": "true"})
+    assert resp.status_code == 200
+    matching = [j for j in resp.json() if j["file_id"] == file_id]
+    assert len(matching) == 1
+    job = ImageJob(**matching[0])  # conformance
+    assert job.current_description == "A sunset over the ocean with orange hues."
+
+
+def test_get_image_jobs_svg_not_surfaced(client: TestClient) -> None:
+    """SVG file-records must never appear in GET /images/jobs."""
+    client.post(
+        "/memories",
+        json={
+            "content": "[svg] logo.svg",
+            "category": "context",
+            "source": "document",
+            "metadata": {
+                "collection": "lib",
+                "path": "/tmp/logo.svg",  # noqa: S108
+                "rel": "logo.svg",
+                "ext": ".svg",
+                "size": 256,
+                "mtime": 1_700_000_000.0,
+                "online_only": False,
+                "folder": ".",
+                "index_mode": "vision",
+            },
+        },
+    )
+    resp = client.get("/images/jobs")
+    assert resp.status_code == 200
+    # SVG-only store → zero raster jobs.
+    assert resp.json() == []
+
+
+def test_get_image_jobs_works_without_vision_backend(client: TestClient) -> None:
+    """GET /images/jobs works with provider=agent (the default — no backend needed)."""
+    file_id = _seed_image_file_record(client)
+    # No MINTMORY_VISION_* env vars set → provider=agent; must not error.
+    resp = client.get("/images/jobs")
+    assert resp.status_code == 200
+    assert any(j["file_id"] == file_id for j in resp.json())

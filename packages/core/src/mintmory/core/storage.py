@@ -256,6 +256,7 @@ class StorageAdapter:
         conn.commit()
         self._ensure_trigram(conn)
         self._ensure_is_note_column(conn)
+        self._ensure_index_mode_vision(conn)
 
     def _ensure_trigram(self, conn: sqlite3.Connection) -> None:
         """
@@ -336,6 +337,59 @@ class StorageAdapter:
                 conn.commit()
         except sqlite3.OperationalError:
             pass
+
+    def _ensure_index_mode_vision(self, conn: sqlite3.Connection) -> None:
+        """Best-effort, idempotent widening of index_manifest.index_mode to allow 'vision'.
+
+        Fresh DBs already allow it from schema.sql (CHECK includes 'vision').  On a
+        pre-existing DB whose CHECK only allows ('metadata','content'), rebuild the
+        table with the wider CHECK: CREATE new → INSERT SELECT → DROP old → RENAME.
+        Detects the need by inspecting the stored CREATE sql for the table; a re-run
+        after migration is a no-op.  Any sqlite3.OperationalError degrades gracefully
+        — callers still write 'metadata'/'content', which remain legal either way.
+        """
+        try:
+            row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='index_manifest'"
+            ).fetchone()
+            if row is None:
+                # Table does not exist yet — schema.sql will create it with 'vision'.
+                return
+            stored_sql: str = row["sql"] or ""
+            # Migrate only when the stored DDL has the old two-value CHECK and lacks 'vision'.
+            if "'vision'" in stored_sql or '"vision"' in stored_sql:
+                return  # already wide — no-op
+            if "'metadata'" not in stored_sql and '"metadata"' not in stored_sql:
+                return  # unexpected DDL shape — leave untouched
+            # Rebuild: create a shadow table with the wider CHECK, copy all rows,
+            # drop the old table, rename the shadow.
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS index_manifest_new (
+                    path          TEXT PRIMARY KEY,
+                    collection    TEXT NOT NULL,
+                    size          INTEGER NOT NULL,
+                    mtime         REAL NOT NULL,
+                    content_hash  TEXT,
+                    index_mode    TEXT NOT NULL DEFAULT 'metadata'
+                                      CHECK (index_mode IN ('metadata','content','vision')),
+                    memory_ids    TEXT NOT NULL DEFAULT '[]',
+                    online_only   INTEGER NOT NULL DEFAULT 0,
+                    last_seen     TEXT NOT NULL
+                );
+                INSERT OR IGNORE INTO index_manifest_new
+                    SELECT path, collection, size, mtime, content_hash,
+                           index_mode, memory_ids, online_only, last_seen
+                    FROM index_manifest;
+                DROP TABLE index_manifest;
+                ALTER TABLE index_manifest_new RENAME TO index_manifest;
+                CREATE INDEX IF NOT EXISTS idx_manifest_collection
+                    ON index_manifest(collection);
+                """
+            )
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # degrade gracefully — 'metadata'/'content' writes remain valid
 
     # ------------------------------------------------------------------
     # Embedding helpers
@@ -901,6 +955,62 @@ class StorageAdapter:
             (memory_id, ConceptLinkType.ANNOTATES.value, cap),
         ).fetchall()
         return [self._row_to_memory(row) for row in rows]
+
+    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+        """Return up to ``cap`` ACTIVE image_description memories that ANNOTATE ``memory_id``.
+
+        Performs a reverse traversal of the ANNOTATES edge (MM-16 pattern): the
+        description is the ``source_memory_id``, ``memory_id`` the
+        ``target_memory_id``.  Filters ``m.is_note = 0`` AND ``m.is_archived = 0``
+        AND ``json_extract(m.metadata, '$.kind') = 'image_description'``.  Ordered
+        by created_at DESC.  ``cap <= 0`` returns [].
+
+        This is the description analogue of ``get_annotating_notes`` and does NOT
+        overlap it: notes filter ``is_note = 1``; descriptions filter ``is_note = 0``
+        with an explicit ``kind`` predicate.
+        """
+        if cap <= 0:
+            return []
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT m.* FROM concept_links l "
+            "JOIN memories m ON m.id = l.source_memory_id "
+            "WHERE l.target_memory_id = ? AND l.link_type = ? "
+            "AND m.is_note = 0 AND m.is_archived = 0 "
+            "AND json_extract(m.metadata, '$.kind') = 'image_description' "
+            "ORDER BY m.created_at DESC "
+            "LIMIT ?",
+            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
+        ).fetchall()
+        return [self._row_to_memory(row) for row in rows]
+
+    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+        """Find the most recent ACTIVE file-record matching ``path_or_rel`` (path or rel).
+
+        A file-record is distinguished from an image_description by the absence of a
+        ``kind`` key (or its value not being ``'image_description'``).  Matches on
+        ``metadata['path']`` first; falls back to ``metadata['rel']``.  Returns
+        ``None`` when no matching active record is found.
+
+        Used by ``image_caption_put`` to resolve a path argument to the file-record
+        it should ANNOTATE (§8c of the design contract).
+        """
+        conn = self.connect()
+        row = conn.execute(
+            "SELECT * FROM memories "
+            "WHERE is_archived = 0 "
+            "AND (json_extract(metadata, '$.path') = ? OR json_extract(metadata, '$.rel') = ?) "
+            "AND json_extract(metadata, '$.kind') IS NULL "
+            # §8c: match an IMAGE file-record (ext in the image set), so LIMIT 1
+            # picks the most-recent image rather than any same-path record.
+            "AND lower(json_extract(metadata, '$.ext')) IN "
+            "('.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg') "
+            "ORDER BY created_at DESC LIMIT 1",
+            (path_or_rel, path_or_rel),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_memory(row)
 
     def _anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.

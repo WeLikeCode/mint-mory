@@ -1,7 +1,7 @@
 """
 Central, env-driven configuration for MintMory — the single source for every
 tunable knob (embedding, concept-linking, entity filtering, L3 summaries, the LLM
-backend, and OpenTelemetry).
+backend, OpenTelemetry, and image understanding).
 
 Design rules (see docs/EXPERIMENTS.md and docs/OBSERVABILITY.md):
   * One module, built on pydantic-settings (already a core dependency).
@@ -48,6 +48,12 @@ class LLMProvider(str, Enum):
     NONE = "none"  # default — no LLM; L3 + contradiction resolution skipped
     OLLAMA = "ollama"  # OpenAI-compatible local endpoint (Ollama/LM Studio/vLLM)
     OPENAI = "openai"  # OpenAI / any OpenAI-compatible hosted endpoint
+
+
+class VisionProvider(str, Enum):
+    AGENT = "agent"  # default — no backend; the active agent supplies the text
+    LLM = "llm"  # SEAM/STUB v1 — OpenAI-compatible vision tier (raises in v1)
+    OCR = "ocr"  # SEAM/STUB v1 — local tesseract behind [ocr] (raises in v1)
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +217,54 @@ class NoteSettings(BaseSettings):
     anchor_min_dominance: float = Field(default=0.6, ge=0.0, le=1.0)
 
 
+# ---------------------------------------------------------------------------
+# Image understanding (MINTMORY_VISION_*) — agent-supplied vision (G5).
+# Defaults reproduce today's behaviour: provider=agent (no backend; the agent
+# describes images via the image_jobs/image_caption_put prepare/apply loop).
+# ``llm``/``ocr`` are a compile-time seam — selecting them raises a clear
+# NotImplementedError in v1. Pillow ([image] extra) is optional and lazy-imported
+# only in the downscale path; absent → raw bytes embedded (size-cap still applies).
+# ---------------------------------------------------------------------------
+class VisionSettings(BaseSettings):
+    """Image-understanding (G5). Defaults reproduce today's behaviour: provider
+    defaults to ``agent`` (no backend; agent-supplied prepare/apply loop) and
+    nothing is described unless ``index-tree --vision`` or ``image_jobs`` is
+    explicitly invoked. ``llm``/``ocr`` are a seam: selecting them raises a clear
+    NotImplementedError in v1."""
+
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_VISION_", extra="ignore")
+
+    provider: VisionProvider = VisionProvider.AGENT
+    # Per-image on-disk byte cap for the hybrid-bytes payload. Files larger than
+    # this are NOT base64-embedded — image_b64 stays None and oversized=True is
+    # flagged so the agent can fall back to ``path`` (0 = no cap).
+    max_image_mb: float = Field(default=8.0, ge=0.0)
+    # Longest-edge pixel target for the optional Pillow downscale of embedded
+    # payloads (keeps base64 small). Only used when the [image] extra is present;
+    # 0 = never downscale (just size-cap/skip).
+    downscale_max_px: int = Field(default=1568, ge=0)
+    # Download budget (bytes-equivalent in MB) for online-only images fetched to
+    # build the base64 payload. Shares the SAME semantics as index-tree's
+    # --max-download-mb (0 = unlimited). Used by image_jobs(include_bytes/online).
+    max_download_mb: float = Field(default=200.0, ge=0.0)
+    # provider-specific (llm/ocr) — unused by the agent path, present so the seam
+    # is complete and llm/ocr drop in without a config change:
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    tesseract_cmd: str | None = None  # ocr: explicit tesseract binary path
+
+    @property
+    def max_image_bytes(self) -> int | None:
+        """On-disk byte cap derived from ``max_image_mb`` (None when <= 0, i.e. no cap)."""
+        return None if self.max_image_mb <= 0 else int(self.max_image_mb * 1024 * 1024)
+
+    @property
+    def max_download_bytes(self) -> int | None:
+        """Download budget cap from ``max_download_mb`` (None when <= 0, i.e. unlimited)."""
+        return None if self.max_download_mb <= 0 else int(self.max_download_mb * 1024 * 1024)
+
+
 class Settings(BaseSettings):
     """Aggregate of every settings group. Each group still reads its own env vars."""
 
@@ -224,6 +278,7 @@ class Settings(BaseSettings):
     convert: ConversionSettings = Field(default_factory=ConversionSettings)
     otel: OTelSettings = Field(default_factory=OTelSettings)
     note: NoteSettings = Field(default_factory=NoteSettings)
+    vision: VisionSettings = Field(default_factory=VisionSettings)  # image understanding (G5)
 
 
 def load_settings() -> Settings:

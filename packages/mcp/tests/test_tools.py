@@ -62,6 +62,8 @@ async def test_all_tools_registered(mcp_client: Client[Any]) -> None:
         "summary_put",
         "memory_note",
         "notes_list",
+        "image_jobs",
+        "image_caption_put",
     }
 
 
@@ -696,3 +698,219 @@ def test_get_store_is_singleton(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) 
         if server._store is not None:
             server._store.close()
         server._store = None
+
+
+# ---------------------------------------------------------------------------
+# image_jobs / image_caption_put (agent-supplied vision, G5)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_image_file_record(
+    mcp_client: Client[Any],
+    *,
+    rel: str = "photos/sample.png",
+    path: str = "/tmp/photos/sample.png",  # noqa: S108 — test-only, no real file
+    ext: str = ".png",
+) -> str:
+    """Add a synthetic image file-record memory and return its id.
+
+    This replicates what ``index-tree`` writes: a ``context``/``document`` memory
+    with ext/rel/path/size/mtime/online_only/index_mode in metadata.
+    """
+    res = await mcp_client.call_tool(
+        "memory_add",
+        {
+            "content": f"[image] {rel}",
+            "category": "context",
+            "source": "document",
+            "metadata": {
+                "collection": "test-lib",
+                "path": path,
+                "rel": rel,
+                "ext": ext,
+                "size": 1024,
+                "mtime": 1_700_000_000.0,
+                "online_only": False,
+                "folder": str(rel).rsplit("/", 1)[0] if "/" in rel else ".",
+                "index_mode": "vision",
+            },
+        },
+    )
+    assert res.data["id"], "expected a memory id"
+    return str(res.data["id"])
+
+
+async def test_image_jobs_empty_on_fresh_db(mcp_client: Client[Any]) -> None:
+    """image_jobs returns [] when no raster image file-records exist."""
+    res = await mcp_client.call_tool("image_jobs", {})
+    assert res.data == []
+
+
+async def test_image_jobs_returns_unseeded_raster(mcp_client: Client[Any]) -> None:
+    """image_jobs (default) surfaces a raster file-record that has no description."""
+    file_id = await _seed_image_file_record(mcp_client)
+    res = await mcp_client.call_tool("image_jobs", {})
+    data = res.data
+    assert isinstance(data, list)
+    assert len(data) == 1
+    job = data[0]
+    assert job["file_id"] == file_id
+    assert job["mime"] == "image/png"
+    assert job["online_only"] is False
+    assert job["image_b64"] is None  # local file, include_bytes=False
+    assert job["oversized"] is False
+    assert job["current_description"] is None
+
+
+async def test_image_jobs_include_all_param_accepted(mcp_client: Client[Any]) -> None:
+    """include_all=True is accepted without error (returns a list)."""
+    await _seed_image_file_record(mcp_client)
+    res = await mcp_client.call_tool("image_jobs", {"include_all": True})
+    assert isinstance(res.data, list)
+
+
+async def test_image_jobs_limit_caps_results(mcp_client: Client[Any]) -> None:
+    """limit>0 caps the returned job list."""
+    for i in range(3):
+        await _seed_image_file_record(
+            mcp_client,
+            rel=f"img{i}.jpg",
+            path=f"/tmp/img{i}.jpg",  # noqa: S108
+            ext=".jpg",
+        )
+    res = await mcp_client.call_tool("image_jobs", {"limit": 2})
+    assert isinstance(res.data, list)
+    assert len(res.data) <= 2
+
+
+async def test_image_caption_put_empty_description_bad_request(
+    mcp_client: Client[Any],
+) -> None:
+    """image_caption_put with an empty/whitespace description returns bad_request."""
+    res = await mcp_client.call_tool(
+        "image_caption_put",
+        {"file_id_or_path": "some-id", "description": "   "},
+    )
+    data = res.data
+    assert isinstance(data, dict)
+    assert data["error"] == "bad_request"
+    assert "description" in data["message"]
+
+
+async def test_image_caption_put_unknown_id_not_found(mcp_client: Client[Any]) -> None:
+    """image_caption_put with an unknown file_id returns not_found."""
+    res = await mcp_client.call_tool(
+        "image_caption_put",
+        {"file_id_or_path": "no-such-id", "description": "A photo of a cat."},
+    )
+    data = res.data
+    assert isinstance(data, dict)
+    assert data["error"] == "not_found"
+
+
+async def test_image_jobs_then_caption_put_then_jobs_empty(
+    mcp_client: Client[Any],
+) -> None:
+    """Happy-path round-trip: image_jobs -> image_caption_put -> image_jobs returns [].
+
+    After image_caption_put stores a description for a file-record, the default
+    image_jobs (needs-redescribe predicate) must NOT re-surface that file-record.
+    This is the no-drift / idempotent guarantee from design §5a + §7.
+    """
+    # 1. Seed a raster image file-record.
+    file_id = await _seed_image_file_record(mcp_client, rel="cat.png", path="/tmp/cat.png")  # noqa: S108
+
+    # 2. Confirm it appears in the default image_jobs list.
+    res_before = await mcp_client.call_tool("image_jobs", {})
+    job_ids = [j["file_id"] for j in res_before.data]
+    assert file_id in job_ids, "seeded file-record must appear in image_jobs"
+
+    # 3. Store a description via image_caption_put.
+    put_res = await mcp_client.call_tool(
+        "image_caption_put",
+        {
+            "file_id_or_path": file_id,
+            "description": "A tabby cat sitting on a red cushion.",
+        },
+    )
+    desc_data = put_res.data
+    assert isinstance(desc_data, dict)
+    assert "record" in desc_data, f"expected ImageDescription dict, got: {desc_data}"
+    assert desc_data["file_id"] == file_id
+    assert desc_data["record"]["is_note"] is False
+    assert desc_data["record"]["metadata"]["kind"] == "image_description"
+
+    # 4. Confirm image_jobs (default) no longer surfaces the described image.
+    res_after = await mcp_client.call_tool("image_jobs", {})
+    job_ids_after = [j["file_id"] for j in res_after.data]
+    assert file_id not in job_ids_after, (
+        "described image must NOT appear in default image_jobs after image_caption_put"
+    )
+
+
+async def test_image_caption_put_idempotent_replaces_prior(
+    mcp_client: Client[Any],
+) -> None:
+    """A second image_caption_put archives the first description (replaced_description_id set)."""
+    file_id = await _seed_image_file_record(mcp_client, rel="dog.png", path="/tmp/dog.png")  # noqa: S108
+
+    # First put.
+    first = await mcp_client.call_tool(
+        "image_caption_put",
+        {"file_id_or_path": file_id, "description": "A golden retriever running."},
+    )
+    first_desc_id: str = first.data["record"]["id"]
+
+    # Second put — must archive the first.
+    second = await mcp_client.call_tool(
+        "image_caption_put",
+        {"file_id_or_path": file_id, "description": "A golden retriever sitting."},
+    )
+    second_data = second.data
+    assert second_data["replaced_description_id"] == first_desc_id
+
+    # After the second put, the image must still NOT appear in default image_jobs.
+    res = await mcp_client.call_tool("image_jobs", {})
+    assert all(j["file_id"] != file_id for j in res.data)
+
+
+async def test_image_jobs_include_all_surfaces_described_image(
+    mcp_client: Client[Any],
+) -> None:
+    """include_all=True returns already-described images with current_description set."""
+    file_id = await _seed_image_file_record(mcp_client, rel="bird.jpg", path="/tmp/bird.jpg")  # noqa: S108
+    await mcp_client.call_tool(
+        "image_caption_put",
+        {"file_id_or_path": file_id, "description": "A blue jay perched on a branch."},
+    )
+
+    res = await mcp_client.call_tool("image_jobs", {"include_all": True})
+    matching = [j for j in res.data if j["file_id"] == file_id]
+    assert len(matching) == 1
+    assert matching[0]["current_description"] == "A blue jay perched on a branch."
+
+
+async def test_image_jobs_svg_not_surfaced(mcp_client: Client[Any]) -> None:
+    """SVG file-records must never appear in image_jobs (they are self-described)."""
+    await mcp_client.call_tool(
+        "memory_add",
+        {
+            "content": "[svg] diagram.svg",
+            "category": "context",
+            "source": "document",
+            "metadata": {
+                "collection": "lib",
+                "path": "/tmp/diagram.svg",  # noqa: S108
+                "rel": "diagram.svg",
+                "ext": ".svg",
+                "size": 512,
+                "mtime": 1_700_000_000.0,
+                "online_only": False,
+                "folder": ".",
+                "index_mode": "vision",
+            },
+        },
+    )
+    res = await mcp_client.call_tool("image_jobs", {})
+    assert all(j["mime"] != "image/svg+xml" for j in res.data)
+    assert res.data == []  # SVG-only store → zero raster jobs
