@@ -1,5 +1,9 @@
 # MintMory
 
+[![CI](https://github.com/WeLikeCode/mint-mory/actions/workflows/ci.yml/badge.svg)](https://github.com/WeLikeCode/mint-mory/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/)
+
 **Typed, graph-linked, self-consolidating memory for LLM agents — in a single SQLite file.**
 
 MintMory gives an agent a long-term memory that is *typed* (every memory has a
