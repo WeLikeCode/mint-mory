@@ -1,0 +1,23 @@
+{
+  "config": {
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "dim": 384,
+    "num_queries": 200,
+    "corpus_size": 100000,
+    "golden_union": 598,
+    "db_mb": 716.6
+  },
+  "metrics": {
+    "hybrid_vs_golden@3": 0.6633,
+    "hybrid_vs_golden@10": 0.8567,
+    "vector_vs_golden@3": 0.71,
+    "vector_vs_golden@10": 0.8667,
+    "hybrid_vs_self@3": 0.6583,
+    "hybrid_vs_self@10": 0.5695
+  },
+  "latency_ms": {
+    "mean": 270.76,
+    "p50": 275.47,
+    "p95": 312.9
+  }
+}

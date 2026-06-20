@@ -729,3 +729,42 @@ until an experiment overrides a value). Grouped: `embed_*`, `link_*`, `entity_*`
 - **DF-aware embedder IDF couples the embedder to the store** (query vector depends
   on corpus). Mitigate by shipping `use_idf=False` first (pure function of text);
   only enable IDF if E-E4 shows a win.
+
+---
+
+## 10. LEANN-adapted recall benchmark (external retrieval quality)
+
+Harness: `docs/eval/leann_recall_benchmark.py`. Adapts LEANN's recall@k
+methodology (`benchmarks/run_evaluation.py`) onto MintMory's own hybrid search,
+reusing LEANN's DPR / Natural-Questions eval data (queries + exact-flat
+contriever ground truth). Unlike the hand-labelled `probe_queries.json` (§ above,
+6 queries — *directional*), this is a **200-query / 100k-passage** external
+benchmark, so the numbers are statistically meaningful (not absolute SOTA: the
+haystack is a tractable subset of LEANN's full 2.1M DPR corpus, and the golden is
+cross-model — contriever-msmarco vs MintMory's embedder).
+
+Two ground truths: **LEANN NQ golden** (did we recover the same passages an exact
+contriever search returns?) and **MintMory exact-flat / self** (does the hybrid
+ranking match MintMory's own pure brute-force cosine top-k?).
+
+Run: `uv run --no-sync python docs/eval/leann_recall_benchmark.py --embedder local --num-queries 200 --corpus-size 100000`
+
+### Result — `all-MiniLM-L6-v2`, 200 q, 100k psg (2026-06-20)
+
+| Retrieval | vs ground truth | recall@3 | recall@10 |
+|---|---|---|---|
+| Hybrid (FTS+trigram+vector RRF) | LEANN NQ golden | 0.663 | 0.857 |
+| Vector-only (brute-force cosine) | LEANN NQ golden | **0.710** | 0.867 |
+| Hybrid | MintMory exact-flat (self) | 0.658 | 0.570 |
+
+Latency (hybrid, brute-force vector / 100k): mean 271 ms, p50 275, p95 313. DB 717 MB.
+
+**FINDING (RRF dilutes the top of semantic ranking):** at 100k scale the lexical
+(FTS+trigram) phase, RRF-merged, **lowers recall@3 vs pure vector** (0.663 vs
+0.710); the harm is concentrated at the head of the list and washes out by @10
+(0.857 vs 0.867). `hybrid_vs_self@3 = 0.658` confirms RRF substantially reorders
+the dense top-k. In the small (2k) smoke run hybrid *won* — the regression only
+emerges as the lexical haystack grows. **Implication:** for semantic-heavy
+retrieval the default RRF under-weights the dense signal at the top; candidate
+fix = vector-weighted fusion or a cosine rerank of the final page (to be measured
+on this same harness). VERDICT: finding recorded; fix under investigation.
