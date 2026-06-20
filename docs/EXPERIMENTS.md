@@ -806,3 +806,34 @@ also recovers @3 but caps @10 at the rerank pool. Proposed change: a
 per-source weight on `rrf_merge` (env `MINTMORY_SEARCH_VECTOR_RRF_WEIGHT`,
 **default 1.0 = today's behaviour**; recommended 3.0), keeping the hashing default
 unaffected (lexical-vector, where fusion already helps).
+
+---
+
+## 11. mempalace comparison — LongMemEval (agent-memory recall)
+
+Harness: `docs/eval/mempalace_longmemeval_benchmark.py`. Adapts mempalace's
+LongMemEval *raw* methodology (session granularity, doc = joined user turns,
+metric `recall_any@k` vs `answer_session_ids`, embedder all-MiniLM-L6-v2) onto
+MintMory's search. 500 questions, ~53 sessions each. Compared against mempalace's
+**published** raw numbers (their README / committed results).
+
+### Result — all-MiniLM-L6-v2, 500 q (2026-06-20)
+
+| System / variant | R@5 | R@10 |
+|---|---|---|
+| mempalace raw (published) | 0.966 | 0.982 |
+| MintMory vector-only (pure cosine) | 0.966 | 0.982 |
+| MintMory hybrid (default, w=1) | 0.970 | 0.988 |
+| MintMory hybrid + MM-22 (vector_rrf_weight=3) | **0.972** | **0.992** |
+
+**Findings:** (1) MintMory's pure-vector path reproduces mempalace's raw number
+to the digit (same model + data + metric) — confirms harness fidelity. (2)
+MintMory's hybrid **beats** mempalace raw (0.970 vs 0.966 R@5) — on conversational
+memory the FTS+trigram fusion is *additive* (opposite of the DPR/§10 case where
+lexical noise hurt recall@3). (3) **MM-22 weighted RRF is the top performer**
+(0.972 / 0.992), so the fix is a net win on BOTH benchmark families — supporting a
+default bump toward 3.0. Runtime 254s for 500 q × 3 variants. NOTE: this is the
+like-for-like *raw/generic* comparison; mempalace's higher published numbers
+(98.4% held-out, ≥99% +LLM-rerank) come from heavily hand-tuned, partly
+test-inspected heuristics (temporal/quote/name boosts, preference extraction),
+which their own BENCHMARKS.md flags as teaching-to-the-test.
