@@ -20,6 +20,11 @@ useful when it is typed, linked, and queryable — not stored as opaque blobs.
 
 ## Highlights
 
+- **Benchmarked head-to-head.** MintMory's generic hybrid search matches or beats
+  the purpose-built [mempalace](https://github.com/mempalace/mempalace) across all
+  four of its agent-memory benchmarks (LongMemEval, LoCoMo, ConvoMem, MemBench) —
+  same embedder, zero benchmark-specific tuning, one SQLite file. Numbers +
+  one-command reproduction: **[BENCHMARKS.md](BENCHMARKS.md)**.
 - **One core, three transports.** The same domain logic is exposed as a **CLI**
   (Typer), an **MCP server** (for Claude Code, Cursor, Open WebUI, …), and an
   **HTTP API** (FastAPI).

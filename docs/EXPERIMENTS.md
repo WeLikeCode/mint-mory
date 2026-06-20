@@ -893,3 +893,40 @@ lexical fusion adds distractor noise; MM-22 (w=3) partially recovers (0.909) by
 upweighting vector. Consolidated cross-benchmark picture: vector-only == mempalace
 raw everywhere; hybrid fusion is workload-dependent (LoCoMo exact-match +0.32,
 LongMemEval +0.004, ConvoMem −0.03), and MM-22's vector weight is the right knob.
+
+---
+
+## 14. mempalace comparison — MemBench (ACL 2025, per-turn recall)
+
+Harness: `docs/eval/mempalace_membench_benchmark.py` (data:
+github.com/import-myself/Membench, `MemData/FirstAgent`, topic=movie). Per item:
+index every conversation turn (batch-embed + bulk-insert), query the QA question,
+hit@k = a `target_step_id` turn is in the top-k (matched on sid or global index).
+8500 items, all-MiniLM-L6-v2, top-5. vs mempalace published HYBRID 0.803.
+
+### Result — movie, top-5, 8500 items (2026-06-20)
+
+| System / variant | R@5 |
+|---|---|
+| mempalace hybrid (published, hand-tuned) | 0.803 |
+| MintMory vector-only | 0.7866 |
+| MintMory hybrid (default, w=1) | **0.8195** |
+| MintMory hybrid + MM-22 (w=3) | 0.8171 |
+
+**Findings:** MintMory's GENERIC hybrid (0.820) edges mempalace's HAND-TUNED
+hybrid (0.803, with name/predicate/quoted-phrase boosts). No published mempalace
+*raw* MemBench number exists, so this row is hybrid-vs-hybrid (no vector==raw
+receipt). Per-category recall is bimodal (comparative 0.994, aggregative 0.972 vs
+conditional 0.726, highlevel_rec 0.72) — the harder reasoning categories drag the
+mean, which is why an easy-category smoke (0.92) overstated it. MM-22 weight is
+neutral here (0.817 vs 0.820). Harness uses batch-embed + bulk-insert (entity
+extraction skipped; retrieval-identical) — full 8500 in 27 min vs >90 min per-turn.
+
+### Consolidated scoreboard (MintMory vs mempalace, same MiniLM embedder)
+
+| Benchmark | mempalace | MintMory default hybrid | MintMory vector == mempalace raw? |
+|---|---|---|---|
+| LongMemEval R@5 | 0.966 raw | 0.970 (✅) | 0.966 == 0.966 ✓ |
+| LoCoMo recall | 0.603 raw / 0.889 tuned | 0.921 (✅) | 0.6029 ≈ 0.603 ✓ |
+| ConvoMem recall | 0.929 raw | 0.897 (vector 0.929 ties) | 0.9287 ≈ 0.929 ✓ |
+| MemBench R@5 | 0.803 tuned | 0.820 (✅) | (no raw baseline published) |

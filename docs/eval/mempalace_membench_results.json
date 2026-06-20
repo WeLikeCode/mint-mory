@@ -1,0 +1,28 @@
+{
+  "config": {
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "topic": "movie",
+    "top_k": 5,
+    "items": 8500
+  },
+  "recall_at_k": {
+    "vector": 0.7866,
+    "hybrid_w1": 0.8195,
+    "hybrid_w3": 0.8171
+  },
+  "mempalace_published": {
+    "hybrid_movie_top5": 0.803
+  },
+  "per_category_hybrid_w1": {
+    "aggregative": 0.972,
+    "comparative": 0.994,
+    "conditional": 0.726,
+    "highlevel": 0.962,
+    "highlevel_rec": 0.72,
+    "knowledge_update": 0.967,
+    "lowlevel_rec": 0.296,
+    "noisy": 0.61,
+    "post_processing": 0.756,
+    "simple": 0.952
+  }
+}
