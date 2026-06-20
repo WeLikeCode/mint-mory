@@ -17,6 +17,16 @@ Coverage per design §14:
       (old two-value DB + fresh DB both accept it; idempotent re-initialise).
   (h) get_annotating_descriptions is separate from get_annotating_notes.
 
+Group 6 (add-llm-vision-provider) additions:
+  (i) VisionSettings new fields — defaults, bounds, env parse.
+  (j) captioner_from_settings — llm → LLMCaptioner (new assertion).
+  (k) LLMCaptioner.describe — stubbed post_chat_completion; multimodal payload;
+      Bearer header; <think> strip; transient record; VisionError on all failure
+      modes; vision_prompt override; Pillow-absent raw embed.
+  (l) caption_pending_images — happy path (both described + no-drift); VisionError
+      → failed + continue; oversized → skipped; include_all; limit; budget.
+  (m) CaptionRunReport / CaptionRunItem type round-trips.
+
 All tests use :memory: SQLite. No network, no LLM, no Pillow required.
 Fake bytes are injected where needed by monkey-patching ``open`` or by writing
 real (tiny) files to tempdir.
@@ -171,8 +181,8 @@ def test_vision_settings_defaults() -> None:
     assert s.max_image_mb == pytest.approx(8.0)
     assert s.downscale_max_px == 1568
     assert s.max_download_mb == pytest.approx(200.0)
-    assert s.model is None
-    assert s.base_url is None
+    assert s.model == "llava"
+    assert s.base_url == "http://localhost:11434/v1"
     assert s.api_key is None
     assert s.tesseract_cmd is None
 
@@ -339,18 +349,13 @@ def test_captioner_none_settings_returns_none() -> None:
     assert captioner_from_settings(None) is None
 
 
-def test_captioner_llm_raises_not_implemented() -> None:
-    """captioner_from_settings with llm raises NotImplementedError with clear message."""
-    s = VisionSettings(provider=VisionProvider.LLM)
-    with pytest.raises(NotImplementedError, match="llm.*not implemented"):
-        captioner_from_settings(s)
+def test_captioner_llm_returns_llm_captioner() -> None:
+    """captioner_from_settings with llm returns an LLMCaptioner instance."""
+    from mintmory.core.vision import LLMCaptioner
 
-
-def test_captioner_llm_message_mentions_agent_fallback() -> None:
-    """The llm NotImplementedError message mentions MINTMORY_VISION_PROVIDER=agent."""
     s = VisionSettings(provider=VisionProvider.LLM)
-    with pytest.raises(NotImplementedError, match="MINTMORY_VISION_PROVIDER=agent"):
-        captioner_from_settings(s)
+    captioner = captioner_from_settings(s)
+    assert isinstance(captioner, LLMCaptioner)
 
 
 def test_captioner_ocr_raises_not_implemented() -> None:
@@ -1222,3 +1227,925 @@ def test_proprietary_suffixes_are_frozen_set() -> None:
     for ext in PROPRIETARY_IMAGE_SUFFIXES:
         assert ext not in RASTER_SUFFIXES
         assert ext not in SVG_SUFFIXES
+
+
+# ===========================================================================
+# Group 6 (add-llm-vision-provider) — new tests
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# (i) VisionSettings — new fields, defaults, bounds, env parse
+# ---------------------------------------------------------------------------
+
+
+def test_vision_settings_new_llm_defaults() -> None:
+    """New llm-tier fields have the expected defaults from design §1."""
+    s = VisionSettings()
+    assert s.vision_timeout_s == pytest.approx(120.0)
+    assert s.vision_temperature == pytest.approx(0.0)
+    assert s.vision_max_tokens == 512
+    assert s.vision_prompt == ""
+    # endpoint defaults (base_url / model were None in MM-18, now defaulted)
+    assert s.base_url == "http://localhost:11434/v1"
+    assert s.model == "llava"
+
+
+def test_vision_settings_vision_timeout_s_bounds() -> None:
+    """vision_timeout_s accepts 1.0..600.0; below 1 or above 600 should raise."""
+    # Valid boundary values
+    s_min = VisionSettings(vision_timeout_s=1.0)
+    assert s_min.vision_timeout_s == pytest.approx(1.0)
+    s_max = VisionSettings(vision_timeout_s=600.0)
+    assert s_max.vision_timeout_s == pytest.approx(600.0)
+
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        VisionSettings(vision_timeout_s=0.9)
+    with pytest.raises(ValidationError):
+        VisionSettings(vision_timeout_s=601.0)
+
+
+def test_vision_settings_vision_max_tokens_bounds() -> None:
+    """vision_max_tokens accepts 1..8192; out-of-range values should raise."""
+    from pydantic import ValidationError
+
+    s_min = VisionSettings(vision_max_tokens=1)
+    assert s_min.vision_max_tokens == 1
+    s_max = VisionSettings(vision_max_tokens=8192)
+    assert s_max.vision_max_tokens == 8192
+
+    with pytest.raises(ValidationError):
+        VisionSettings(vision_max_tokens=0)
+    with pytest.raises(ValidationError):
+        VisionSettings(vision_max_tokens=8193)
+
+
+def test_vision_settings_vision_temperature_bounds() -> None:
+    """vision_temperature is bounded 0.0..2.0."""
+    from pydantic import ValidationError
+
+    VisionSettings(vision_temperature=0.0)
+    VisionSettings(vision_temperature=2.0)
+    with pytest.raises(ValidationError):
+        VisionSettings(vision_temperature=-0.1)
+    with pytest.raises(ValidationError):
+        VisionSettings(vision_temperature=2.01)
+
+
+def test_vision_settings_env_model_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MINTMORY_VISION_MODEL env var is parsed correctly."""
+    monkeypatch.setenv("MINTMORY_VISION_MODEL", "llava-next")
+    s = VisionSettings()
+    assert s.model == "llava-next"
+
+
+def test_vision_settings_env_vision_max_tokens_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MINTMORY_VISION_VISION_MAX_TOKENS env var is parsed correctly."""
+    monkeypatch.setenv("MINTMORY_VISION_VISION_MAX_TOKENS", "1024")
+    s = VisionSettings()
+    assert s.vision_max_tokens == 1024
+
+
+def test_vision_settings_env_vision_prompt_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MINTMORY_VISION_VISION_PROMPT env var overrides the default prompt."""
+    monkeypatch.setenv("MINTMORY_VISION_VISION_PROMPT", "Custom prompt here.")
+    s = VisionSettings()
+    assert s.vision_prompt == "Custom prompt here."
+
+
+def test_vision_settings_provider_still_defaults_agent() -> None:
+    """provider still defaults to AGENT even with new llm knobs present."""
+    s = VisionSettings()
+    assert s.provider is VisionProvider.AGENT
+
+
+# ---------------------------------------------------------------------------
+# (j) captioner_from_settings — llm → LLMCaptioner (asserts isinstance)
+# ---------------------------------------------------------------------------
+
+
+def test_captioner_llm_returns_llm_captioner_isinstance() -> None:
+    """captioner_from_settings(llm) returns LLMCaptioner and conforms to Captioner protocol."""
+    from mintmory.core.vision import Captioner, LLMCaptioner
+
+    s = VisionSettings(provider=VisionProvider.LLM)
+    cap = captioner_from_settings(s)
+    assert isinstance(cap, LLMCaptioner)
+    assert isinstance(cap, Captioner)
+
+
+def test_captioner_llm_stores_settings() -> None:
+    """The LLMCaptioner holds the VisionSettings passed from captioner_from_settings."""
+    from mintmory.core.vision import LLMCaptioner
+
+    s = VisionSettings(provider=VisionProvider.LLM, model="my-vision-model")
+    cap = captioner_from_settings(s)
+    assert isinstance(cap, LLMCaptioner)
+    assert cap.settings.model == "my-vision-model"
+
+
+# ---------------------------------------------------------------------------
+# (k) LLMCaptioner.describe — stubbed post_chat_completion
+# ---------------------------------------------------------------------------
+
+# --- Helpers ----------------------------------------------------------------
+
+_FAKE_PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32  # minimal fake PNG bytes
+
+
+def _make_captioner(
+    *,
+    model: str = "llava",
+    base_url: str = "http://localhost:11434/v1",
+    api_key: str | None = None,
+    vision_timeout_s: float = 120.0,
+    vision_temperature: float = 0.0,
+    vision_max_tokens: int = 512,
+    vision_prompt: str = "",
+) -> Any:
+    """Return an LLMCaptioner with the given VisionSettings (no network)."""
+    from mintmory.core.vision import LLMCaptioner
+
+    s = VisionSettings(
+        provider=VisionProvider.LLM,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        vision_timeout_s=vision_timeout_s,
+        vision_temperature=vision_temperature,
+        vision_max_tokens=vision_max_tokens,
+        vision_prompt=vision_prompt,
+    )
+    return LLMCaptioner(s)
+
+
+def _make_image_input(
+    *,
+    file_id: str = "file-001",
+    path: str = "/fake/image.png",
+    mime: str = "image/png",
+    data: bytes | None = None,
+) -> Any:
+    from mintmory.core.vision import ImageInput
+
+    return ImageInput(file_id=file_id, path=path, mime=mime, data=data or _FAKE_PNG)
+
+
+def _patch_post(monkeypatch: pytest.MonkeyPatch, content: str) -> dict[str, Any]:
+    """Stub llm.post_chat_completion to return ``content`` and capture the call."""
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        *,
+        base_url: str,
+        api_key: str | None,
+        payload: dict[str, Any],
+        timeout_s: float,
+        system: str,
+        model: str,
+    ) -> dict[str, Any]:
+        captured["base_url"] = base_url
+        captured["api_key"] = api_key
+        captured["payload"] = payload
+        captured["timeout_s"] = timeout_s
+        captured["system"] = system
+        captured["model"] = model
+        return {"choices": [{"message": {"content": content}}]}
+
+    monkeypatch.setattr("mintmory.core.llm.post_chat_completion", fake_post)
+    return captured
+
+
+# --- Payload structure tests ------------------------------------------------
+
+
+def test_llm_captioner_posts_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """describe() sends the correct model name in the payload."""
+    cap = _make_captioner(model="llava-next")
+    captured = _patch_post(monkeypatch, "A photo of a cat.")
+    cap.describe(_make_image_input())
+    assert captured["payload"]["model"] == "llava-next"
+
+
+def test_llm_captioner_posts_user_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The message role is 'user'."""
+    cap = _make_captioner()
+    captured = _patch_post(monkeypatch, "A red barn.")
+    cap.describe(_make_image_input())
+    msgs = captured["payload"]["messages"]
+    assert len(msgs) == 1
+    assert msgs[0]["role"] == "user"
+
+
+def test_llm_captioner_content_has_text_part(monkeypatch: pytest.MonkeyPatch) -> None:
+    """content[0] is a text part with the default IMAGE_CAPTION_PROMPT."""
+    from mintmory.core.prompts import IMAGE_CAPTION_PROMPT
+
+    cap = _make_captioner()
+    captured = _patch_post(monkeypatch, "A sunset.")
+    cap.describe(_make_image_input())
+    content = captured["payload"]["messages"][0]["content"]
+    assert isinstance(content, list)
+    text_part = content[0]
+    assert text_part["type"] == "text"
+    assert text_part["text"] == IMAGE_CAPTION_PROMPT
+
+
+def test_llm_captioner_content_has_image_url_part(monkeypatch: pytest.MonkeyPatch) -> None:
+    """content[1] is an image_url part whose url starts with 'data:image/png;base64,'."""
+    cap = _make_captioner()
+    captured = _patch_post(monkeypatch, "A tree.")
+    cap.describe(_make_image_input(mime="image/png"))
+    content = captured["payload"]["messages"][0]["content"]
+    img_part = content[1]
+    assert img_part["type"] == "image_url"
+    url = img_part["image_url"]["url"]
+    assert url.startswith("data:image/png;base64,")
+    # The embedded bytes should decode back to the original fake PNG
+    b64_data = url[len("data:image/png;base64,") :]
+    assert base64.b64decode(b64_data) == _FAKE_PNG
+
+
+def test_llm_captioner_max_tokens_in_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """max_tokens is present in the payload with the correct value."""
+    cap = _make_captioner(vision_max_tokens=256)
+    captured = _patch_post(monkeypatch, "Clouds.")
+    cap.describe(_make_image_input())
+    assert captured["payload"]["max_tokens"] == 256
+
+
+def test_llm_captioner_temperature_in_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """temperature is present in the payload with the correct value."""
+    cap = _make_captioner(vision_temperature=0.7)
+    captured = _patch_post(monkeypatch, "Mountains.")
+    cap.describe(_make_image_input())
+    assert captured["payload"]["temperature"] == pytest.approx(0.7)
+
+
+def test_llm_captioner_stream_false_in_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    """stream=False is set in the payload."""
+    cap = _make_captioner()
+    captured = _patch_post(monkeypatch, "A river.")
+    cap.describe(_make_image_input())
+    assert captured["payload"]["stream"] is False
+
+
+def test_llm_captioner_url_ends_with_chat_completions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """post_chat_completion is called with base_url ending at the base (no path appended twice)."""
+    cap = _make_captioner(base_url="http://myhost:11434/v1")
+    captured = _patch_post(monkeypatch, "Text.")
+    cap.describe(_make_image_input())
+    # The poster receives the raw base_url; it appends /chat/completions internally
+    assert captured["base_url"] == "http://myhost:11434/v1"
+
+
+def test_llm_captioner_no_bearer_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without api_key, the poster receives api_key=None."""
+    cap = _make_captioner(api_key=None)
+    captured = _patch_post(monkeypatch, "Sky.")
+    cap.describe(_make_image_input())
+    assert captured["api_key"] is None
+
+
+def test_llm_captioner_bearer_with_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With api_key set, the poster receives the key so it can add Bearer."""
+    cap = _make_captioner(api_key="sk-test-key")
+    captured = _patch_post(monkeypatch, "Sky with stars.")
+    cap.describe(_make_image_input())
+    assert captured["api_key"] == "sk-test-key"
+
+
+def test_llm_captioner_timeout_passed_to_poster(monkeypatch: pytest.MonkeyPatch) -> None:
+    """vision_timeout_s is forwarded to post_chat_completion as timeout_s."""
+    cap = _make_captioner(vision_timeout_s=90.0)
+    captured = _patch_post(monkeypatch, "A lake.")
+    cap.describe(_make_image_input())
+    assert captured["timeout_s"] == pytest.approx(90.0)
+
+
+# --- Vision prompt override -------------------------------------------------
+
+
+def test_llm_captioner_default_prompt_used_when_vision_prompt_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty vision_prompt means the default IMAGE_CAPTION_PROMPT is used."""
+    from mintmory.core.prompts import IMAGE_CAPTION_PROMPT
+
+    cap = _make_captioner(vision_prompt="")
+    captured = _patch_post(monkeypatch, "Default prompt result.")
+    cap.describe(_make_image_input())
+    text_part = captured["payload"]["messages"][0]["content"][0]
+    assert text_part["text"] == IMAGE_CAPTION_PROMPT
+
+
+def test_llm_captioner_vision_prompt_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Non-empty vision_prompt replaces the default prompt verbatim."""
+    cap = _make_captioner(vision_prompt="Tell me what you see.")
+    captured = _patch_post(monkeypatch, "Custom prompt result.")
+    cap.describe(_make_image_input())
+    text_part = captured["payload"]["messages"][0]["content"][0]
+    assert text_part["text"] == "Tell me what you see."
+
+
+# --- Response parsing -------------------------------------------------------
+
+
+def test_llm_captioner_returns_content_as_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The response content is returned as the description text."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A bright red flower.")
+    result = cap.describe(_make_image_input())
+    assert result.record.content == "A bright red flower."
+
+
+def test_llm_captioner_strips_think_tags(monkeypatch: pytest.MonkeyPatch) -> None:
+    """<think>...</think> blocks are stripped from the response content."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "<think>Reasoning here.</think>  A green field.  ")
+    result = cap.describe(_make_image_input())
+    assert result.record.content == "A green field."
+    assert "<think>" not in result.record.content
+
+
+def test_llm_captioner_strips_multiline_think(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Multi-line <think> blocks are fully stripped."""
+    cap = _make_captioner()
+    _patch_post(
+        monkeypatch,
+        "<think>\nLet me think.\nMore thoughts.\n</think>\nA photo of mountains.",
+    )
+    result = cap.describe(_make_image_input())
+    assert result.record.content == "A photo of mountains."
+
+
+def test_llm_captioner_surrounding_whitespace_stripped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Leading and trailing whitespace is stripped from the final text."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "  \n  A sunset over the ocean.  \n  ")
+    result = cap.describe(_make_image_input())
+    assert result.record.content == "A sunset over the ocean."
+
+
+# --- Transient record shape -------------------------------------------------
+
+
+def test_llm_captioner_returns_transient_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The returned ImageDescription.record has no DB row (id is fresh UUID, not persisted)."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A waterfall.")
+    result = cap.describe(_make_image_input(file_id="fid-abc"))
+
+    assert isinstance(result, ImageDescription)
+    assert result.file_id == "fid-abc"
+    # replaced_description_id is None (transient, never persisted)
+    assert result.replaced_description_id is None
+
+
+def test_llm_captioner_record_category_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The returned record has category=CONTEXT."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A city skyline.")
+    result = cap.describe(_make_image_input())
+    assert result.record.category == MemoryCategory.CONTEXT
+
+
+def test_llm_captioner_record_source_document(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The returned record has source=DOCUMENT."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A forest path.")
+    result = cap.describe(_make_image_input())
+    assert result.record.source == MemorySource.DOCUMENT
+
+
+def test_llm_captioner_record_is_note_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The returned record has is_note=False."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "An airport terminal.")
+    result = cap.describe(_make_image_input())
+    assert result.record.is_note is False
+
+
+def test_llm_captioner_record_metadata_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The returned record's metadata has kind='image_description'."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A chart.")
+    result = cap.describe(_make_image_input(path="/data/chart.png"))
+    assert result.record.metadata.get("kind") == "image_description"
+
+
+def test_llm_captioner_record_metadata_source_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The returned record's metadata has source_image equal to image.path."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A map.")
+    result = cap.describe(_make_image_input(path="/data/map.png"))
+    assert result.record.metadata.get("source_image") == "/data/map.png"
+    assert result.source_image == "/data/map.png"
+
+
+def test_llm_captioner_source_image_in_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ImageDescription.source_image equals image.path."""
+    cap = _make_captioner()
+    _patch_post(monkeypatch, "A graph.")
+    result = cap.describe(_make_image_input(path="/graphs/fig1.png"))
+    assert result.source_image == "/graphs/fig1.png"
+
+
+# --- VisionError on failures ------------------------------------------------
+
+
+def test_llm_captioner_vision_error_on_url_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """URLError from urlopen inside post_chat_completion is wrapped in VisionError."""
+    import urllib.error
+
+    from mintmory.core.vision import VisionError
+
+    def boom(
+        *,
+        base_url: str,
+        api_key: str | None,
+        payload: dict[str, Any],
+        timeout_s: float,
+        system: str,
+        model: str,
+    ) -> dict[str, Any]:
+        raise urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr("mintmory.core.llm.post_chat_completion", boom)
+    cap = _make_captioner()
+    with pytest.raises(VisionError):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TimeoutError from the poster is wrapped in VisionError."""
+    from mintmory.core.vision import VisionError
+
+    def boom(**_: Any) -> dict[str, Any]:
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr("mintmory.core.llm.post_chat_completion", boom)
+    cap = _make_captioner()
+    with pytest.raises(VisionError):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HTTPError from the poster is wrapped in VisionError."""
+    import urllib.error
+
+    from mintmory.core.vision import VisionError
+
+    def boom(**_: Any) -> dict[str, Any]:
+        raise urllib.error.HTTPError(
+            url="http://x/v1/chat/completions",
+            code=503,
+            msg="Service Unavailable",
+            hdrs=None,  # type: ignore[arg-type]
+            fp=None,
+        )
+
+    monkeypatch.setattr("mintmory.core.llm.post_chat_completion", boom)
+    cap = _make_captioner()
+    with pytest.raises(VisionError):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_empty_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty content in the response raises VisionError."""
+    from mintmory.core.vision import VisionError
+
+    _patch_post(monkeypatch, "")
+    cap = _make_captioner()
+    with pytest.raises(VisionError, match="empty content"):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_whitespace_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Whitespace-only content in the response raises VisionError."""
+    from mintmory.core.vision import VisionError
+
+    _patch_post(monkeypatch, "   \n  \t  ")
+    cap = _make_captioner()
+    with pytest.raises(VisionError, match="empty content"):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_think_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Content that is only a <think> block (no remaining text) raises VisionError."""
+    from mintmory.core.vision import VisionError
+
+    _patch_post(monkeypatch, "<think>Just reasoning, no output.</think>")
+    cap = _make_captioner()
+    with pytest.raises(VisionError, match="only reasoning"):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_bad_response_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unexpected response JSON shape (no choices key) raises VisionError."""
+    from mintmory.core.vision import VisionError
+
+    def bad_post(**_: Any) -> dict[str, Any]:
+        return {"result": "no choices here"}  # wrong shape
+
+    monkeypatch.setattr("mintmory.core.llm.post_chat_completion", bad_post)
+    cap = _make_captioner()
+    with pytest.raises(VisionError, match="unexpected vision response shape"):
+        cap.describe(_make_image_input())
+
+
+def test_llm_captioner_vision_error_on_unreadable_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OSError when reading image.path (no image.data) raises VisionError."""
+    from mintmory.core.vision import ImageInput, VisionError
+
+    # image.data=None means describe() will try open(image.path, "rb")
+    img = ImageInput(file_id="fid", path="/nonexistent/image.png", mime="image/png", data=None)
+    cap = _make_captioner()
+
+    # Don't even need to patch post_chat_completion — should fail at file read
+    with pytest.raises(VisionError, match="cannot read"):
+        cap.describe(img)
+
+
+def test_llm_captioner_reads_path_when_data_is_none(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When image.data is None, describe() reads bytes from image.path."""
+    from mintmory.core.vision import ImageInput
+
+    img_file = tmp_path / "image.png"
+    img_file.write_bytes(_FAKE_PNG)
+
+    img = ImageInput(file_id="fid", path=str(img_file), mime="image/png", data=None)
+    cap = _make_captioner()
+    captured = _patch_post(monkeypatch, "A photo.")
+    cap.describe(img)
+
+    # The data URL should contain base64 of the FAKE_PNG bytes
+    content_list = captured["payload"]["messages"][0]["content"]
+    img_url = content_list[1]["image_url"]["url"]
+    b64_part = img_url[len("data:image/png;base64,") :]
+    assert base64.b64decode(b64_part) == _FAKE_PNG
+
+
+# --- Pillow-absent embed (raw bytes, no downscale) --------------------------
+
+
+def test_llm_captioner_pillow_absent_embeds_raw_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When Pillow import fails, raw bytes are embedded in the data URL unchanged."""
+    import builtins
+
+    from mintmory.core.vision import VisionError  # noqa: F401 — import to ensure module loaded
+
+    original_import = builtins.__import__
+
+    def _no_pil(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "PIL":
+            raise ImportError("no module named PIL")
+        return original_import(name, *args, **kwargs)
+
+    captured = _patch_post(monkeypatch, "A photo without Pillow.")
+    cap = _make_captioner()
+
+    with patch("builtins.__import__", side_effect=_no_pil):
+        result = cap.describe(_make_image_input(mime="image/png", data=_FAKE_PNG))
+
+    assert result.record.content == "A photo without Pillow."
+    # The data URL should contain the unmodified fake PNG bytes
+    content_list = captured["payload"]["messages"][0]["content"]
+    img_url = content_list[1]["image_url"]["url"]
+    b64_part = img_url[len("data:image/png;base64,") :]
+    assert base64.b64decode(b64_part) == _FAKE_PNG
+
+
+# ===========================================================================
+# (l) caption_pending_images
+# ===========================================================================
+
+
+class _FakeCaptioner:
+    """In-memory fake Captioner for caption_pending_images tests (no network)."""
+
+    def __init__(
+        self,
+        responses: dict[str, str] | None = None,
+        fail_ids: set[str] | None = None,
+    ) -> None:
+        """``responses``: file_id → description text; ``fail_ids``: IDs that raise VisionError."""
+        self._responses = responses or {}
+        self._fail_ids = fail_ids or set()
+        self.described_ids: list[str] = []
+
+    def describe(self, image: Any) -> Any:
+        from mintmory.core.types import (
+            ImageDescription,
+            MemoryCategory,
+            MemoryRecord,
+            MemorySource,
+        )
+        from mintmory.core.vision import VisionError
+
+        if image.file_id in self._fail_ids:
+            raise VisionError(f"fake error for {image.file_id}")
+        self.described_ids.append(image.file_id)
+        text = self._responses.get(image.file_id, "Default description.")
+        record = MemoryRecord(
+            content=text,
+            category=MemoryCategory.CONTEXT,
+            source=MemorySource.DOCUMENT,
+            is_note=False,
+            metadata={"kind": "image_description", "source_image": image.path},
+        )
+        return ImageDescription(
+            record=record,
+            file_id=image.file_id,
+            source_image=image.path,
+            replaced_description_id=None,
+        )
+
+
+def _store_with_images(
+    n: int, *, tmp_path: Path, size: int = 100, online_only: bool = False
+) -> tuple[StorageAdapter, list[MemoryRecord]]:
+    """Create an in-memory store with ``n`` raster file-records, each backed by a real tiny file."""
+    store = _store()
+    records: list[MemoryRecord] = []
+    for i in range(n):
+        img_file = tmp_path / f"img_{i}.png"
+        img_file.write_bytes(b"x" * size)
+        rec = _add_file_record(
+            store,
+            path=str(img_file),
+            rel=f"img_{i}.png",
+            ext=".png",
+            size=size,
+            online_only=online_only,
+        )
+        records.append(rec)
+    return store, records
+
+
+def test_caption_pending_images_describes_two_images(tmp_path: Path) -> None:
+    """Two pending images → both described, CaptionRunReport.described==2."""
+    from mintmory.core.vision import caption_pending_images
+
+    store, recs = _store_with_images(2, tmp_path=tmp_path)
+    cap = _FakeCaptioner()
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+    report = caption_pending_images(store, captioner=cap, settings=s)
+
+    assert report.described == 2
+    assert report.skipped == 0
+    assert report.failed == 0
+    assert report.budget_hit is False
+    assert report.provider == "llm"
+    assert len(report.items) == 2
+    assert all(item.status == "described" for item in report.items)
+
+
+def test_caption_pending_images_no_drift(tmp_path: Path) -> None:
+    """After caption_pending_images, a second run with include_all=False describes 0."""
+    from mintmory.core.vision import caption_pending_images
+
+    store, recs = _store_with_images(2, tmp_path=tmp_path)
+    cap = _FakeCaptioner()
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+
+    first = caption_pending_images(store, captioner=cap, settings=s)
+    assert first.described == 2
+
+    # Second run: nothing pending
+    second = caption_pending_images(store, captioner=cap, settings=s)
+    assert second.described == 0
+    assert len(second.items) == 0
+
+
+def test_caption_pending_images_vision_error_skip_and_continue(tmp_path: Path) -> None:
+    """VisionError for one image → counted as failed, other image still described."""
+    from mintmory.core.vision import caption_pending_images
+
+    store, recs = _store_with_images(2, tmp_path=tmp_path)
+    # Make the first image fail
+    cap = _FakeCaptioner(fail_ids={recs[0].id})
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+    report = caption_pending_images(store, captioner=cap, settings=s)
+
+    assert report.described == 1
+    assert report.failed == 1
+    assert report.skipped == 0
+    # The failing image's item has status 'failed'
+    statuses = {item.file_id: item.status for item in report.items}
+    assert statuses[recs[0].id] == "failed"
+    assert statuses[recs[1].id] == "described"
+
+
+def test_caption_pending_images_oversized_skipped(tmp_path: Path) -> None:
+    """Image exceeding max_image_bytes is skipped (note='oversized')."""
+    from mintmory.core.vision import caption_pending_images
+
+    store = _store()
+    img_file = tmp_path / "big.png"
+    img_file.write_bytes(b"x" * 100)
+    _add_file_record(store, path=str(img_file), rel="big.png", ext=".png", size=10 * 1024 * 1024)
+
+    cap = _FakeCaptioner()
+    # Set a tiny cap (1 byte) so the image is oversized
+    s = VisionSettings(max_image_mb=0.000001, downscale_max_px=0)
+    report = caption_pending_images(store, captioner=cap, settings=s)
+
+    assert report.described == 0
+    assert report.skipped == 1
+    assert report.items[0].note == "oversized"
+
+
+def test_caption_pending_images_include_all_recaptions(tmp_path: Path) -> None:
+    """include_all=True re-captions already-described images."""
+    from mintmory.core.vision import caption_pending_images
+
+    store, recs = _store_with_images(1, tmp_path=tmp_path)
+    cap1 = _FakeCaptioner(responses={recs[0].id: "First description."})
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+
+    first = caption_pending_images(store, captioner=cap1, settings=s)
+    assert first.described == 1
+
+    # With include_all=False, the already-described image is not re-captioned
+    second_default = caption_pending_images(store, captioner=cap1, settings=s)
+    assert second_default.described == 0
+
+    # With include_all=True, it IS re-captioned
+    cap2 = _FakeCaptioner(responses={recs[0].id: "Second description."})
+    second_all = caption_pending_images(store, captioner=cap2, include_all=True, settings=s)
+    assert second_all.described == 1
+
+
+def test_caption_pending_images_limit_caps(tmp_path: Path) -> None:
+    """limit=1 processes only 1 image even when 3 are pending."""
+    from mintmory.core.vision import caption_pending_images
+
+    store, recs = _store_with_images(3, tmp_path=tmp_path)
+    cap = _FakeCaptioner()
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+    report = caption_pending_images(store, captioner=cap, limit=1, settings=s)
+
+    assert report.described == 1
+    assert len(report.items) == 1
+
+
+def test_caption_pending_images_persists_via_image_caption_put(tmp_path: Path) -> None:
+    """After caption_pending_images, the described image no longer appears in image_jobs."""
+    from mintmory.core.vision import caption_pending_images, image_jobs
+
+    store, recs = _store_with_images(1, tmp_path=tmp_path)
+    cap = _FakeCaptioner()
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+
+    jobs_before = image_jobs(store)
+    assert len(jobs_before) == 1
+
+    caption_pending_images(store, captioner=cap, settings=s)
+
+    jobs_after = image_jobs(store)
+    assert len(jobs_after) == 0
+
+
+def test_caption_pending_images_budget_skips_online_only(tmp_path: Path) -> None:
+    """Online-only images exceeding the budget are skipped with note='budget'.
+
+    The budget is enforced at two levels:
+    1. image_jobs embeds online-only bytes up to max_download_bytes from settings.
+    2. caption_pending_images checks run-level budget for jobs where image_b64 is None.
+
+    We set max_download_mb small enough that image_jobs only embeds the first image
+    (leaving the second with image_b64=None), then supply a run-level budget=0 so
+    the second image is skipped in caption_pending_images.
+    """
+    from mintmory.core.vision import caption_pending_images
+
+    store = _store()
+    # Two online-only images, each 500 bytes
+    for i in range(2):
+        img_file = tmp_path / f"online_{i}.png"
+        img_file.write_bytes(b"y" * 500)
+        _add_file_record(
+            store,
+            path=str(img_file),
+            rel=f"online_{i}.png",
+            ext=".png",
+            size=500,
+            online_only=True,
+        )
+
+    cap = _FakeCaptioner()
+    # max_image_mb=0 (no size cap), max_download_mb set to embed only first image (600 B budget)
+    # so image_jobs embeds image_0 (500B) but not image_1 (would exceed 600B total)
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0, max_download_mb=600 / (1024 * 1024))
+    # Run-level budget=0 means caption_pending_images budget guard fires immediately
+    # for any online_only job that image_jobs left without image_b64
+    report = caption_pending_images(store, captioner=cap, budget=0, settings=s)
+
+    # image_0 was embedded by image_jobs (image_b64 set) → described
+    # image_1 was not embedded (image_b64=None) and budget=0 → skipped
+    assert report.described == 1
+    assert report.skipped >= 1
+    assert report.budget_hit is True
+    budget_items = [item for item in report.items if item.note == "budget"]
+    assert len(budget_items) >= 1
+
+
+def test_caption_pending_images_empty_store() -> None:
+    """Empty store → report with all zeros."""
+    from mintmory.core.vision import caption_pending_images
+
+    store = _store()
+    cap = _FakeCaptioner()
+    report = caption_pending_images(store, captioner=cap)
+
+    assert report.described == 0
+    assert report.skipped == 0
+    assert report.failed == 0
+    assert report.items == []
+
+
+def test_caption_pending_images_item_note_has_record_id(tmp_path: Path) -> None:
+    """Described image item note contains the new record id (from image_caption_put)."""
+    from mintmory.core.vision import caption_pending_images
+
+    store, recs = _store_with_images(1, tmp_path=tmp_path)
+    cap = _FakeCaptioner()
+    s = VisionSettings(max_image_mb=0.0, downscale_max_px=0)
+    report = caption_pending_images(store, captioner=cap, settings=s)
+
+    item = report.items[0]
+    assert item.status == "described"
+    # note should be a non-empty string (the new record id)
+    assert item.note != ""
+
+
+# ===========================================================================
+# (m) CaptionRunReport / CaptionRunItem type round-trips
+# ===========================================================================
+
+
+def test_caption_run_report_defaults() -> None:
+    """CaptionRunReport has correct defaults."""
+    from mintmory.core.types import CaptionRunReport
+
+    r = CaptionRunReport()
+    assert r.described == 0
+    assert r.skipped == 0
+    assert r.failed == 0
+    assert r.budget_hit is False
+    assert r.provider == "llm"
+    assert r.items == []
+
+
+def test_caption_run_report_agent_no_op_shape() -> None:
+    """CaptionRunReport(provider='agent') is the documented no-op shape."""
+    from mintmory.core.types import CaptionRunReport
+
+    r = CaptionRunReport(provider="agent")
+    d = r.model_dump(mode="json")
+    assert d["provider"] == "agent"
+    assert d["described"] == 0
+    assert d["budget_hit"] is False
+
+
+def test_caption_run_item_round_trip() -> None:
+    """CaptionRunItem round-trips via model_dump."""
+    from mintmory.core.types import CaptionRunItem
+
+    item = CaptionRunItem(file_id="f1", rel="img.png", status="described", note="rec-id-123")
+    d = item.model_dump(mode="json")
+    assert d["file_id"] == "f1"
+    assert d["rel"] == "img.png"
+    assert d["status"] == "described"
+    assert d["note"] == "rec-id-123"
+
+
+def test_caption_run_item_note_defaults_empty() -> None:
+    """CaptionRunItem.note defaults to ''."""
+    from mintmory.core.types import CaptionRunItem
+
+    item = CaptionRunItem(file_id="f2", rel="x.png", status="skipped")
+    assert item.note == ""
+
+
+def test_caption_run_report_with_items() -> None:
+    """CaptionRunReport carries items correctly."""
+    from mintmory.core.types import CaptionRunItem, CaptionRunReport
+
+    items = [
+        CaptionRunItem(file_id="f1", rel="a.png", status="described", note="rec-1"),
+        CaptionRunItem(file_id="f2", rel="b.png", status="failed", note="timeout"),
+    ]
+    r = CaptionRunReport(described=1, failed=1, items=items)
+    d = r.model_dump(mode="json")
+    assert len(d["items"]) == 2
+    assert d["items"][0]["status"] == "described"
+    assert d["items"][1]["status"] == "failed"

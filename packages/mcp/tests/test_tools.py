@@ -64,6 +64,7 @@ async def test_all_tools_registered(mcp_client: Client[Any]) -> None:
         "notes_list",
         "image_jobs",
         "image_caption_put",
+        "vision_run",
     }
 
 
@@ -914,3 +915,133 @@ async def test_image_jobs_svg_not_surfaced(mcp_client: Client[Any]) -> None:
     res = await mcp_client.call_tool("image_jobs", {})
     assert all(j["mime"] != "image/svg+xml" for j in res.data)
     assert res.data == []  # SVG-only store → zero raster jobs
+
+
+# ---------------------------------------------------------------------------
+# vision_run (new — add-llm-vision-provider, Group 6.3)
+# ---------------------------------------------------------------------------
+
+
+async def test_vision_run_agent_provider_is_noop(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vision_run with provider=agent (default) returns provider='agent', described=0.
+
+    No MINTMORY_VISION_PROVIDER is set → provider=agent → no-op path:
+    captioner_from_settings returns None and vision_run returns the all-zero
+    CaptionRunReport without calling caption_pending_images.
+    """
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    res = await mcp_client.call_tool("vision_run", {})
+    data = res.data
+    assert isinstance(data, dict)
+    assert data["provider"] == "agent"
+    assert data["described"] == 0
+    assert data["skipped"] == 0
+    assert data["failed"] == 0
+    assert data["budget_hit"] is False
+
+
+async def test_vision_run_agent_provider_default_params(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vision_run default params (limit=0, budget_mb=0.0, include_all=False) are accepted."""
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    res = await mcp_client.call_tool(
+        "vision_run", {"limit": 0, "budget_mb": 0.0, "include_all": False}
+    )
+    data = res.data
+    assert data["provider"] == "agent"
+    assert data["described"] == 0
+
+
+async def test_vision_run_tool_registered(mcp_client: Client[Any]) -> None:
+    """vision_run must appear in the registered tool list."""
+    names = {tool.name for tool in await mcp_client.list_tools()}
+    assert "vision_run" in names
+
+
+async def test_vision_run_ocr_provider_returns_not_implemented(
+    mcp_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vision_run with provider=ocr returns an error dict (not_implemented), not a ToolError.
+
+    The OCR provider is still a stub; the MCP tool maps NotImplementedError to
+    ``{"error": "not_implemented", "message": ...}`` rather than raising.
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "ocr")
+    res = await mcp_client.call_tool("vision_run", {})
+    data = res.data
+    assert isinstance(data, dict)
+    assert data.get("error") == "not_implemented"
+    assert "message" in data
+    assert "agent" in data["message"].lower() or "not implemented" in data["message"].lower()
+
+
+async def test_vision_run_llm_provider_with_stubbed_captioner(
+    mcp_client: Client[Any],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    """vision_run with provider=llm + a monkeypatched poster describes pending images.
+
+    No real network: ``post_chat_completion`` is monkeypatched to return a canned
+    response. After vision_run, the image drops from the default image_jobs list
+    (no-drift guarantee).
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+
+    # Seed a pending raster file-record pointing at a real tiny PNG.
+    img_path = tmp_path / "sample.png"
+    img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+    await mcp_client.call_tool(
+        "memory_add",
+        {
+            "content": "[image] sample.png",
+            "category": "context",
+            "source": "document",
+            "metadata": {
+                "collection": "test",
+                "path": str(img_path),
+                "rel": "sample.png",
+                "ext": ".png",
+                "size": len(img_path.read_bytes()),
+                "mtime": 1_700_000_000.0,
+                "online_only": False,
+                "folder": ".",
+                "index_mode": "vision",
+            },
+        },
+    )
+
+    # Confirm the image appears in image_jobs before vision_run.
+    before = await mcp_client.call_tool("image_jobs", {})
+    assert len(before.data) == 1, f"expected 1 pending job, got {before.data}"
+
+    # Stub the shared poster so describe() never makes a real HTTP call.
+    from mintmory.core import llm as llm_mod
+
+    def _fake_poster(
+        *,
+        base_url: str,
+        api_key: object,
+        payload: object,
+        timeout_s: object,
+        system: object,
+        model: object,
+    ) -> dict[str, object]:
+        return {"choices": [{"message": {"content": "A sample test image."}}]}
+
+    monkeypatch.setattr(llm_mod, "post_chat_completion", _fake_poster)
+
+    # Run vision_run — should describe 1 image.
+    res = await mcp_client.call_tool("vision_run", {})
+    data = res.data
+    assert isinstance(data, dict)
+    assert data["described"] == 1, f"expected described=1, got {data}"
+    assert data["failed"] == 0
+    assert data["provider"] == "llm"
+
+    # After vision_run, the image must drop from the default image_jobs list (no-drift).
+    after = await mcp_client.call_tool("image_jobs", {})
+    assert after.data == [], f"expected empty image_jobs after vision_run, got {after.data}"

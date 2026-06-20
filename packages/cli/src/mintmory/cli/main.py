@@ -16,6 +16,7 @@ Commands:
   mintmory summary-put CONCEPT [TEXT] [--file PATH]
   mintmory image-jobs [--all/--needed] [--bytes/--no-bytes] [--limit N] [--json]
   mintmory image-caption-put FILE_OR_ID [DESCRIPTION] [--file PATH]
+  mintmory vision-run [--limit N] [--budget MB] [--all/--needed]
 """
 
 from __future__ import annotations
@@ -546,12 +547,13 @@ def index_tree(
         from mintmory.core import vision as vision_mod
 
         try:
-            vision_mod.captioner_from_settings(settings.vision)
+            captioner = vision_mod.captioner_from_settings(settings.vision)
         except NotImplementedError as _nie:
             console.print(f"[red]error[/red]: {_nie}")
             raise typer.Exit(code=1) from _nie
     else:
         vision_mod = None  # type: ignore[assignment]  # never accessed when vision=False
+        captioner = None
 
     scanned = added = updated = unchanged = converted = failed = pruned = 0
     downloaded = 0
@@ -559,8 +561,11 @@ def index_tree(
     # Vision-specific counters (only relevant when --vision)
     svg_described = 0
     images_queued = 0
+    images_described = 0
     vision_skipped = 0
     seen: set[str] = set()
+    # Size cap for raster images (used when captioner is not None).
+    max_image_bytes: int | None = settings.vision.max_image_bytes if vision else None
 
     for root in roots:
         root_path = Path(root).expanduser()
@@ -731,11 +736,62 @@ def index_tree(
                             mode = "metadata"
                             failed += 1
                     else:
-                        # Raster image: queue for agent (provider=agent → no inline call).
-                        # captioner_from_settings already validated at the top; provider=agent
-                        # returns None, which means we just count the job and move on.
-                        images_queued += 1
-                        # mode already 'vision'; no bytes read, no description yet.
+                        # Raster image: queue for agent OR caption inline.
+                        # captioner is None  →  provider=agent (UNCHANGED MM-18 behaviour):
+                        #     count the job and move on; the agent loop will describe it later.
+                        # captioner is not None  →  provider=llm (or future):
+                        #     caption inline under the SAME budget + manifest.
+                        assert vision_mod is not None  # noqa: S101 — want_vision guard
+                        if captioner is None:
+                            images_queued += 1
+                            # mode already 'vision'; no bytes read, no description yet.
+                        else:
+                            # Inline captioning under the shared download budget.
+                            try:
+                                if max_image_bytes is not None and entry.size > max_image_bytes:
+                                    # Oversized: skip this image.
+                                    vision_skipped += 1
+                                elif (
+                                    entry.online_only
+                                    and budget is not None
+                                    and downloaded >= budget
+                                ):
+                                    # Budget exhausted for online-only images.
+                                    vision_skipped += 1
+                                else:
+                                    raw = entry.path.read_bytes()
+                                    if entry.online_only:
+                                        downloaded += len(raw)
+                                        if budget is not None and downloaded >= budget:
+                                            budget_hit = True
+                                    desc = captioner.describe(
+                                        vision_mod.ImageInput(
+                                            file_id=file_record.id,
+                                            path=path_str,
+                                            mime=vision_mod._mime_for(entry.suffix),
+                                            data=raw,
+                                        )
+                                    )
+                                    put = vision_mod.image_caption_put(
+                                        store,
+                                        file_record.id,
+                                        desc.record.content,
+                                        settings=settings.vision,
+                                    )
+                                    new_ids.append(put.record.id)
+                                    content_hash = hashlib.blake2b(
+                                        desc.record.content.encode("utf-8"), digest_size=16
+                                    ).hexdigest()
+                                    images_described += 1
+                            except vision_mod.VisionError as exc:
+                                console.print(f"[yellow]vision skip[/yellow] {entry.name}: {exc}")
+                                vision_skipped += 1
+                            except OSError as exc:
+                                console.print(
+                                    f"[yellow]vision skip[/yellow] {entry.name}: read error {exc}"
+                                )
+                                vision_skipped += 1
+                        # mode stays 'vision' in all cases (manifest records the attempt).
 
                 if existing is not None:
                     for old_id in json.loads(existing["memory_ids"]):
@@ -784,7 +840,10 @@ def index_tree(
         table.add_row(label, value)
     if vision:
         table.add_row("svg-described", str(svg_described))
-        table.add_row("images-queued", str(images_queued))
+        if captioner is not None:
+            table.add_row("images-described", str(images_described))
+        else:
+            table.add_row("images-queued", str(images_queued))
         if vision_skipped:
             table.add_row("vision-skipped", str(vision_skipped))
     if budget_hit:
@@ -1054,6 +1113,71 @@ def image_caption_put(
         console.print(
             f"  [dim]-> replaced (archived) [yellow]{result.replaced_description_id}[/yellow][/dim]"
         )
+
+
+@app.command()
+def vision_run(
+    limit: int = typer.Option(0, help="Max images to caption (0 = no cap)"),
+    budget_mb: float = typer.Option(
+        0.0, "--budget", help="Download budget MB for online-only images (0 = settings default)"
+    ),
+    include_all: bool = typer.Option(
+        False, "--all/--needed", help="Re-caption all raster images vs only pending"
+    ),
+) -> None:
+    """Caption already-indexed pending images with the configured vision provider.
+
+    Requires MINTMORY_VISION_PROVIDER=llm (a reachable OpenAI-compatible vision
+    model). With provider=agent this is a no-op (use the image-jobs/image-caption-put
+    agent loop instead). Does NOT re-walk the tree — it processes the pending
+    image_jobs in place. Per-image failures are skipped and counted; one bad image
+    never aborts the run.
+    """
+    from mintmory.core import vision as vision_mod
+    from mintmory.core.config import load_settings
+
+    settings = load_settings()
+    try:
+        captioner = vision_mod.captioner_from_settings(settings.vision)
+    except NotImplementedError as exc:
+        console.print(f"[red]error[/red]: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    if captioner is None:
+        console.print(
+            "[dim]provider=agent: nothing to run (use image-jobs/image-caption-put)[/dim]"
+        )
+        return
+
+    store = _get_store()
+    budget: int | None = int(budget_mb * 1024 * 1024) if budget_mb > 0 else None
+    report = vision_mod.caption_pending_images(
+        store,
+        captioner=captioner,
+        limit=limit,
+        budget=budget,
+        include_all=include_all,
+        settings=settings.vision,
+    )
+
+    table = Table(title="vision-run")
+    table.add_column("metric", style="cyan")
+    table.add_column("value", justify="right", style="green")
+    table.add_row("described", str(report.described))
+    table.add_row("skipped", str(report.skipped))
+    table.add_row("failed", str(report.failed))
+    table.add_row("budget_hit", "yes" if report.budget_hit else "no")
+    console.print(table)
+
+    if report.items:
+        items_table = Table(title="items", show_header=True)
+        items_table.add_column("file_id", style="cyan", no_wrap=True)
+        items_table.add_column("rel")
+        items_table.add_column("status", style="magenta")
+        items_table.add_column("note", style="dim")
+        for item in report.items:
+            items_table.add_row(item.file_id, item.rel, item.status, item.note)
+        console.print(items_table)
 
 
 @app.command()

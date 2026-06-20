@@ -52,8 +52,8 @@ class LLMProvider(str, Enum):
 
 class VisionProvider(str, Enum):
     AGENT = "agent"  # default — no backend; the active agent supplies the text
-    LLM = "llm"  # SEAM/STUB v1 — OpenAI-compatible vision tier (raises in v1)
-    OCR = "ocr"  # SEAM/STUB v1 — local tesseract behind [ocr] (raises in v1)
+    LLM = "llm"  # OpenAI-compatible vision tier (implemented)
+    OCR = "ocr"  # SEAM/STUB — local tesseract behind [ocr] (raises; not yet implemented)
 
 
 # ---------------------------------------------------------------------------
@@ -221,16 +221,16 @@ class NoteSettings(BaseSettings):
 # Image understanding (MINTMORY_VISION_*) — agent-supplied vision (G5).
 # Defaults reproduce today's behaviour: provider=agent (no backend; the agent
 # describes images via the image_jobs/image_caption_put prepare/apply loop).
-# ``llm``/``ocr`` are a compile-time seam — selecting them raises a clear
-# NotImplementedError in v1. Pillow ([image] extra) is optional and lazy-imported
-# only in the downscale path; absent → raw bytes embedded (size-cap still applies).
+# ``llm`` is now implemented (LLMCaptioner). ``ocr`` is still a stub (raises).
+# Pillow ([image] extra) is optional and lazy-imported only in the downscale
+# path; absent → raw bytes embedded (size-cap still applies).
 # ---------------------------------------------------------------------------
 class VisionSettings(BaseSettings):
     """Image-understanding (G5). Defaults reproduce today's behaviour: provider
     defaults to ``agent`` (no backend; agent-supplied prepare/apply loop) and
     nothing is described unless ``index-tree --vision`` or ``image_jobs`` is
-    explicitly invoked. ``llm``/``ocr`` are a seam: selecting them raises a clear
-    NotImplementedError in v1."""
+    explicitly invoked. Set ``MINTMORY_VISION_PROVIDER=llm`` to enable automated
+    captioning via an OpenAI-compatible vision model. ``ocr`` stays a stub."""
 
     model_config = SettingsConfigDict(env_prefix="MINTMORY_VISION_", extra="ignore")
 
@@ -247,12 +247,16 @@ class VisionSettings(BaseSettings):
     # build the base64 payload. Shares the SAME semantics as index-tree's
     # --max-download-mb (0 = unlimited). Used by image_jobs(include_bytes/online).
     max_download_mb: float = Field(default=200.0, ge=0.0)
-    # provider-specific (llm/ocr) — unused by the agent path, present so the seam
-    # is complete and llm/ocr drop in without a config change:
-    model: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
+    # provider endpoint (llm/ocr) — defaulted for llm tier; unused when provider=agent.
+    base_url: str = "http://localhost:11434/v1"  # was: str | None = None
+    model: str = "llava"  # was: str | None = None (vision model)
+    api_key: str | None = None  # Bearer auth iff set
     tesseract_cmd: str | None = None  # ocr: explicit tesseract binary path
+    # LLM-vision tier knobs (mirror LLMSettings style; unused when provider=agent).
+    vision_timeout_s: float = Field(default=120.0, ge=1.0, le=600.0)
+    vision_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    vision_max_tokens: int = Field(default=512, ge=1, le=8192)
+    vision_prompt: str = ""  # "" => use prompts.IMAGE_CAPTION_PROMPT default
 
     @property
     def max_image_bytes(self) -> int | None:

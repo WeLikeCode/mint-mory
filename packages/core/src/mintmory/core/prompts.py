@@ -77,6 +77,17 @@ Return ONLY a JSON object with this schema:
 """
 
 # ---------------------------------------------------------------------------
+# Image caption (vision provider 'llm') — default prompt for LLMCaptioner.
+# Overridden at runtime by MINTMORY_VISION_VISION_PROMPT (non-empty value wins).
+# ---------------------------------------------------------------------------
+IMAGE_CAPTION_PROMPT = (
+    "Describe this image in 2-4 sentences for a search index. State what it "
+    "depicts and transcribe ALL legible text verbatim (labels, captions, UI "
+    "strings, diagram nodes). Be specific: keep names, numbers, and on-screen "
+    "text. Reply with ONLY the description (no preamble)."
+)
+
+# ---------------------------------------------------------------------------
 # L3 concept summary (dreaming step 3). Placeholders: {concept}, {notes}
 # ---------------------------------------------------------------------------
 SUMMARY_PROMPT = """\

@@ -152,6 +152,13 @@ via the MCP server) describes the images; a text-only background worker handles
 summaries; both operate on the same shared `.db` with no coordination beyond
 the SQLite WAL and MintMory's idempotent prepare/apply discipline.
 
+If a server-side vision model is available, set `MINTMORY_VISION_PROVIDER=llm` (and
+the matching `MINTMORY_VISION_*` knobs for endpoint/model/key) to caption pending
+images automatically — call `vision_run` (MCP), `mintmory vision-run` (CLI), or
+`POST /images/caption-run` (HTTP) without re-walking the tree. With the default
+`provider=agent` these entry-points are a no-op, so multi-agent setups without a
+configured vision backend are unaffected.
+
 ---
 
 ## Isolation

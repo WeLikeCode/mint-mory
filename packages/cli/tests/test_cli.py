@@ -1322,16 +1322,202 @@ def test_index_tree_without_vision_is_unchanged(cli_db: Path, tmp_path: Path) ->
     assert "vision-skipped" not in result.output
 
 
-def test_index_tree_vision_llm_provider_exits_nonzero(
+def test_index_tree_vision_ocr_provider_exits_nonzero(
     cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """MINTMORY_VISION_PROVIDER=llm + index-tree --vision must exit non-zero with clear message."""
-    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
-    tree = tmp_path / "llm_test"
+    """MINTMORY_VISION_PROVIDER=ocr + index-tree --vision must exit non-zero with clear message.
+
+    ``ocr`` is still a stub (NotImplementedError); the CLI maps this to a non-zero
+    exit.  ``llm`` is now implemented so it no longer exits non-zero — this test
+    was updated from the MM-18 ``llm``-raises version to the post-MM-19 ``ocr``
+    variant.
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "ocr")
+    tree = tmp_path / "ocr_test"
     tree.mkdir()
     (tree / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
 
-    result = runner.invoke(app, ["index-tree", str(tree), "--collection", "llm_test", "--vision"])
+    result = runner.invoke(app, ["index-tree", str(tree), "--collection", "ocr_test", "--vision"])
     assert result.exit_code != 0
-    # The clear error message from captioner_from_settings must be present.
+    # The clear error message from captioner_from_settings must mention agent or not implemented.
     assert "agent" in result.output.lower() or "not implemented" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# vision-run command (new — add-llm-vision-provider)
+# ---------------------------------------------------------------------------
+
+
+def test_vision_run_agent_provider_no_op_exit_zero(cli_db: Path) -> None:
+    """vision-run with provider=agent (default) prints the no-op message and exits 0."""
+    result = runner.invoke(app, ["vision-run"])
+    assert result.exit_code == 0, result.output
+    # The no-op message mentions "agent" or "nothing to run".
+    assert "agent" in result.output.lower() or "nothing" in result.output.lower()
+
+
+def test_vision_run_ocr_provider_exits_nonzero(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vision-run with provider=ocr must exit non-zero (ocr is still a stub)."""
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "ocr")
+    result = runner.invoke(app, ["vision-run"])
+    assert result.exit_code != 0
+    assert "not implemented" in result.output.lower() or "agent" in result.output.lower()
+
+
+def test_vision_run_llm_provider_no_images_describes_zero(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vision-run with provider=llm but no pending images exits 0 with described=0.
+
+    No real network: the poster is never called when there are no pending images.
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+    result = runner.invoke(app, ["vision-run"])
+    assert result.exit_code == 0, result.output
+    # Report table must be rendered.
+    assert "described" in result.output or "vision-run" in result.output
+
+
+def test_vision_run_llm_provider_with_stubbed_captioner(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vision-run with provider=llm + a stubbed captioner describes pending images.
+
+    The ``post_chat_completion`` poster is monkeypatched to return a canned
+    response so no real network call is made.
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+
+    # Seed a pending image file-record pointing at a real (tiny) PNG.
+    img_path = tmp_path / "cat.png"
+    img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+    _seed_image_file_record(
+        cli_db,
+        rel="cat.png",
+        path=str(img_path),
+        ext=".png",
+    )
+
+    # Stub the shared poster so describe() never calls the network.
+    from mintmory.core import llm as llm_mod
+
+    def _fake_poster(
+        *,
+        base_url: str,
+        api_key: object,
+        payload: object,
+        timeout_s: object,
+        system: object,
+        model: object,
+    ) -> dict[str, object]:
+        return {"choices": [{"message": {"content": "A tiny test image."}}]}
+
+    monkeypatch.setattr(llm_mod, "post_chat_completion", _fake_poster)
+
+    result = runner.invoke(app, ["vision-run"])
+    assert result.exit_code == 0, result.output
+    # Report must mention described = 1 in the table.
+    assert "described" in result.output
+
+
+def test_vision_run_limit_option_accepted(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """vision-run --limit N is accepted with provider=agent (no-op)."""
+    result = runner.invoke(app, ["vision-run", "--limit", "5"])
+    assert result.exit_code == 0, result.output
+
+
+def test_vision_run_budget_option_accepted(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """vision-run --budget MB is accepted with provider=agent (no-op)."""
+    result = runner.invoke(app, ["vision-run", "--budget", "10.0"])
+    assert result.exit_code == 0, result.output
+
+
+def test_vision_run_all_option_accepted(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """vision-run --all is accepted with provider=agent (no-op)."""
+    result = runner.invoke(app, ["vision-run", "--all"])
+    assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# index-tree --vision with provider=agent (smoke — defaults reproduce today)
+# ---------------------------------------------------------------------------
+
+
+def test_index_tree_vision_agent_mode_queues_raster(cli_db: Path, tmp_path: Path) -> None:
+    """index-tree --vision with provider=agent (default) queues raster images.
+
+    This is the UNCHANGED MM-18 behaviour: with no server-side captioner,
+    raster images are queued for the agent loop (images-queued counter) and
+    SVG images are self-described inline (svg-described counter). No vision
+    model is called.
+    """
+    tree = tmp_path / "agent_assets"
+    tree.mkdir()
+
+    # Raster — will be queued (provider=agent).
+    (tree / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    result = runner.invoke(
+        app,
+        ["index-tree", str(tree), "--collection", "agent_assets", "--no-text-content", "--vision"],
+    )
+    assert result.exit_code == 0, result.output
+    # With agent provider, images-queued must appear (not images-described).
+    assert "images-queued" in result.output
+    assert "images-described" not in result.output
+
+
+def test_index_tree_vision_llm_mode_captions_raster_inline(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """index-tree --vision with provider=llm captions raster images INLINE.
+
+    Contract §4/§7: with a server-side captioner the raster branch reads bytes,
+    calls describe + image_caption_put inline, increments images-described (NOT
+    images-queued), records index_mode='vision', and ANNOTATES the file-record
+    with the returned description. The shared poster is stubbed → no network.
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+
+    # Stub the shared poster so describe() never hits the network.
+    from mintmory.core import llm as llm_mod
+
+    def _fake_poster(
+        *,
+        base_url: str,
+        api_key: object,
+        payload: object,
+        timeout_s: object,
+        system: object,
+        model: object,
+    ) -> dict[str, object]:
+        return {"choices": [{"message": {"content": "An inline-captioned test image."}}]}
+
+    monkeypatch.setattr(llm_mod, "post_chat_completion", _fake_poster)
+
+    tree = tmp_path / "llm_assets"
+    tree.mkdir()
+    (tree / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    result = runner.invoke(
+        app,
+        ["index-tree", str(tree), "--collection", "llm_assets", "--no-text-content", "--vision"],
+    )
+    assert result.exit_code == 0, result.output
+    # With the llm provider, images-described appears (not images-queued).
+    assert "images-described" in result.output
+    assert "images-queued" not in result.output
+
+    conn = _store(cli_db).connect()
+    # The manifest records the vision attempt.
+    modes = {row[0] for row in conn.execute("SELECT index_mode FROM index_manifest").fetchall()}
+    assert "vision" in modes
+    # The inline description was persisted (image_description memory exists).
+    desc_rows = conn.execute(
+        "SELECT content FROM memories "
+        "WHERE is_archived = 0 "
+        "AND json_extract(metadata, '$.kind') = 'image_description'"
+    ).fetchall()
+    assert any("inline-captioned" in row[0] for row in desc_rows), desc_rows

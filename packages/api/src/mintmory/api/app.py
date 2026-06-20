@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from mintmory.api.schemas import (
+    CaptionRunRequest,
     ConceptLinkCreate,
     DreamRequest,
     ImageCaptionPut,
@@ -36,6 +37,7 @@ from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.storage import StorageAdapter
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
+    CaptionRunReport,
     ConceptLink,
     ConceptLinkType,
     DreamIntensity,
@@ -418,6 +420,41 @@ async def put_image_caption(file_id: str, body: ImageCaptionPut) -> ImageDescrip
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/images/caption-run", response_model=CaptionRunReport, tags=["Images"])
+async def caption_run(body: CaptionRunRequest) -> CaptionRunReport:
+    """Caption already-indexed pending images server-side with the configured vision provider.
+
+    Requires ``MINTMORY_VISION_PROVIDER=llm`` (a reachable OpenAI-compatible vision model)
+    to do real work. With provider=agent (the default) this is a no-op: returns a
+    ``CaptionRunReport`` with ``provider='agent'`` and all-zero counts — use the
+    ``GET /images/jobs`` / ``PUT /images/{file_id}`` agent loop instead.
+
+    Per-image failures (network/timeout/unreadable) are skipped and counted under
+    ``failed``; one bad image never aborts the run. Returns a ``CaptionRunReport``
+    with per-image audit items.
+
+    Raises 422 when the configured provider is not yet implemented (e.g. ``ocr``).
+    """
+    from mintmory.core import vision as vision_mod
+
+    settings = load_settings()
+    try:
+        captioner = vision_mod.captioner_from_settings(settings.vision)
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if captioner is None:
+        return CaptionRunReport(provider="agent")
+    budget = int(body.budget_mb * 1024 * 1024) if body.budget_mb > 0 else None
+    return vision_mod.caption_pending_images(
+        get_store(),
+        captioner=captioner,
+        limit=body.limit,
+        budget=budget,
+        include_all=body.include_all,
+        settings=settings.vision,
+    )
 
 
 def main() -> None:

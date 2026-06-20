@@ -121,3 +121,24 @@ class ImageCaptionPut(BaseModel):
     """Request body for ``PUT /images/{file_id}`` (agent-supplied image description)."""
 
     description: str = Field(..., min_length=1)
+
+
+class CaptionRunRequest(BaseModel):
+    """Request body for ``POST /images/caption-run`` (server-side auto-caption).
+
+    Triggers the configured server-side vision provider (``MINTMORY_VISION_PROVIDER=llm``)
+    to caption already-indexed pending raster images in place, without re-walking the
+    tree. With provider=agent (the default) the route is a no-op and returns
+    ``provider='agent'`` with all-zero counts.
+    """
+
+    limit: int = Field(default=0, ge=0, description="Max images to caption (0 = no cap).")
+    budget_mb: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=("Download budget MB for online-only images (0 = use settings default)."),
+    )
+    include_all: bool = Field(
+        default=False,
+        description="Re-caption all raster images vs only pending (default).",
+    )

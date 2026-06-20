@@ -20,6 +20,7 @@ Tools exposed (mapped 1:1 to HTTP endpoints in openapi/mintmory.yaml):
   summary_put        → PUT  /summaries/{concept}
   image_jobs         → GET  /images/jobs
   image_caption_put  → PUT  /images/{file_id}
+  vision_run         → POST /images/caption-run
 
 Implementation note: all tool handlers are thin wrappers over mintmory.core.
 Every tool returns a JSON-safe dict (or list of dicts) produced via
@@ -44,6 +45,7 @@ from mintmory.core.config import load_settings
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.storage import StorageAdapter
 from mintmory.core.types import (
+    CaptionRunReport,
     ConceptLinkType,
     DreamIntensity,
     MemoryCategory,
@@ -76,7 +78,10 @@ mcp: FastMCP[Any] = FastMCP(
         "it back with summary_put — no separate LLM backend required. "
         "For indexed images you can supply the description yourself: call image_jobs to get the "
         "images needing a description, read each (inline base64 or via its path), write one "
-        "combined description, and send it back with image_caption_put — no vision backend needed."
+        "combined description, and send it back with image_caption_put — no vision backend needed. "
+        "If a server-side vision model is configured (MINTMORY_VISION_PROVIDER=llm), call "
+        "vision_run to auto-caption pending indexed images without the manual image_jobs loop; "
+        "with the default provider=agent it no-ops."
     ),
 )
 
@@ -545,6 +550,42 @@ def image_caption_put(file_id_or_path: str, description: str) -> dict[str, Any]:
     except KeyError as exc:
         return {"error": "not_found", "message": str(exc)}
     return result.model_dump(mode="json")
+
+
+@mcp.tool()
+def vision_run(limit: int = 0, budget_mb: float = 0.0, include_all: bool = False) -> dict[str, Any]:
+    """Caption already-indexed pending images with the configured SERVER-SIDE vision
+    provider (MINTMORY_VISION_PROVIDER=llm). Unlike image_jobs/image_caption_put
+    (where YOU, the agent, describe), this calls a configured vision MODEL server-side
+    and persists each description. With provider=agent it is a no-op (returns
+    provider='agent', described=0) — use the image_jobs loop instead. Per-image
+    failures are skipped and counted. Returns a CaptionRunReport dict.
+
+    Args:
+        limit: max images to caption (0 = no cap).
+        budget_mb: download budget MB for online-only images (0 = settings default).
+        include_all: re-caption all raster images vs only pending (default).
+    """
+    store = _get_store()
+    settings = load_settings()
+    from mintmory.core import vision as vision_mod  # lazy: optional dependency group
+
+    try:
+        captioner = vision_mod.captioner_from_settings(settings.vision)
+    except NotImplementedError as exc:
+        return {"error": "not_implemented", "message": str(exc)}
+    if captioner is None:
+        return CaptionRunReport(provider="agent").model_dump(mode="json")
+    budget = int(budget_mb * 1024 * 1024) if budget_mb > 0 else None
+    report = vision_mod.caption_pending_images(
+        store,
+        captioner=captioner,
+        limit=limit,
+        budget=budget,
+        include_all=include_all,
+        settings=settings.vision,
+    )
+    return report.model_dump(mode="json")
 
 
 # ---------------------------------------------------------------------------

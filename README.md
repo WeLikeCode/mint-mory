@@ -43,7 +43,14 @@ useful when it is typed, linked, and queryable — not stored as opaque blobs.
   for online-only files), write one combined description blob, and store it with
   `image_caption_put`. SVG text is extracted automatically (pure-Python, no model).
   Proprietary formats (`.psd`, `.xd`, …) remain metadata-only. Optional `[image]`
-  / `[ocr]` extras and future `llm`/`ocr` providers are a drop-in seam.
+  / `[ocr]` extras; `ocr` is a future stub.
+- **Automated LLM vision captioning.** Set `MINTMORY_VISION_PROVIDER=llm` to
+  caption raster images server-side via an OpenAI-compatible vision model (Ollama
+  `llava`, LM Studio, hosted endpoint). `index-tree --vision` then captions inline
+  during the walk; `mintmory vision-run` / `vision_run` (MCP) /
+  `POST /images/caption-run` (HTTP) caption already-indexed pending images without
+  re-walking. No new required dependency — reuses stdlib `urllib` from `core/llm.py`.
+  `agent` stays the default (zero behaviour change). `ocr` stays a stub.
 - **Personal notes.** First-class user-authored "remember this" notes that are
   authoritative, anchorable to other memories, time-aware, and protected from
   auto-archival.
@@ -102,7 +109,7 @@ mintmory doctor                                        # one-shot health check
 Tools exposed: `memory_add`, `memory_search`, `memory_get`, `memory_archive`,
 `memory_stats`, `memory_dream`, `session_feedback`, `summary_list`,
 `summary_get`, `summary_jobs`, `summary_put`, `memory_note`, `notes_list`,
-`image_jobs`, `image_caption_put`.
+`image_jobs`, `image_caption_put`, `vision_run`.
 
 ### HTTP API
 
@@ -172,11 +179,17 @@ regardless of which path writes the summary.
 
 ---
 
-## Image Understanding (agent-supplied vision, G5)
+## Image Understanding (agent-supplied and automated vision, G5)
 
-MintMory does not require a vision model backend. The agent that already holds the
-image in context is the vision capability. The loop works identically over all three
-transports:
+MintMory supports two vision paths — agent-supplied (default) and automated
+server-side (`llm`). Both use the same persistence layer (`image_caption_put`,
+the `image_jobs` work-list, the no-drift guarantee) and the same `[image]` extra
+for optional Pillow downscaling.
+
+### Agent-supplied path (default, `provider=agent`)
+
+The agent that already holds the image in context is the vision capability. The
+loop works identically over all three transports:
 
 1. **Index the tree.** Run `mintmory index-tree --vision /path/to/folder`. SVG files
    have their embedded `<text>` / `<title>` / `<desc>` content extracted automatically
@@ -203,9 +216,37 @@ transports:
    file-record and archives any prior description (no-drift: the image drops from the
    default `image_jobs` work-list immediately).
 
-**No vision backend is required for the `agent` path** (`MINTMORY_VISION_PROVIDER`
-defaults to `agent`). Future `llm` and `ocr` providers are a seam — selecting them
-raises a clear error in v1 with guidance to set `MINTMORY_VISION_PROVIDER=agent`.
+**No vision backend is required for the `agent` path** — it is the default.
+
+### Automated LLM vision path (`MINTMORY_VISION_PROVIDER=llm`)
+
+Set `MINTMORY_VISION_PROVIDER=llm` to caption raster images automatically via an
+OpenAI-compatible vision model (e.g. Ollama `llava`, LM Studio, a hosted endpoint).
+
+**Inline during indexing** — `mintmory index-tree --vision /path/to/folder`
+captions each raster as it is encountered (instead of queuing an agent job).
+Per-image failures (network/timeout/empty response) are logged and skipped; one
+bad image never aborts the walk.
+
+**Caption already-indexed images** (without re-walking the tree):
+
+```bash
+mintmory vision-run                      # CLI — describes pending images
+mintmory vision-run --limit 20           # cap to 20 images
+mintmory vision-run --budget 100         # 100 MB download budget for online-only
+mintmory vision-run --all                # re-caption ALL images (not just pending)
+```
+
+Or via MCP: call `vision_run` (with optional `limit`, `budget_mb`, `include_all`).
+Or via HTTP: `POST /images/caption-run` (body: `{"limit":0,"budget_mb":0,"include_all":false}`).
+
+With `provider=agent` (the default), `vision-run` / `vision_run` /
+`POST /images/caption-run` are no-ops (they return `{"provider":"agent","described":0}`)
+— zero behaviour change unless you opt in.
+
+**No new required dependency.** The vision HTTP call reuses the stdlib `urllib`
+machinery already in `core/llm.py` (OpenAI-compatible `/chat/completions` shape
+with a multimodal `image_url` content part). No `openai` SDK.
 
 **Optional extras:**
 
@@ -218,7 +259,14 @@ uv sync --extra ocr     # pytesseract: reserved for the future 'ocr' vision prov
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MINTMORY_VISION_PROVIDER` | `agent` | `agent` (no backend) / `llm` (future) / `ocr` (future) |
+| `MINTMORY_VISION_PROVIDER` | `agent` | `agent` (default) / `llm` (automated server-side) / `ocr` (stub, future) |
+| `MINTMORY_VISION_BASE_URL` | `http://localhost:11434/v1` | Base URL for the vision model endpoint (`llm` path only) |
+| `MINTMORY_VISION_MODEL` | `llava` | Vision model name (`llm` path only) |
+| `MINTMORY_VISION_API_KEY` | — | Bearer API key for the vision endpoint (omitted if not set) |
+| `MINTMORY_VISION_VISION_MAX_TOKENS` | `512` | Max tokens in the caption response (`llm` path only) |
+| `MINTMORY_VISION_VISION_TIMEOUT_S` | `120.0` | Per-image HTTP timeout in seconds (1–600; `llm` path only) |
+| `MINTMORY_VISION_VISION_TEMPERATURE` | `0.0` | Sampling temperature for the vision model (0.0–2.0; `llm` path only) |
+| `MINTMORY_VISION_VISION_PROMPT` | `""` | Override the default caption prompt (empty = use built-in default) |
 | `MINTMORY_VISION_MAX_IMAGE_MB` | `8.0` | Max on-disk size to embed as base64 (0 = no cap) |
 | `MINTMORY_VISION_DOWNSCALE_MAX_PX` | `1568` | Longest-edge downscale target for embedded payloads (needs `[image]`; 0 = off) |
 | `MINTMORY_VISION_MAX_DOWNLOAD_MB` | `200.0` | Budget for downloading online-only image bytes (shared with `--max-download-mb`) |

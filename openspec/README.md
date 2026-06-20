@@ -55,3 +55,15 @@ A change is implemented against its `design.md`, reviewed adversarially, then it
   compile-time seam that raises clearly in v1. No new required dependency; no model
   call in the agent path; no change to existing search/notes/index-tree paths.
   (implementing)
+- `add-llm-vision-provider` — automated server-side captioning via an
+  OpenAI-compatible vision model: `LLMCaptioner` (implements the MM-18 `Captioner`
+  protocol via multimodal `/chat/completions`); `caption_pending_images` core
+  function; `CaptionRunReport` / `CaptionRunItem` types; `IMAGE_CAPTION_PROMPT`
+  default; `post_chat_completion` shared urllib poster refactored out of `LLMClient`;
+  `VisionSettings` llm-tier knobs (`base_url`, `model`, `api_key`,
+  `vision_timeout_s`, `vision_temperature`, `vision_max_tokens`, `vision_prompt`);
+  `mintmory vision-run` CLI command; `vision_run` MCP tool; `POST /images/caption-run`
+  HTTP route + `CaptionRunRequest` schema; `index-tree --vision` auto-captions inline
+  when `provider=llm`. Default `provider=agent` is unchanged — zero behaviour change
+  without opt-in. No new required dependency (stdlib urllib); Pillow stays optional.
+  `ocr` stays a stub. (implementing)

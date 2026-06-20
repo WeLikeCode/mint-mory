@@ -392,6 +392,31 @@ class ImageDescription(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Vision run types (automated llm captioner — add-llm-vision-provider)
+# ---------------------------------------------------------------------------
+
+
+class CaptionRunItem(BaseModel):
+    """One image processed by a caption run (audit detail)."""
+
+    file_id: str
+    rel: str
+    status: str  # "described" | "skipped" | "failed"
+    note: str = ""  # description id / "oversized" / "budget" / the VisionError text
+
+
+class CaptionRunReport(BaseModel):
+    """Result of caption_pending_images / vision-run / POST /images/caption-run."""
+
+    described: int = 0
+    skipped: int = 0  # oversized or budget-exhausted
+    failed: int = 0  # VisionError / unreadable
+    budget_hit: bool = False
+    provider: str = "llm"  # "agent" when no captioner was configured (no-op run)
+    items: list[CaptionRunItem] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Embedding provider types (pluggable — local default, API as override)
 # ---------------------------------------------------------------------------
 

@@ -16,6 +16,7 @@ import io
 import json
 from typing import Any
 
+import pytest
 from mintmory.core.config import LLMProvider, LLMSettings
 from mintmory.core.llm import (
     LLMClient,
@@ -283,3 +284,118 @@ def test_check_contradiction_unparseable_reply_is_false(monkeypatch: Any) -> Non
     client = LLMClient(LLMSettings(provider=LLMProvider.OLLAMA))
     result = check_contradiction(client, "x", [("m1", "y")])
     assert result.has_conflict is False
+
+
+# ---------------------------------------------------------------------------
+# post_chat_completion delegation — Group 6 (add-llm-vision-provider) tests
+# ---------------------------------------------------------------------------
+
+
+def test_llm_client_chat_delegates_to_post_chat_completion(monkeypatch: Any) -> None:
+    """LLMClient.chat() delegates to post_chat_completion (shared poster refactor).
+
+    Verifies that after the §2d refactor, LLMClient.chat() still produces the
+    correct assistant text AND that the shared poster is called with the right
+    arguments — confirming the delegation path works and the observable behaviour
+    is byte-for-byte unchanged.
+    """
+    # Patch urlopen so no network is hit; post_chat_completion is called internally.
+    captured: dict[str, Any] = {}
+    body = {
+        "choices": [{"message": {"content": "delegation works"}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+    }
+    _patch_urlopen(monkeypatch, captured, body)
+
+    settings = LLMSettings(
+        provider=LLMProvider.OLLAMA,
+        base_url="http://localhost:11434/v1",
+        model="gemma4:e4b-it-qat",
+        temperature=0.1,
+        timeout_s=30.0,
+    )
+    client = LLMClient(settings)
+    result = client.chat("test delegation")
+
+    assert result == "delegation works"
+    # The URL that urlopen received must be the chat/completions endpoint
+    assert captured["url"] == "http://localhost:11434/v1/chat/completions"
+    # Payload must be the standard text-only shape
+    assert captured["payload"]["messages"] == [{"role": "user", "content": "test delegation"}]
+    assert captured["payload"]["model"] == "gemma4:e4b-it-qat"
+    assert captured["payload"]["temperature"] == pytest.approx(0.1)
+    assert captured["payload"]["stream"] is False
+
+
+def test_post_chat_completion_is_importable() -> None:
+    """post_chat_completion is publicly importable from mintmory.core.llm."""
+    from mintmory.core.llm import post_chat_completion  # noqa: F401
+
+    assert callable(post_chat_completion)
+
+
+def test_post_chat_completion_builds_correct_request(monkeypatch: Any) -> None:
+    """post_chat_completion posts to base_url/chat/completions and returns parsed JSON."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "ok"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    from mintmory.core.llm import post_chat_completion
+
+    result = post_chat_completion(
+        base_url="http://myhost:8080/v1",
+        api_key=None,
+        payload={
+            "model": "mymodel",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": False,
+        },
+        timeout_s=10.0,
+        system="test",
+        model="mymodel",
+    )
+
+    assert result == body
+    assert captured["url"] == "http://myhost:8080/v1/chat/completions"
+    assert captured["timeout"] == pytest.approx(10.0)
+    assert "Authorization" not in captured["headers"]
+
+
+def test_post_chat_completion_adds_bearer_header(monkeypatch: Any) -> None:
+    """post_chat_completion adds Authorization: Bearer header when api_key is set."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "ok"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    from mintmory.core.llm import post_chat_completion
+
+    post_chat_completion(
+        base_url="http://host/v1",
+        api_key="my-secret-key",
+        payload={"model": "m", "messages": [], "stream": False},
+        timeout_s=5.0,
+        system="s",
+        model="m",
+    )
+
+    assert captured["headers"].get("Authorization") == "Bearer my-secret-key"
+
+
+def test_post_chat_completion_strips_trailing_slash(monkeypatch: Any) -> None:
+    """post_chat_completion strips trailing slash from base_url before appending path."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "x"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    from mintmory.core.llm import post_chat_completion
+
+    post_chat_completion(
+        base_url="http://host/v1/",
+        api_key=None,
+        payload={"model": "m", "messages": [], "stream": False},
+        timeout_s=5.0,
+        system="s",
+        model="m",
+    )
+
+    assert captured["url"] == "http://host/v1/chat/completions"

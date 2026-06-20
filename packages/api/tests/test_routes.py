@@ -1084,3 +1084,171 @@ def test_get_image_jobs_works_without_vision_backend(client: TestClient) -> None
     resp = client.get("/images/jobs")
     assert resp.status_code == 200
     assert any(j["file_id"] == file_id for j in resp.json())
+
+
+# ---------------------------------------------------------------------------
+# POST /images/caption-run (new — add-llm-vision-provider, Group 6.4)
+# ---------------------------------------------------------------------------
+
+
+def test_caption_run_agent_provider_is_noop(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run with provider=agent (default) returns 200 and a
+    CaptionRunReport with provider='agent' and all-zero counts.
+
+    No images are described; no captioner is invoked. This is the documented
+    no-op when MINTMORY_VISION_PROVIDER is not set (or is 'agent').
+    """
+    from mintmory.core.types import CaptionRunReport
+
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    resp = client.post("/images/caption-run", json={})
+    assert resp.status_code == 200, resp.text
+    report = CaptionRunReport(**resp.json())  # OpenAPI-conformance proxy
+    assert report.provider == "agent"
+    assert report.described == 0
+    assert report.skipped == 0
+    assert report.failed == 0
+    assert report.budget_hit is False
+    assert report.items == []
+
+
+def test_caption_run_agent_provider_empty_body_is_valid(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run with an empty JSON body uses all defaults and is 200."""
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    resp = client.post("/images/caption-run", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["provider"] == "agent"
+
+
+def test_caption_run_request_body_params_accepted(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run accepts limit, budget_mb, and include_all params."""
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    resp = client.post(
+        "/images/caption-run",
+        json={"limit": 10, "budget_mb": 50.0, "include_all": True},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["provider"] == "agent"
+
+
+def test_caption_run_limit_negative_rejected(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run with limit < 0 returns 422 (ge=0 constraint)."""
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    resp = client.post("/images/caption-run", json={"limit": -1})
+    assert resp.status_code == 422
+
+
+def test_caption_run_budget_mb_negative_rejected(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run with budget_mb < 0 returns 422 (ge=0.0 constraint)."""
+    monkeypatch.delenv("MINTMORY_VISION_PROVIDER", raising=False)
+    resp = client.post("/images/caption-run", json={"budget_mb": -1.0})
+    assert resp.status_code == 422
+
+
+def test_caption_run_ocr_provider_returns_422(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run with provider=ocr returns 422 (ocr is still a stub).
+
+    The route maps NotImplementedError from captioner_from_settings to HTTP 422
+    with a clear detail message.
+    """
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "ocr")
+    resp = client.post("/images/caption-run", json={})
+    assert resp.status_code == 422, resp.text
+    detail = resp.json().get("detail", "")
+    # The message must mention the agent-supplied alternative or 'not implemented'.
+    assert "agent" in detail.lower() or "not implemented" in detail.lower()
+
+
+def test_caption_run_llm_provider_no_pending_images(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """POST /images/caption-run with provider=llm and no pending images returns 200.
+
+    With no pending raster images the captioner is never called (no network).
+    described=0, failed=0, provider='llm'.
+    """
+    from mintmory.core.types import CaptionRunReport
+
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+    resp = client.post("/images/caption-run", json={})
+    assert resp.status_code == 200, resp.text
+    report = CaptionRunReport(**resp.json())
+    assert report.provider == "llm"
+    assert report.described == 0
+    assert report.failed == 0
+
+
+def test_caption_run_llm_provider_with_stubbed_poster(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    """POST /images/caption-run with provider=llm + a monkeypatched poster describes images.
+
+    No real network: ``post_chat_completion`` is monkeypatched to return a canned
+    response. After the run the image must be absent from GET /images/jobs (no-drift).
+    """
+    from mintmory.core import llm as llm_mod
+    from mintmory.core.types import CaptionRunReport
+
+    monkeypatch.setenv("MINTMORY_VISION_PROVIDER", "llm")
+
+    # Create a real tiny PNG so describe() can read bytes.
+    img_path = tmp_path / "test.png"  # type: ignore[operator]
+    img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+
+    # Seed a pending raster image file-record.
+    file_id = _seed_image_file_record(
+        client,
+        rel="test.png",
+        path=str(img_path),
+        ext=".png",
+    )
+
+    # Confirm it shows up as pending.
+    jobs_before = client.get("/images/jobs")
+    assert jobs_before.status_code == 200
+    assert any(j["file_id"] == file_id for j in jobs_before.json())
+
+    # Monkeypatch the poster so no real HTTP call is made.
+    def _fake_poster(
+        *,
+        base_url: str,
+        api_key: object,
+        payload: object,
+        timeout_s: object,
+        system: object,
+        model: object,
+    ) -> dict[str, object]:
+        return {"choices": [{"message": {"content": "A test PNG with no real content."}}]}
+
+    monkeypatch.setattr(llm_mod, "post_chat_completion", _fake_poster)
+
+    resp = client.post("/images/caption-run", json={})
+    assert resp.status_code == 200, resp.text
+    report = CaptionRunReport(**resp.json())
+    assert report.described == 1, f"expected described=1, got {report}"
+    assert report.failed == 0
+    assert report.provider == "llm"
+    assert len(report.items) == 1
+    assert report.items[0].status == "described"
+
+    # After the run, the image must be absent from default GET /images/jobs (no-drift).
+    jobs_after = client.get("/images/jobs")
+    assert jobs_after.status_code == 200
+    assert not any(j["file_id"] == file_id for j in jobs_after.json()), (
+        "described image must be absent from GET /images/jobs after caption-run"
+    )

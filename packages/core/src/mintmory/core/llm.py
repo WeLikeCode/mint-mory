@@ -63,6 +63,73 @@ def extract_json(text: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Shared OpenAI-compatible /chat/completions poster (stdlib urllib only)
+# ---------------------------------------------------------------------------
+
+
+def post_chat_completion(
+    *,
+    base_url: str,
+    api_key: str | None,
+    payload: dict[str, Any],
+    timeout_s: float,
+    system: str,
+    model: str,
+    extra_attrs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """POST an OpenAI-compatible ``/chat/completions`` ``payload`` and return the
+    parsed JSON dict.
+
+    Wraps the call in the existing ``gen_ai.chat`` span + ``mintmory.llm.*``
+    metrics (no-op unless OTel on). Raises ``urllib.error.URLError`` /
+    ``TimeoutError`` / ``json.JSONDecodeError`` to the caller (``LLMClient``
+    maps as today; ``LLMCaptioner`` wraps in ``VisionError``).
+
+    ``system`` sets ``gen_ai.system`` (e.g. the provider name).
+    ``model`` sets ``gen_ai.request.model`` for telemetry.
+    """
+    headers: dict[str, str] = {"content-type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    attrs: dict[str, Any] = {
+        "gen_ai.system": system,
+        "gen_ai.request.model": model,
+    }
+    if extra_attrs:
+        attrs.update(extra_attrs)
+    start = time.perf_counter()
+    ok = False
+    with telemetry.span("gen_ai.chat", **attrs) as sp:
+        try:
+            with urllib.request.urlopen(  # noqa: S310 (configured base_url)
+                req, timeout=timeout_s
+            ) as resp:
+                data: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+            usage = data.get("usage")
+            if isinstance(usage, dict):
+                in_tok = usage.get("prompt_tokens")
+                out_tok = usage.get("completion_tokens")
+                if in_tok is not None:
+                    sp.set_attribute("gen_ai.usage.input_tokens", in_tok)
+                if out_tok is not None:
+                    sp.set_attribute("gen_ai.usage.output_tokens", out_tok)
+            ok = True
+            return data
+        finally:
+            ms = (time.perf_counter() - start) * 1000.0
+            sp.set_attribute("latency_ms", ms)
+            sp.set_attribute("ok", ok)
+            telemetry.record_value("mintmory.llm.latency_ms", ms, model=model)
+            telemetry.add_count("mintmory.llm.calls", model=model, ok=ok)
+
+
+# ---------------------------------------------------------------------------
 # OpenAI-compatible /chat/completions client (stdlib only)
 # ---------------------------------------------------------------------------
 class LLMClient:
@@ -95,42 +162,30 @@ class LLMClient:
     def chat(self, prompt: str) -> str:
         """Single-turn chat completion; returns the assistant message text.
 
-        Wrapped in a ``gen_ai.chat`` span and ``mintmory.llm.*`` metrics
-        (no-op unless OTel is enabled).
+        Delegates to ``post_chat_completion`` (shared urllib poster). Wrapped in
+        a ``gen_ai.chat`` span and ``mintmory.llm.*`` metrics (no-op unless OTel
+        is enabled). Observable behaviour is byte-for-byte identical to the prior
+        direct implementation.
         """
         model = self.settings.model
         provider = self.settings.provider.value
-        req = self._build_request(prompt)
-        attrs: dict[str, Any] = {
-            "gen_ai.system": provider,
-            "gen_ai.request.model": model,
-            "prompt_chars": len(prompt),
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": self.settings.temperature,
+            "stream": False,
         }
-        start = time.perf_counter()
-        ok = False
-        with telemetry.span("gen_ai.chat", **attrs) as sp:
-            try:
-                with urllib.request.urlopen(  # noqa: S310 (configured base_url)
-                    req, timeout=self.settings.timeout_s
-                ) as resp:
-                    data: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
-                content: str = data["choices"][0]["message"]["content"]
-                usage = data.get("usage")
-                if isinstance(usage, dict):
-                    in_tok = usage.get("prompt_tokens")
-                    out_tok = usage.get("completion_tokens")
-                    if in_tok is not None:
-                        sp.set_attribute("gen_ai.usage.input_tokens", in_tok)
-                    if out_tok is not None:
-                        sp.set_attribute("gen_ai.usage.output_tokens", out_tok)
-                ok = True
-                return content
-            finally:
-                ms = (time.perf_counter() - start) * 1000.0
-                sp.set_attribute("latency_ms", ms)
-                sp.set_attribute("ok", ok)
-                telemetry.record_value("mintmory.llm.latency_ms", ms, model=model)
-                telemetry.add_count("mintmory.llm.calls", model=model, ok=ok)
+        data = post_chat_completion(
+            base_url=self.settings.base_url,
+            api_key=self.settings.api_key,
+            payload=payload,
+            timeout_s=self.settings.timeout_s,
+            system=provider,
+            model=model,
+            extra_attrs={"prompt_chars": len(prompt)},  # parity with pre-refactor span
+        )
+        content: str = data["choices"][0]["message"]["content"]
+        return content
 
     def ping(self) -> bool:
         """Cheap liveness probe — ``True`` if a trivial chat succeeds."""

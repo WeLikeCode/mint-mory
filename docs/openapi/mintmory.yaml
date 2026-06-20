@@ -1042,6 +1042,105 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
+  /images/caption-run:
+    post:
+      operationId: captionRun
+      summary: Caption pending images server-side with the configured vision provider
+      description: |
+        Triggers the configured server-side vision provider
+        (``MINTMORY_VISION_PROVIDER=llm``) to caption already-indexed pending
+        raster images in place — without re-walking the tree. Each pending image
+        returned by the default ``GET /images/jobs`` work-list is described by the
+        configured vision model and persisted via the same
+        ``image_caption_put`` path as the agent loop (archive-then-add, no-drift).
+
+        **No-op when provider=agent (the default):** if no server-side backend is
+        configured, the route returns a ``CaptionRunReport`` with
+        ``provider='agent'`` and all-zero counts immediately. Use the
+        ``GET /images/jobs`` / ``PUT /images/{file_id}`` agent loop instead.
+
+        **Per-image failure isolation:** a network/timeout/HTTP/empty-response
+        failure for one image raises a ``VisionError`` internally, is counted
+        under ``failed``, and the run continues — one bad image never aborts the
+        run.
+
+        Raises ``422`` when the configured provider is not yet implemented
+        (e.g. ``MINTMORY_VISION_PROVIDER=ocr``).
+      tags:
+        - Images
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaptionRunRequest'
+            examples:
+              defaultRun:
+                summary: Caption all pending images (no cap, settings budget)
+                value:
+                  limit: 0
+                  budget_mb: 0.0
+                  include_all: false
+              cappedRun:
+                summary: Caption at most 10 images, 50 MB download budget
+                value:
+                  limit: 10
+                  budget_mb: 50.0
+                  include_all: false
+              recaptionAll:
+                summary: Re-caption every raster image (including already-described)
+                value:
+                  limit: 0
+                  budget_mb: 0.0
+                  include_all: true
+      responses:
+        '200':
+          description: |
+            Caption run completed. ``described`` counts newly persisted descriptions;
+            ``skipped`` counts oversized or budget-exhausted images; ``failed``
+            counts images that raised a ``VisionError`` (network/timeout/empty);
+            ``budget_hit`` is ``true`` when the run stopped captioning online-only
+            images because the download budget was reached. ``provider='agent'``
+            with all-zero counts signals a no-op run (no server-side backend
+            configured).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptionRunReport'
+              examples:
+                noOpAgent:
+                  summary: No-op (provider=agent, default)
+                  value:
+                    described: 0
+                    skipped: 0
+                    failed: 0
+                    budget_hit: false
+                    provider: agent
+                    items: []
+                successfulRun:
+                  summary: Two images described, one failed
+                  value:
+                    described: 2
+                    skipped: 0
+                    failed: 1
+                    budget_hit: false
+                    provider: llm
+                    items:
+                      - file_id: "01HXYZ1234567890ABCDEFGHIJ"
+                        rel: "docs/diagram.png"
+                        status: described
+                        note: "rec_01HXYZ9999"
+                      - file_id: "01HXYZ0000000000BBBBBBBBBB"
+                        rel: "assets/logo.jpg"
+                        status: described
+                        note: "rec_01HXYZ8888"
+                      - file_id: "01HXYZ0000000000CCCCCCCCCC"
+                        rel: "assets/large.png"
+                        status: failed
+                        note: "vision model returned empty content"
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
 # ---------------------------------------------------------------------------
 # Components
 # ---------------------------------------------------------------------------
@@ -2439,6 +2538,152 @@ components:
             legible text visible in it, and any other relevant details. One blob;
             no structured ``{caption, ocr}`` split. Must be at least 1 character.
           example: "A screenshot of the MintMory dashboard showing a memory graph with three connected nodes labelled 'OAuth 2.0', 'Acme', and 'parking:read'. Text visible: 'Active memories: 1085'."
+
+    CaptionRunRequest:
+      type: object
+      description: |
+        Request body for ``POST /images/caption-run`` (server-side auto-caption).
+        All fields are optional and default to a conservative "caption only pending
+        images with no download budget override" run.
+
+        Requires ``MINTMORY_VISION_PROVIDER=llm`` (or another server-side provider)
+        to do real work. With provider=agent (the default) the route is a no-op.
+      properties:
+        limit:
+          type: integer
+          minimum: 0
+          default: 0
+          description: |
+            Maximum number of images to caption in this run (0 = no cap). Applied
+            after the pending-image selection, in deterministic order.
+          example: 0
+        budget_mb:
+          type: number
+          format: float
+          minimum: 0.0
+          default: 0.0
+          description: |
+            Download budget in megabytes for online-only images (0 = use the
+            server-side ``MINTMORY_VISION_MAX_DOWNLOAD_MB`` setting default).
+            Once the running download total for online-only images exceeds this
+            budget, further online-only images are skipped and counted under
+            ``skipped`` (note ``budget``). Local files do not consume this budget.
+          example: 0.0
+        include_all:
+          type: boolean
+          default: false
+          description: |
+            When ``false`` (default), only images that still need a description
+            are captioned (pending work-list). When ``true``, every raster image
+            file-record is re-captioned, replacing any existing description.
+            Equivalent to the ``--all`` flag on ``mintmory vision-run``.
+          example: false
+
+    CaptionRunItem:
+      type: object
+      description: |
+        Audit detail for one image processed by a ``POST /images/caption-run`` run.
+        Included in ``CaptionRunReport.items``.
+      required:
+        - file_id
+        - rel
+        - status
+      properties:
+        file_id:
+          type: string
+          description: The image file-record memory id.
+          example: "01HXYZ1234567890ABCDEFGHIJ"
+        rel:
+          type: string
+          description: POSIX path relative to the walk root (human-readable image identifier).
+          example: "docs/diagram.png"
+        status:
+          type: string
+          enum:
+            - described
+            - skipped
+            - failed
+          description: |
+            Outcome for this image:
+            - ``described`` — vision model produced a description; it was persisted.
+            - ``skipped`` — image was not captioned (oversized or download budget hit).
+            - ``failed`` — vision model call raised a ``VisionError`` (network/timeout/
+              empty content); description NOT persisted; run continued.
+          example: described
+        note:
+          type: string
+          default: ""
+          description: |
+            Human-readable detail for this item:
+            - ``described``: the new description memory record id (``rec_…``).
+            - ``skipped``: ``"oversized"`` or ``"budget"``.
+            - ``failed``: the ``VisionError`` message (e.g. ``"vision model returned
+              empty content"``).
+          example: "rec_01HXYZ9999"
+
+    CaptionRunReport:
+      type: object
+      description: |
+        Result of ``POST /images/caption-run`` / ``mintmory vision-run`` /
+        the MCP ``vision_run`` tool. Summarises a server-side caption run.
+
+        When ``provider='agent'`` and all counts are zero, the run was a no-op
+        because no server-side vision backend is configured (``MINTMORY_VISION_PROVIDER``
+        is ``agent``, the default). In that case use the
+        ``GET /images/jobs`` / ``PUT /images/{file_id}`` agent loop instead.
+      properties:
+        described:
+          type: integer
+          minimum: 0
+          default: 0
+          description: |
+            Number of images successfully captioned and persisted in this run.
+          example: 2
+        skipped:
+          type: integer
+          minimum: 0
+          default: 0
+          description: |
+            Number of images skipped because they were oversized (exceeded
+            ``MINTMORY_VISION_MAX_IMAGE_MB``) or because the download budget for
+            online-only images was exhausted.
+          example: 0
+        failed:
+          type: integer
+          minimum: 0
+          default: 0
+          description: |
+            Number of images where the vision model call raised a ``VisionError``
+            (network/timeout/HTTP error/empty content/unreadable file). These images
+            are NOT described; the run continues past them.
+          example: 1
+        budget_hit:
+          type: boolean
+          default: false
+          description: |
+            ``true`` when the run stopped captioning further online-only images
+            because the download budget (``budget_mb`` or the settings default) was
+            reached. Does not affect local-file images.
+          example: false
+        provider:
+          type: string
+          default: llm
+          description: |
+            The vision provider that was active during this run. ``"agent"`` means
+            no server-side backend was configured and the run was a no-op (all counts
+            will be zero). Any other value (e.g. ``"llm"``) indicates a real caption
+            run was performed.
+          example: llm
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CaptionRunItem'
+          default: []
+          description: |
+            Per-image audit log for this run. Each entry describes one image that was
+            considered (described, skipped, or failed). Empty when the run was a no-op
+            (``provider='agent'``).
+          example: []
 
     # -----------------------------------------------------------------------
     # Error types
