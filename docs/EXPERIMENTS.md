@@ -866,3 +866,30 @@ workload-dependent**: it helped LongMemEval (§11, paraphrase recall) but HURTS
 LoCoMo (0.79 < 0.92, exact-match-dominated). This validates the conservative
 `vector_rrf_weight=1.0` default + per-deployment tuning — raise it for
 paraphrase/semantic workloads, leave it at 1.0 (or lower) for exact-match recall.
+
+---
+
+## 13. mempalace comparison — ConvoMem (per-message evidence recall)
+
+Harness: `docs/eval/mempalace_convomem_benchmark.py` (HF loader copied verbatim
+from mempalace for identical item selection). Per item: corpus = one doc per
+message; recall = fraction of evidence message texts matched (substring, either
+direction) in top-k. 250 items (5×50; `changing_evidence` 404s for the loader, as
+it does for mempalace), all-MiniLM-L6-v2, top-10. vs mempalace published raw 0.929.
+
+### Result — raw, 250 items, top-10 (2026-06-20)
+
+| System / variant | Avg recall |
+|---|---|
+| mempalace raw (published) | 0.929 |
+| MintMory vector-only | **0.9287** |
+| MintMory hybrid (default, w=1) | 0.8973 |
+| MintMory hybrid + MM-22 (w=3) | 0.9093 |
+
+**Findings:** (1) MintMory vector-only reproduces mempalace raw to the digit
+(0.9287 vs 0.929) — THIRD independent harness-fidelity confirmation (cf. §11, §12).
+(2) Here the hybrid slightly *hurts* (0.897) — short-message semantic retrieval,
+lexical fusion adds distractor noise; MM-22 (w=3) partially recovers (0.909) by
+upweighting vector. Consolidated cross-benchmark picture: vector-only == mempalace
+raw everywhere; hybrid fusion is workload-dependent (LoCoMo exact-match +0.32,
+LongMemEval +0.004, ConvoMem −0.03), and MM-22's vector weight is the right knob.

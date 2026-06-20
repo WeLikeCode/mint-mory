@@ -1,0 +1,22 @@
+{
+  "config": {
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "items": 250,
+    "top_k": 10
+  },
+  "avg_recall": {
+    "vector": 0.9287,
+    "hybrid_w1": 0.8973,
+    "hybrid_w3": 0.9093
+  },
+  "mempalace_published": {
+    "raw_all_top10": 0.929
+  },
+  "per_category_hybrid_w1": {
+    "abstention_evidence": 0.9,
+    "assistant_facts_evidence": 1.0,
+    "implicit_connection_evidence": 0.8667,
+    "preference_evidence": 0.76,
+    "user_evidence": 0.96
+  }
+}
