@@ -1,0 +1,23 @@
+{
+  "config": {
+    "embedder": "hashing-tfidf-v1",
+    "dim": 512,
+    "num_queries": 200,
+    "corpus_size": 100000,
+    "golden_union": 598,
+    "db_mb": 716.5
+  },
+  "metrics": {
+    "hybrid_vs_golden@3": 0.3783,
+    "hybrid_vs_golden@10": 0.6083,
+    "vector_vs_golden@3": 0.2467,
+    "vector_vs_golden@10": 0.3483,
+    "hybrid_vs_self@3": 0.4533,
+    "hybrid_vs_self@10": 0.514
+  },
+  "latency_ms": {
+    "mean": 299.87,
+    "p50": 296.42,
+    "p95": 350.54
+  }
+}

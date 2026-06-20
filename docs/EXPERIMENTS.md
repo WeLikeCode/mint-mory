@@ -768,3 +768,41 @@ emerges as the lexical haystack grows. **Implication:** for semantic-heavy
 retrieval the default RRF under-weights the dense signal at the top; candidate
 fix = vector-weighted fusion or a cosine rerank of the final page (to be measured
 on this same harness). VERDICT: finding recorded; fix under investigation.
+
+### Embedder sweep — same 200 q / 100k psg (2026-06-20)
+
+| Embedder | dim | hybrid@3 | hybrid@10 | vector@3 | vector@10 | latency (mean) |
+|---|---|---|---|---|---|---|
+| `hashing` (default) | 512 | 0.378 | 0.608 | 0.247 | 0.348 | 300 ms |
+| `all-MiniLM-L6-v2` | 384 | 0.663 | 0.857 | 0.710 | 0.867 | 271 ms |
+| `nomic-embed-text` | 768 | 0.663 | 0.873 | 0.702 | 0.889 | 387 ms |
+
+Notes: (1) the shipped **hashing** default is weak on semantic NQ (vector@3 0.25)
+but there hybrid *helps* (0.378 vs 0.247) — its "vector" is itself lexical, so
+FTS+trigram add signal; the RRF-hurts effect is specific to real semantic
+embedders. (2) **nomic (768d) barely beats MiniLM (384d)** (+1.6pt @10) at +43%
+latency + a network dependency — **MiniLM is the sweet spot**. (3) the RRF@3
+regression replicates on both real embedders (≈ −4–5pt vs vector-only).
+
+### RRF fix investigation — `docs/eval/rrf_investigation.py` (MiniLM, 200 q / 100k)
+
+Re-fuses the per-query component score dicts under alternative strategies:
+
+| Strategy | recall@3 | recall@10 |
+|---|---|---|
+| vector_only | 0.710 | 0.867 |
+| rrf_k60 (current default) | 0.665 | 0.857 |
+| wrrf_v2 (vector weight ×2) | 0.697 | 0.877 |
+| wrrf_v3 (vector weight ×3) | 0.718 | 0.883 |
+| **wrrf_v5 (vector weight ×5)** | **0.722** | **0.890** |
+| rerank_n20 (cosine-rerank RRF top-20) | 0.713 | 0.873 |
+| rerank_n50 | 0.710 | 0.867 |
+
+**VERDICT — weighted RRF wins.** Weighting the vector source ×3–5 in `rrf_merge`
+lifts recall@3 **0.665 → 0.722** (+5.7pt) and recall@10 **0.857 → 0.890** (+3.3pt),
+beating *both* the unweighted default *and* pure-vector at both cutoffs (vector
+dominates the head; lexical keeps the tail). Cosine-rerank of the RRF head (n20)
+also recovers @3 but caps @10 at the rerank pool. Proposed change: a
+per-source weight on `rrf_merge` (env `MINTMORY_SEARCH_VECTOR_RRF_WEIGHT`,
+**default 1.0 = today's behaviour**; recommended 3.0), keeping the hashing default
+unaffected (lexical-vector, where fusion already helps).
