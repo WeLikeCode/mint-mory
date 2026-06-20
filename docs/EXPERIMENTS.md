@@ -837,3 +837,32 @@ like-for-like *raw/generic* comparison; mempalace's higher published numbers
 (98.4% held-out, ≥99% +LLM-rerank) come from heavily hand-tuned, partly
 test-inspected heuristics (temporal/quote/name boosts, preference extraction),
 which their own BENCHMARKS.md flags as teaching-to-the-test.
+
+---
+
+## 12. mempalace comparison — LoCoMo (multi-hop conversational recall)
+
+Harness: `docs/eval/mempalace_locomo_benchmark.py`. Adapts mempalace's LoCoMo raw
+methodology (session granularity, doc = dialog turns joined, recall = fraction of
+a question's evidence sessions in top-k, empty evidence => 1.0). 10 conversations,
+1986 questions, all-MiniLM-L6-v2, session/top-10. vs mempalace published.
+
+### Result — session/top-10, 1986 q (2026-06-20)
+
+| System / variant | Avg recall |
+|---|---|
+| mempalace raw (published) | 0.603 |
+| mempalace hybrid v5 (published, hand-tuned) | 0.889 |
+| MintMory vector-only | 0.6029 |
+| MintMory hybrid (default, w=1) | **0.9207** |
+| MintMory hybrid + MM-22 (w=3) | 0.7907 |
+
+**Findings:** (1) MintMory vector-only reproduces mempalace raw to the digit
+(0.6029 vs 0.603) — second independent harness-fidelity confirmation (cf. §11).
+(2) MintMory's GENERIC hybrid (0.921) beats mempalace's HAND-TUNED hybrid v5
+(0.889) — LoCoMo questions share exact names/tokens with dialog, which MintMory's
+FTS+trigram fusion captures out of the box. (3) **MM-22 vector weighting is
+workload-dependent**: it helped LongMemEval (§11, paraphrase recall) but HURTS
+LoCoMo (0.79 < 0.92, exact-match-dominated). This validates the conservative
+`vector_rrf_weight=1.0` default + per-deployment tuning — raise it for
+paraphrase/semantic workloads, leave it at 1.0 (or lower) for exact-match recall.

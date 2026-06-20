@@ -1,0 +1,24 @@
+{
+  "config": {
+    "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+    "granularity": "session",
+    "top_k": 10,
+    "questions": 1986
+  },
+  "avg_recall": {
+    "vector": 0.6029,
+    "hybrid_w1": 0.9207,
+    "hybrid_w3": 0.7907
+  },
+  "mempalace_published": {
+    "raw_session_top10": 0.603,
+    "hybrid_v5_session": 0.889
+  },
+  "per_category_hybrid": {
+    "1": 0.6968,
+    "2": 0.8183,
+    "3": 0.5902,
+    "4": 0.8032,
+    "5": 0.8498
+  }
+}
