@@ -1,0 +1,7 @@
+{"timestamp": "2024-03-15T10:00:00.000Z", "type": "session_meta", "payload": {"id": "cccccccc-dddd-eeee-ffff-000000000001", "timestamp": "2024-03-15T10:00:00.000Z", "cwd": "/Users/test/projects/sample-project", "originator": "codex_cli_rs", "cli_version": "0.104.0", "source": "cli", "model_provider": "openai"}}
+{"timestamp": "2024-03-15T10:00:01.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Please add a new feature to the API to support bulk operations."}]}}
+{"timestamp": "2024-03-15T10:00:02.000Z", "type": "event_msg", "payload": {"type": "task_started", "turn_id": "turn-001"}}
+{"timestamp": "2024-03-15T10:00:03.000Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "I will implement the bulk operations feature. This requires changes to the API handler and the data layer."}]}}
+{"timestamp": "2024-03-15T10:00:10.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Make sure it handles errors gracefully."}]}}
+{"timestamp": "2024-03-15T10:00:15.000Z", "type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Done. Added bulk operations endpoint with proper error handling. Returns 207 Multi-Status for partial failures."}]}}
+{"timestamp": "2024-03-15T10:00:16.000Z", "type": "event_msg", "payload": {"type": "task_completed"}}

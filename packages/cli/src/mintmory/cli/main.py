@@ -22,7 +22,7 @@ Commands:
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -1190,6 +1190,332 @@ def mcp_serve(
     from mintmory.mcp.server import main as mcp_main
 
     mcp_main()
+
+
+# ---------------------------------------------------------------------------
+# mintmory history — agent-history sub-commands
+# ---------------------------------------------------------------------------
+
+history_app = typer.Typer(name="history", help="Agent-history index commands")
+app.add_typer(history_app)
+
+
+def _get_history_store(db_path: str) -> StorageAdapter:
+    """Open the dedicated history DB (not the working store)."""
+    from mintmory.core.history.ingest import _assert_not_working_db
+    from mintmory.core.storage import StorageAdapter
+
+    _assert_not_working_db(db_path)
+    expanded = os.path.expanduser(db_path)
+    os.makedirs(os.path.dirname(os.path.abspath(expanded)), exist_ok=True)
+    store = StorageAdapter(expanded)
+    store.initialise()
+    return store
+
+
+def _parse_since(since: str) -> datetime:
+    """Parse --since like '75d', '8w', '3m' into an absolute UTC datetime."""
+    import re
+
+    m = re.fullmatch(r"(\d+)([dwm])", since.strip())
+    if not m:
+        raise typer.BadParameter(f"invalid --since {since!r}; expected e.g. '60d', '8w', '3m'")
+    n = int(m.group(1))
+    unit = m.group(2)
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if unit == "d":
+        from datetime import timedelta
+
+        return now - timedelta(days=n)
+    elif unit == "w":
+        from datetime import timedelta
+
+        return now - timedelta(weeks=n)
+    else:  # 'm'
+        # Approximate: 1 month ~ 30 days
+        from datetime import timedelta
+
+        return now - timedelta(days=n * 30)
+
+
+@history_app.command("backfill")
+def history_backfill(
+    source: list[str] = typer.Option(
+        [], "--source", help="Adapter(s) to run: claude_code, codex, kiro (repeatable)"
+    ),
+    db: str = typer.Option("", "--db", help="History DB path (default: agent-history.db)"),
+    limit: int = typer.Option(0, "--limit", help="Cap sessions per source (0 = unlimited)"),
+) -> None:
+    """Backfill all sessions from agent adapters into the history DB."""
+    from mintmory.core.history.ingest import (
+        DEFAULT_HISTORY_DB,
+        HermesGuardError,
+        backfill,
+    )
+
+    db_path = db if db else DEFAULT_HISTORY_DB
+    try:
+        report = backfill(
+            db_path=db_path,
+            sources=list(source) if source else None,
+            limit=limit,
+        )
+    except HermesGuardError as exc:
+        console.print(f"[red]error[/red]: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    table = Table(title="history backfill")
+    table.add_column("metric", style="cyan")
+    table.add_column("value", justify="right", style="green")
+    table.add_row("scanned", str(report.scanned))
+    table.add_row("written", str(report.written))
+    table.add_row("updated", str(report.updated))
+    table.add_row("skipped", str(report.skipped))
+    for src_name, count in report.by_source.items():
+        table.add_row(f"  {src_name}", str(count))
+    console.print(table)
+
+
+@history_app.command("sync")
+def history_sync(
+    source: list[str] = typer.Option(
+        [], "--source", help="Adapter(s): claude_code, codex, kiro (repeatable)"
+    ),
+    db: str = typer.Option("", "--db", help="History DB path"),
+) -> None:
+    """Sync new/changed sessions only (skip unchanged files per manifest)."""
+    from mintmory.core.history.ingest import (
+        DEFAULT_HISTORY_DB,
+        HermesGuardError,
+        sync,
+    )
+
+    db_path = db if db else DEFAULT_HISTORY_DB
+    try:
+        report = sync(
+            db_path=db_path,
+            sources=list(source) if source else None,
+        )
+    except HermesGuardError as exc:
+        console.print(f"[red]error[/red]: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    table = Table(title="history sync")
+    table.add_column("metric", style="cyan")
+    table.add_column("value", justify="right", style="green")
+    table.add_row("scanned", str(report.scanned))
+    table.add_row("written", str(report.written))
+    table.add_row("skipped", str(report.skipped))
+    for src_name, count in report.by_source.items():
+        table.add_row(f"  {src_name}", str(count))
+    console.print(table)
+
+
+@history_app.command("timeline")
+def history_timeline(
+    since: str | None = typer.Option(
+        None, "--since", help="Window like '75d', '8w', '3m' (mutual excl. with --from/--to)"
+    ),
+    from_date: str | None = typer.Option(None, "--from", help="ISO start date/datetime"),
+    to_date: str | None = typer.Option(None, "--to", help="ISO end date/datetime"),
+    repo: str | None = typer.Option(None, "--repo", help="Filter by repo name"),
+    kind: str | None = typer.Option(None, "--kind", help="Filter by kind (fix/feature/...)"),
+    limit: int = typer.Option(50, "--limit", help="Max rows"),
+    db: str = typer.Option("", "--db", help="History DB path"),
+) -> None:
+    """Print a dated changelog of sessions within the time window."""
+    import json as _json
+
+    from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, HermesGuardError
+
+    db_path = db if db else DEFAULT_HISTORY_DB
+    try:
+        store = _get_history_store(db_path)
+    except HermesGuardError as exc:
+        console.print(f"[red]error[/red]: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    # Resolve time window
+    if since is not None and (from_date is not None or to_date is not None):
+        raise typer.BadParameter("--since and --from/--to are mutually exclusive")
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    if since is not None:
+        window_start = _parse_since(since)
+        window_end = now
+    elif from_date is not None or to_date is not None:
+        window_start = _parse_iso(from_date) or datetime.min
+        window_end = _parse_iso(to_date) or now
+    else:
+        # Default: last 90 days
+        from datetime import timedelta
+
+        window_start = now - timedelta(days=90)
+        window_end = now
+
+    # Query the history DB for session_summary records in the window
+    conn = store.connect()
+    rows = conn.execute(
+        "SELECT content, metadata, valid_from FROM memories "
+        "WHERE is_archived = 0 "
+        "  AND json_extract(metadata, '$.record_type') = 'session_summary' "
+        "  AND valid_from >= ? AND valid_from <= ? "
+        "ORDER BY valid_from DESC "
+        "LIMIT ?",
+        (
+            window_start.isoformat(),
+            window_end.isoformat(),
+            limit,
+        ),
+    ).fetchall()
+
+    # Filter by repo/kind
+    filtered = []
+    for row in rows:
+        meta = _json.loads(row["metadata"] or "{}")
+        if repo is not None and meta.get("repo", "") != repo:
+            continue
+        if kind is not None and meta.get("kind", "") != kind:
+            continue
+        filtered.append((row["valid_from"], meta, row["content"]))
+
+    table = Table(title="history timeline")
+    table.add_column("date", style="yellow", no_wrap=True)
+    table.add_column("repo", style="cyan")
+    table.add_column("kind", style="magenta")
+    table.add_column("summary")
+    for valid_from, meta, content in filtered:
+        date_str = (valid_from or "")[:10]
+        table.add_row(
+            date_str,
+            meta.get("repo", ""),
+            meta.get("kind", ""),
+            content[:120],
+        )
+    console.print(table)
+    console.print(f"[dim]{len(filtered)} session(s)[/dim]")
+
+
+@history_app.command("search")
+def history_search(
+    query: str = typer.Argument(..., help="Search query"),
+    repo: str | None = typer.Option(None, "--repo", help="Filter by repo name"),
+    since: str | None = typer.Option(None, "--since", help="Only sessions within window"),
+    limit: int = typer.Option(10, "--limit", help="Max results"),
+    db: str = typer.Option("", "--db", help="History DB path"),
+) -> None:
+    """Hybrid search over session summaries in the history DB."""
+    import json as _json
+
+    from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, HermesGuardError
+    from mintmory.core.types import MemoryFilter, SearchRequest
+
+    db_path = db if db else DEFAULT_HISTORY_DB
+    try:
+        store = _get_history_store(db_path)
+    except HermesGuardError as exc:
+        console.print(f"[red]error[/red]: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    response = store.search(
+        SearchRequest(
+            query=query,
+            limit=limit * 3,  # fetch extra for post-filter
+            filter=MemoryFilter(active_only=True),
+        )
+    )
+
+    # Post-filter: record_type=session_summary + optional repo + optional since
+    window_start: datetime | None = None
+    if since is not None:
+        window_start = _parse_since(since)
+
+    results = []
+    for mem in response.memories:
+        meta = _json.loads(mem.metadata) if isinstance(mem.metadata, str) else (mem.metadata or {})
+        if meta.get("record_type") != "session_summary":
+            continue
+        if repo is not None and meta.get("repo", "") != repo:
+            continue
+        too_old = (
+            window_start is not None
+            and mem.valid_from is not None
+            and mem.valid_from < window_start
+        )
+        if too_old:
+            continue
+        results.append((mem, meta))
+        if len(results) >= limit:
+            break
+
+    table = Table(title=f"history search: {query!r}")
+    table.add_column("date", style="yellow", no_wrap=True)
+    table.add_column("repo", style="cyan")
+    table.add_column("kind", style="magenta")
+    table.add_column("summary")
+    for mem, meta in results:
+        date_str = mem.valid_from.isoformat()[:10] if mem.valid_from else ""
+        table.add_row(
+            date_str,
+            meta.get("repo", ""),
+            meta.get("kind", ""),
+            mem.content[:120],
+        )
+    console.print(table)
+    console.print(f"[dim]{len(results)} result(s)[/dim]")
+
+
+@history_app.command("scrub")
+def history_scrub(
+    db: str = typer.Option("", "--db", help="History DB path"),
+) -> None:
+    """Scan stored summaries for residual secrets; exit non-zero if any found."""
+
+    from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, HermesGuardError
+    from mintmory.core.history.redact import scan
+
+    db_path = db if db else DEFAULT_HISTORY_DB
+    try:
+        store = _get_history_store(db_path)
+    except HermesGuardError as exc:
+        console.print(f"[red]error[/red]: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    conn = store.connect()
+    rows = conn.execute(
+        "SELECT id, content FROM memories "
+        "WHERE json_extract(metadata, '$.record_type') = 'session_summary' "
+        "  AND is_archived = 0"
+    ).fetchall()
+
+    total_hits: dict[str, int] = {}
+    flagged = 0
+    for row in rows:
+        hits = scan(row["content"] or "")
+        if hits:
+            flagged += 1
+            for label, count in hits.items():
+                total_hits[label] = total_hits.get(label, 0) + count
+
+    # (summary_text/title live in `content`, already scanned above — the envelope
+    # metadata carries no free-text secret-bearing fields, so no second pass.)
+
+    table = Table(title="history scrub")
+    table.add_column("pattern", style="cyan")
+    table.add_column("occurrences", justify="right", style="red")
+    for label, count in total_hits.items():
+        table.add_row(label, str(count))
+    console.print(table)
+
+    if total_hits:
+        console.print(
+            f"[red]FAIL[/red] {flagged} record(s) contain residual secrets "
+            f"({sum(total_hits.values())} total hit(s))"
+        )
+        raise typer.Exit(code=1)
+    else:
+        console.print("[green]ok[/green] no residual secrets found")
 
 
 if __name__ == "__main__":

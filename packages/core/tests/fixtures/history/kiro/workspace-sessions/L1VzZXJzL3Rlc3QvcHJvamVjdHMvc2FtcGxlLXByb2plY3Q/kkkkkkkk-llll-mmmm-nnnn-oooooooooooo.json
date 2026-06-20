@@ -1,0 +1,54 @@
+{
+  "sessionId": "kkkkkkkk-llll-mmmm-nnnn-oooooooooooo",
+  "title": "Refactor the database connection pooling",
+  "workspacePath": "/Users/test/projects/sample-project",
+  "workspaceDirectory": "/Users/test/projects/sample-project",
+  "history": [
+    {
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Please refactor the database connection pooling to use async connections."
+          }
+        ],
+        "id": "msg-001"
+      },
+      "contextItems": []
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "I will refactor the database connection pooling. The current synchronous implementation will be replaced with asyncpg connection pools.",
+        "id": "msg-002"
+      },
+      "executionId": "exec-001"
+    },
+    {
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Make sure to keep backward compatibility."
+          }
+        ],
+        "id": "msg-003"
+      },
+      "contextItems": []
+    },
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Done. The async connection pool is now implemented with a synchronous compatibility wrapper. All existing tests pass.",
+        "id": "msg-004"
+      },
+      "executionId": "exec-002"
+    }
+  ],
+  "contextItems": [],
+  "config": {},
+  "defaultModelTitle": "Claude Sonnet 4",
+  "autonomyMode": "supervised"
+}
