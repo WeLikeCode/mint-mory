@@ -604,3 +604,138 @@ def test_search_uses_vector_phase_when_embedder_present() -> None:
     resp = s.search(SearchRequest(query="kubernetes autoscaling"))
     assert mid in {m.id for m in resp.memories}
     s.close()
+
+
+# ---------------------------------------------------------------------------
+# MM-22: weighted RRF fusion tests
+# ---------------------------------------------------------------------------
+
+
+def test_default_weight_1_explicit_equals_lazy() -> None:
+    """An explicit vector_rrf_weight=1.0 and the lazy-resolved default (also 1.0)
+    yield identical search ordering — i.e. the lazy-resolution path introduces no
+    drift relative to constructing with the default weight.
+
+    NOTE: this is an explicit-vs-lazy equivalence check, NOT a pin against the
+    pre-MM-22 unweighted output. The byte-for-byte no-op invariant (weight 1.0 ==
+    old behaviour) is proven at the fusion level by test_scoring's
+    ``rrf_merge(...) == rrf_merge(..., weights=[1,1,...])`` (uniform == default).
+    """
+    s = StorageAdapter(":memory:", vector_rrf_weight=1.0)
+    s.initialise()
+
+    contents = [
+        "parking garage integration uses OAuth tokens",
+        "the parking garage gate opens at eight",
+        "garage door parking permit renewal",
+    ]
+    for c in contents:
+        s.add_memory(content=c, category="fact")
+
+    resp_explicit = s.search(SearchRequest(query="parking garage"))
+    contents_explicit = [m.content for m in resp_explicit.memories]
+
+    # Reset to None (lazy), expect same order.
+    s._vector_rrf_weight = None
+    resp_lazy = s.search(SearchRequest(query="parking garage"))
+    contents_lazy = [m.content for m in resp_lazy.memories]
+
+    assert contents_explicit == contents_lazy
+    s.close()
+
+
+def test_vector_rrf_weight_lazy_resolve() -> None:
+    """StorageAdapter with no explicit weight resolves from SearchSettings lazily.
+
+    After construction _vector_rrf_weight is None; after the first search it is
+    resolved to the SearchSettings default (1.0) and cached.
+    """
+    s = StorageAdapter(":memory:")
+    s.initialise()
+    assert s._vector_rrf_weight is None  # not yet resolved
+    _add(s, "lazy resolve test memory about networking")
+    s.search(SearchRequest(query="networking"))
+    # After the search, the weight must have been resolved and cached.
+    assert s._vector_rrf_weight is not None
+    assert s._vector_rrf_weight == pytest.approx(1.0)
+    s.close()
+
+
+class _SplitEmbedder:
+    """Deterministic embedder for the weight-promotion test.
+
+    The target doc (token ``zeta``) gets a unit vector aligned with the explicit
+    query embedding, so it is the SOLE vector hit. The lexical doc gets the ZERO
+    vector — ``vec_distance_cosine`` is NULL for a zero vector, so the SQL vector
+    phase skips it. Thus the lexical doc owns FTS + trigram while the target owns
+    the vector source. The query vector is passed explicitly to ``search`` so the
+    lexical FTS query text is fully decoupled from the dense signal — isolating the
+    effect of the vector RRF weight from any embedder-semantics noise.
+    """
+
+    @property
+    def dimensions(self) -> int:
+        return 3
+
+    @property
+    def model_name(self) -> str:
+        return "split-stub-v1"
+
+    def embed(self, text: str) -> Any:
+        import numpy as np
+
+        if "zeta" in text:  # the target -> aligned with the explicit query vector
+            return np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        return np.array([0.0, 0.0, 0.0], dtype=np.float32)  # lexical doc -> NULL cosine
+
+    def embed_batch(self, texts: list[str]) -> Any:
+        return [self.embed(t) for t in texts]
+
+
+def test_vector_rrf_weight_5_promotes_vector_strong_record() -> None:
+    """With vector_rrf_weight=5.0, a vector-strong / lexically-weak record ranks
+    strictly HIGHER than under the default weight=1.0.
+
+    Fixture (see _SplitEmbedder): the target doc is the only vector hit; the lex
+    doc owns FTS + trigram. Under uniform RRF the two lexical sources outrank the
+    single vector source (the documented EXPERIMENTS §10 regression); raising the
+    vector weight to 5.0 must promote the target above the lex doc.
+
+    Needs sqlite-vec for the vector phase; skip if unavailable.
+    """
+    import numpy as np
+
+    s1 = StorageAdapter(":memory:", embedder=_SplitEmbedder(), vector_rrf_weight=1.0)
+    s1.initialise()
+    s5 = StorageAdapter(":memory:", embedder=_SplitEmbedder(), vector_rrf_weight=5.0)
+    s5.initialise()
+
+    if not s1._vector_search_available():
+        pytest.skip("sqlite-vec unavailable in this environment")
+
+    target_content = "zeta omega delta"  # no query tokens; vector-aligned to query
+    lex_content = "alpha gamma beta"  # matches the query lexically; zero vector (no vec hit)
+    query = "alpha beta"
+    q_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)  # decoupled from query text
+
+    for s in (s1, s5):
+        s.add_memory(content=lex_content, category="fact")  # inserted first
+        s.add_memory(content=target_content, category="fact")
+
+    resp1 = s1.search(SearchRequest(query=query, limit=10), query_embedding=q_emb)
+    resp5 = s5.search(SearchRequest(query=query, limit=10), query_embedding=q_emb)
+
+    def rank_of(resp: Any, content: str) -> int:
+        contents = [m.content for m in resp.memories]
+        assert content in contents, f"{content!r} missing from {contents}"
+        return contents.index(content)
+
+    # Under uniform weight the lexical doc (FTS+trigram) outranks the vector-only target.
+    assert rank_of(resp1, lex_content) < rank_of(resp1, target_content)
+    # Raising the vector weight strictly promotes the target above the lexical doc.
+    assert rank_of(resp5, target_content) < rank_of(resp5, lex_content)
+    # And the target's absolute rank improves from weight 1.0 -> 5.0.
+    assert rank_of(resp5, target_content) < rank_of(resp1, target_content)
+
+    s1.close()
+    s5.close()

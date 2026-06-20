@@ -269,6 +269,19 @@ class VisionSettings(BaseSettings):
         return None if self.max_download_mb <= 0 else int(self.max_download_mb * 1024 * 1024)
 
 
+# ---------------------------------------------------------------------------
+# Search / retrieval (MINTMORY_SEARCH_*)
+# ---------------------------------------------------------------------------
+class SearchSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_SEARCH_", extra="ignore")
+
+    # Weighted RRF fusion (LEANN-recall-informed, docs/EXPERIMENTS.md §10): scale
+    # the vector source's RRF contribution relative to the lexical (FTS+trigram)
+    # sources. 1.0 == today's uniform fusion (NO-OP default). Recommended 3.0 for
+    # real semantic embedders; leave at 1.0 for the lexical hashing default.
+    vector_rrf_weight: float = Field(default=1.0, ge=0.0, le=16.0)
+
+
 class Settings(BaseSettings):
     """Aggregate of every settings group. Each group still reads its own env vars."""
 
@@ -283,6 +296,7 @@ class Settings(BaseSettings):
     otel: OTelSettings = Field(default_factory=OTelSettings)
     note: NoteSettings = Field(default_factory=NoteSettings)
     vision: VisionSettings = Field(default_factory=VisionSettings)  # image understanding (G5)
+    search: SearchSettings = Field(default_factory=SearchSettings)
 
 
 def load_settings() -> Settings:

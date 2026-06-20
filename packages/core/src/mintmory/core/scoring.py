@@ -22,6 +22,7 @@ Where:
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from datetime import datetime
 
 # Default weights (configurable in mintmory.toml)
@@ -104,16 +105,33 @@ def increment_staleness(current: float, increment: float = 1.0) -> float:
     return min(10.0, current + increment)
 
 
-def rrf_merge(*score_dicts: dict[str, float], k: int = 60) -> dict[str, float]:
+def rrf_merge(
+    *score_dicts: dict[str, float],
+    k: int = 60,
+    weights: Sequence[float] | None = None,
+) -> dict[str, float]:
     """Reciprocal Rank Fusion over N ranked score dicts (higher score = better
-    rank within each list). Empty dicts are skipped. RRF(d)=Σ 1/(k+rank_i(d))."""
+    rank within each list). Empty dicts are skipped. RRF(d)=Σ w_i/(k+rank_i(d)).
+
+    Optional *weights*: a sequence aligned 1:1 with the positional ``score_dicts``
+    (same length, same order). Source ``i`` contributes ``weights[i]/(k+rank)``.
+    When ``weights`` is ``None`` every source contributes ``1.0/(k+rank)`` —
+    exactly today's uniform formula. A uniform weights list (all 1.0) produces a
+    result equal to ``weights=None``. Raises ``ValueError`` if
+    ``len(weights) != len(score_dicts)``.
+    """
+    if weights is not None and len(weights) != len(score_dicts):
+        raise ValueError(
+            f"rrf_merge: len(weights)={len(weights)} != len(score_dicts)={len(score_dicts)}"
+        )
     merged: dict[str, float] = {}
-    for scores in score_dicts:
+    for i, scores in enumerate(score_dicts):
         if not scores:
             continue
+        w = 1.0 if weights is None else weights[i]
         for rank, doc_id in enumerate(
             sorted(scores, key=scores.get, reverse=True),  # type: ignore[arg-type]
             start=1,
         ):
-            merged[doc_id] = merged.get(doc_id, 0.0) + 1.0 / (k + rank)
+            merged[doc_id] = merged.get(doc_id, 0.0) + w / (k + rank)
     return merged

@@ -187,6 +187,7 @@ class StorageAdapter:
         enable_trigram: bool = True,
         note_bonus: float | None = None,
         auto_include_cap: int | None = None,
+        vector_rrf_weight: float | None = None,
     ) -> None:
         self.db_path = str(db_path)
         self.embedder = embedder
@@ -199,6 +200,10 @@ class StorageAdapter:
         # circular import at module load time.
         self._note_bonus: float | None = note_bonus
         self._auto_include_cap: int | None = auto_include_cap
+        # Weighted RRF fusion knob. ``None`` means "resolve lazily from
+        # SearchSettings on first use" — keeps the constructor fast and avoids a
+        # circular import at module load time.
+        self._vector_rrf_weight: float | None = vector_rrf_weight
 
     # ------------------------------------------------------------------
     # Connection management
@@ -726,6 +731,18 @@ class StorageAdapter:
     # Search
     # ------------------------------------------------------------------
 
+    def _resolve_vector_rrf_weight(self) -> float:
+        """Lazily resolve the vector RRF weight from SearchSettings on first use.
+
+        Mirrors the ``_note_bonus`` / ``_auto_include_cap`` lazy-resolve idiom:
+        import inside the method to avoid a circular import at module load time.
+        """
+        if self._vector_rrf_weight is None:
+            from mintmory.core.config import SearchSettings  # noqa: PLC0415
+
+            self._vector_rrf_weight = SearchSettings().vector_rrf_weight
+        return self._vector_rrf_weight
+
     def _fts_scores(self, query: str, limit: int) -> dict[str, float]:
         """Run FTS5 MATCH and return {memory_id: bm25-derived score (higher=better)}."""
         match_expr = _sanitise_fts_query(query)
@@ -823,13 +840,21 @@ class StorageAdapter:
         fts_scores = self._fts_scores(request.query, pool)
         vec_scores = self._vector_scores(request.query, query_embedding, pool)
         trigram_scores = self._trigram_scores(request.query, pool)
-        sources = [s for s in (fts_scores, trigram_scores, vec_scores) if s]
-        if not sources:
+        w = self._resolve_vector_rrf_weight()
+        paired = [
+            (fts_scores, 1.0),
+            (trigram_scores, 1.0),
+            (vec_scores, w),
+        ]
+        paired = [(s, wt) for (s, wt) in paired if s]
+        if not paired:
             base_scores = {}
-        elif len(sources) == 1:
-            base_scores = sources[0]
+        elif len(paired) == 1:
+            base_scores = paired[0][0]
         else:
-            base_scores = scoring.rrf_merge(*sources)
+            base_scores = scoring.rrf_merge(
+                *[s for s, _ in paired], weights=[wt for _, wt in paired]
+            )
 
         # Min-max normalise relevance to [0, 1] so it is on a comparable scale to
         # the usefulness/recency modifiers in effective_score. Raw RRF (~0.02) and
@@ -1024,13 +1049,21 @@ class StorageAdapter:
         fts_scores = self._fts_scores(about, pool)
         vec_scores = self._vector_scores(about, None, pool)
         trigram_scores = self._trigram_scores(about, pool)
-        sources = [s for s in (fts_scores, trigram_scores, vec_scores) if s]
-        if not sources:
+        w = self._resolve_vector_rrf_weight()
+        paired = [
+            (fts_scores, 1.0),
+            (trigram_scores, 1.0),
+            (vec_scores, w),
+        ]
+        paired = [(s, wt) for (s, wt) in paired if s]
+        if not paired:
             base_scores: dict[str, float] = {}
-        elif len(sources) == 1:
-            base_scores = sources[0]
+        elif len(paired) == 1:
+            base_scores = paired[0][0]
         else:
-            base_scores = scoring.rrf_merge(*sources)
+            base_scores = scoring.rrf_merge(
+                *[s for s, _ in paired], weights=[wt for _, wt in paired]
+            )
 
         if base_scores:
             lo = min(base_scores.values())

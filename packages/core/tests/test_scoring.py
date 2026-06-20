@@ -220,3 +220,81 @@ class TestRRFMerge:
         # A doc present in all three lists (rank 1 each) sums 3 * 1/(k+1).
         merged = rrf_merge({"a": 1.0}, {"a": 1.0}, {"a": 1.0})
         assert merged == {"a": pytest.approx(3.0 / 61)}
+
+    # -----------------------------------------------------------------------
+    # MM-22: weighted RRF tests
+    # -----------------------------------------------------------------------
+
+    def test_uniform_weights_equals_default(self) -> None:
+        """rrf_merge(a, b, weights=[1.0, 1.0]) == rrf_merge(a, b) — uniform==default."""
+        a = {"doc1": 1.0, "doc2": 0.5}
+        b = {"doc1": 0.8, "doc3": 0.9}
+        default_result = rrf_merge(a, b)
+        weighted_result = rrf_merge(a, b, weights=[1.0, 1.0])
+        assert default_result == pytest.approx(weighted_result)
+
+    def test_weighted_reorders_when_vector_strong(self) -> None:
+        """weights=[1.0, 1.0, 5.0]: a doc ranked high ONLY by the third source
+        outranks a doc ranked high only by the first (lexical) source."""
+        # doc_lex: top of source 1 (lexical), absent from source 3 (vector)
+        # doc_vec: absent from source 1, top of source 3 (vector)
+        lex_scores = {"doc_lex": 1.0}
+        mid_scores: dict[str, float] = {}
+        vec_scores = {"doc_vec": 1.0}
+        # Without weighting, both appear in 1 source — equal RRF; lex goes first
+        # only if determinism places it first. With weight=5.0 on vec, doc_vec wins.
+        unweighted = rrf_merge(lex_scores, mid_scores, vec_scores)
+        weighted = rrf_merge(lex_scores, mid_scores, vec_scores, weights=[1.0, 1.0, 5.0])
+        # Under heavy vector weight, the vector-strong doc outranks the lex-strong doc.
+        assert weighted["doc_vec"] > weighted["doc_lex"]
+        # Concrete values: rank-1 in one source => 1/(k+1)=1/61; the ×5 vector weight
+        # scales the vector-strong doc's contribution to 5/61, while the unweighted
+        # merge leaves it at 1/61 (tied with the lexical doc).
+        assert unweighted["doc_vec"] == pytest.approx(1 / 61)
+        assert weighted["doc_vec"] == pytest.approx(5 / 61)
+        assert weighted["doc_lex"] == pytest.approx(1 / 61)
+
+    def test_weighted_reorders_three_source_clear_winner(self) -> None:
+        """doc_vec appears ONLY in source 3 (vector); with weight=5.0 it must beat
+        doc_lex which appears in sources 1 and 2 (lexical) but NOT in 3.
+
+        Unweighted (k=60):
+          doc_lex = 1/61 + 1/61 ≈ 0.0328  (rank-1 in lex, rank-1 in tri)
+          doc_vec = 1/61          ≈ 0.0164  (rank-1 in vec only)
+          → doc_lex wins unweighted (appears in 2 lexical sources)
+
+        Weighted [1.0, 1.0, 5.0]:
+          doc_lex = 1/61 + 1/61          ≈ 0.0328
+          doc_vec = 5/61                  ≈ 0.0820
+          → doc_vec wins because the vector weight amplifies its single-source hit.
+        """
+        lex = {"doc_lex": 1.0}  # doc_vec absent from lex
+        tri = {"doc_lex": 0.9}  # doc_vec absent from tri
+        vec = {"doc_vec": 1.0}  # doc_lex absent from vec
+        # Unweighted: doc_lex wins because it appears in 2 lexical sources.
+        unweighted = rrf_merge(lex, tri, vec)
+        assert unweighted["doc_lex"] > unweighted["doc_vec"]
+        # Weighted [1.0, 1.0, 5.0]: vector source amplifies doc_vec → it wins.
+        weighted = rrf_merge(lex, tri, vec, weights=[1.0, 1.0, 5.0])
+        assert weighted["doc_vec"] > weighted["doc_lex"]
+
+    def test_length_mismatch_raises_value_error(self) -> None:
+        """len(weights) != len(score_dicts) raises ValueError."""
+        a = {"doc1": 1.0}
+        b = {"doc2": 1.0}
+        with pytest.raises(ValueError, match="rrf_merge"):
+            rrf_merge(a, b, weights=[1.0])  # 1 weight for 2 dicts
+
+    def test_length_mismatch_too_many_weights_raises(self) -> None:
+        """Too many weights also raises ValueError."""
+        a = {"doc1": 1.0}
+        with pytest.raises(ValueError):
+            rrf_merge(a, weights=[1.0, 1.0])  # 2 weights for 1 dict
+
+    def test_determinism_idempotence(self) -> None:
+        """rrf_merge is deterministic: same inputs → same output on repeated calls."""
+        a = {"x": 1.0, "y": 0.5, "z": 0.3}
+        b = {"y": 1.0, "z": 0.7, "w": 0.2}
+        result1 = rrf_merge(a, b, weights=[1.0, 2.0])
+        result2 = rrf_merge(a, b, weights=[1.0, 2.0])
+        assert result1 == result2
