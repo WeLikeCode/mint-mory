@@ -187,29 +187,37 @@ def timeline(
     store = _open_history(db_path)
     conn = store.connect()
 
+    # Push repo/kind filters INTO the SQL WHERE so LIMIT applies AFTER filtering.
+    # (Filtering in Python after a SQL LIMIT silently truncated --repo/--kind to
+    # whatever survived the global newest-N cut — i.e. the filter "didn't work".)
+    where = [
+        "is_archived = 0",
+        "json_extract(metadata, '$.record_type') = 'session_summary'",
+        "valid_from >= ?",
+        "valid_from <= ?",
+    ]
+    params: list[Any] = [start.isoformat(), end.isoformat()]
+    if repo is not None:
+        where.append("json_extract(metadata, '$.repo') = ?")
+        params.append(repo)
+    if kind is not None:
+        where.append("json_extract(metadata, '$.kind') = ?")
+        params.append(kind)
+    params.append(limit)
+
     rows = conn.execute(
         "SELECT content, metadata, valid_from FROM memories "
-        "WHERE is_archived = 0 "
-        "  AND json_extract(metadata, '$.record_type') = 'session_summary' "
-        "  AND valid_from >= ? AND valid_from <= ? "
+        "WHERE " + " AND ".join(where) + " "
         "ORDER BY valid_from DESC, "
         "         json_extract(metadata, '$.session_id') ASC, "
         "         CAST(json_extract(metadata, '$.segment_index') AS INTEGER) ASC "
         "LIMIT ?",
-        (
-            start.isoformat(),
-            end.isoformat(),
-            limit,
-        ),
+        params,
     ).fetchall()
 
     result: list[dict[str, Any]] = []
     for row in rows:
         meta: dict[str, Any] = json.loads(row["metadata"] or "{}")
-        if repo is not None and meta.get("repo", "") != repo:
-            continue
-        if kind is not None and meta.get("kind", "") != kind:
-            continue
         result.append(_shape_row(row["content"], meta, row["valid_from"]))
 
     if group_by_session:
@@ -269,11 +277,17 @@ def search(
     if since is not None:
         window_start, _ = resolve_window(since=since, from_iso=None, to_iso=None, now=now)
 
+    # repo/since are post-filters (the hybrid ranker has no metadata predicate), so
+    # over-fetch candidates before applying them — otherwise a repo with few top-ranked
+    # hits gets truncated to nothing by the limit*3 cut (the --repo "doesn't work" bug).
+    # SearchRequest.limit is capped at 100 by the schema, so over-fetch up to that.
+    overfetch = max(limit * 3, 100) if (repo is not None or since is not None) else limit * 3
+    overfetch = min(overfetch, 100)
     store = _open_history(db_path)
     response = store.search(
         SearchRequest(
             query=query,
-            limit=limit * 3,  # fetch extra for post-filter
+            limit=overfetch,
             filter=MemoryFilter(active_only=True),
         )
     )

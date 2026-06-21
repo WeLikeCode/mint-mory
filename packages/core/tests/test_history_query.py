@@ -246,6 +246,33 @@ class TestTimeline:
         assert len(rows) == 1
         assert rows[0]["repo"] == "repoA"
 
+    def test_repo_filter_not_truncated_by_limit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: --repo must filter in SQL BEFORE LIMIT.
+
+        Seed several NEWER repoB sessions and one OLDER repoA session, then query
+        repoA with a small limit. The old code applied LIMIT in SQL then filtered
+        repo in Python, so the newest-N cut (all repoB) left zero repoA rows even
+        though repoA exists in-window. The fix pushes repo into the WHERE clause.
+        """
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db = str(tmp_path / "hist_repo_limit.db")
+        store = _open_store(db)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        # repoA is OLDER (5 days ago); repoB rows are NEWER (1 day ago).
+        old = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        new = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _seed(store, session_id="sess-a", ts_start=old, ts_end=old, repo="repoA")
+        for i in range(5):
+            _seed(store, session_id=f"sess-b{i}", ts_start=new, ts_end=new, repo="repoB")
+        store.close()
+
+        # limit (3) < number of newer repoB rows (5): repoA would be cut pre-fix.
+        rows = timeline(db, since="30d", repo="repoA", limit=3)
+        assert len(rows) == 1
+        assert rows[0]["repo"] == "repoA"
+
     def test_kind_filter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MINTMORY_DB", raising=False)
         db = str(tmp_path / "hist4.db")
