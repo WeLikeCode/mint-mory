@@ -307,7 +307,10 @@ class SegmentSettings(BaseSettings):
     allow_cloud_llm: bool = False  # gate non-localhost LLM base_url for the distiller
     max_turn_chars: int = Field(default=2000, ge=100, le=100_000)  # cap per-turn text
     max_prompt_chars: int = Field(default=12000, ge=500, le=500_000)  # cap total transcript
-    distill_max_tokens: int = Field(default=512, ge=16, le=8192)  # cap LLM completion length
+    # Cap LLM completion length (anti-runaway). 2048 leaves headroom for reasoning
+    # models (e.g. gemma4:e4b) whose hidden reasoning consumes the budget before the
+    # JSON content; 512 starved them, yielding empty content and silent fallback.
+    distill_max_tokens: int = Field(default=2048, ge=16, le=8192)
 
 
 class Settings(BaseSettings):

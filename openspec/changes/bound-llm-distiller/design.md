@@ -13,7 +13,10 @@ Add to `SegmentSettings`:
 ```python
     max_turn_chars: int = Field(default=2000, ge=100, le=100_000)     # cap per-turn text in the prompt
     max_prompt_chars: int = Field(default=12000, ge=500, le=500_000)  # cap total transcript in the prompt
-    distill_max_tokens: int = Field(default=512, ge=16, le=8192)      # cap LLM completion length
+    distill_max_tokens: int = Field(default=2048, ge=16, le=8192)     # cap LLM completion length
+    # NOTE (MM-31): default raised 512->2048. Reasoning models (gemma4:e4b) spend the
+    # token budget on hidden reasoning before emitting JSON; 512 yielded empty content
+    # and silent deterministic fallback. 2048 leaves headroom for reasoning + content.
 ```
 Add to `LLMSettings`:
 ```python

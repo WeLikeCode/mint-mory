@@ -106,7 +106,7 @@ class TestSegmentSettingsBounds:
         s = SegmentSettings()
         assert s.max_turn_chars == 2000
         assert s.max_prompt_chars == 12000
-        assert s.distill_max_tokens == 512
+        assert s.distill_max_tokens == 2048
 
     def test_max_turn_chars_lower_bound(self) -> None:
         from mintmory.core.config import SegmentSettings
