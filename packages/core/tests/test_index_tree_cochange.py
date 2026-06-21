@@ -219,13 +219,13 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        sets = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        assert len(sets) == 2
-        n = apply_changesets(store, sets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        assert len(result.changesets) == 2
+        n = apply_changesets(store, result.changesets)  # type: ignore[arg-type]
         assert n == 2
 
         # Check that members carry metadata
-        for cs in sets:
+        for cs in result.changesets:
             for mid in cs.member_ids:
                 mem = store.get_memory(mid)
                 assert mem is not None
@@ -243,14 +243,14 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        sets = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
 
-        apply_changesets(store, sets)  # type: ignore[arg-type]
-        apply_changesets(store, sets)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
 
         # Count concept_links — should not be doubled
         conn = store.connect()
-        for cs in sets:
+        for cs in result.changesets:
             entity_tag = f"changeset:{cs.changeset_id}"
             row = conn.execute(
                 "SELECT COUNT(*) as cnt FROM concept_links WHERE entity = ?",
@@ -280,8 +280,8 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        sets = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        apply_changesets(store, sets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
 
         # Non-doc memory should be unchanged
         fetched = store.get_memory(non_doc.id)
@@ -300,8 +300,8 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        sets = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        apply_changesets(store, sets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
 
         # Pick a doc from burst A and check its peer
         mem_a1 = store.get_memory(ids_a[0])
@@ -410,10 +410,10 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        sets = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        apply_changesets(store, sets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
 
-        for cs in sets:
+        for cs in result.changesets:
             conn = store.connect()
             entity_tag = f"changeset:{cs.changeset_id}"
             links = conn.execute(
@@ -424,3 +424,374 @@ class TestCoChangeIntegration:
             assert ConceptLinkType.RELATES_TO.value in link_types
             if len(cs.order) >= 2:
                 assert ConceptLinkType.BEFORE.value in link_types
+
+
+# ---------------------------------------------------------------------------
+# MM-34: Store query side — chunks excluded, kind in changed_with
+# ---------------------------------------------------------------------------
+
+
+class TestQuerySideMM34:
+    """MM-34: Store query side — chunks excluded, kind in changed_with."""
+
+    def _make_store(self, tmp_path: Path) -> object:
+        """Create an in-memory store for testing."""
+        from mintmory.core.storage import StorageAdapter
+
+        store = StorageAdapter(str(tmp_path / "test.db"))
+        store.initialise()
+        return store
+
+    def test_chunks_excluded_from_timeline(self, tmp_path: Path) -> None:
+        """Body chunks (record_role='chunk') must not appear in documents_timeline."""
+        from mintmory.core.cochange import documents_timeline
+        from mintmory.core.storage import StorageAdapter
+
+        store = self._make_store(tmp_path)
+        assert isinstance(store, StorageAdapter)
+
+        vf = datetime.fromtimestamp(1_700_000_000.0, tz=UTC).replace(tzinfo=None)
+
+        # Write a file-record
+        store.add_memory(
+            content="My document",
+            category="context",
+            source="document",
+            valid_from=vf,
+            metadata={"path": "/docs/a.md", "record_role": "file", "collection": "test"},
+        )
+
+        # Write a body chunk (same path, different record_role)
+        store.add_memory(
+            content="First paragraph of my document",
+            category="context",
+            source="document",
+            valid_from=vf,
+            metadata={"path": "/docs/a.md", "record_role": "chunk", "collection": "test"},
+        )
+
+        rows = documents_timeline(store)  # type: ignore[arg-type]
+        paths = [r["path"] for r in rows]
+        assert "/docs/a.md" in paths, "file-record must appear in timeline"
+        # The file appears once (the file-record), not twice
+        assert paths.count("/docs/a.md") == 1, "file must appear exactly once (chunk excluded)"
+
+    def test_legacy_records_without_record_role_appear_in_timeline(self, tmp_path: Path) -> None:
+        """Records without record_role (legacy) must still appear in documents_timeline."""
+        from mintmory.core.cochange import documents_timeline
+        from mintmory.core.storage import StorageAdapter
+
+        store = self._make_store(tmp_path)
+        assert isinstance(store, StorageAdapter)
+
+        vf = datetime.fromtimestamp(1_000_000_000.0, tz=UTC).replace(tzinfo=None)
+
+        # Legacy record: no record_role at all
+        store.add_memory(
+            content="legacy document without record_role",
+            category="context",
+            source="document",
+            valid_from=vf,
+            metadata={"path": "/legacy/doc.txt", "collection": "legacy"},
+        )
+
+        rows = documents_timeline(store)  # type: ignore[arg-type]
+        paths = [r["path"] for r in rows]
+        assert "/legacy/doc.txt" in paths, (
+            "legacy record without record_role must appear in timeline"
+        )
+
+    def test_changed_with_returns_kind(self, tmp_path: Path) -> None:
+        """changed_with results include a 'kind' field populated from changeset_kind."""
+        from mintmory.core.cochange import (
+            ChangedDoc,
+            apply_changesets,
+            changed_with,
+            cluster_changesets,
+        )
+        from mintmory.core.config import DocumentSettings
+        from mintmory.core.storage import StorageAdapter
+
+        store = self._make_store(tmp_path)
+        assert isinstance(store, StorageAdapter)
+
+        mtime_a = 1_000_000.0
+        mtime_b = 1_000_060.0  # 60s later — same burst
+
+        rec_a = store.add_memory(
+            content="doc A",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_a, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/root/a.txt",
+                "rel": "a.txt",
+                "collection": "test",
+                "mtime": mtime_a,
+            },
+        )
+        rec_b = store.add_memory(
+            content="doc B",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_b, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/root/b.txt",
+                "rel": "b.txt",
+                "collection": "test",
+                "mtime": mtime_b,
+            },
+        )
+
+        docs = [
+            ChangedDoc(
+                memory_id=rec_a.id,
+                doc_id="/root/a.txt",
+                rel="a.txt",
+                mtime=mtime_a,
+                embedding=_fake_emb(1),
+            ),
+            ChangedDoc(
+                memory_id=rec_b.id,
+                doc_id="/root/b.txt",
+                rel="b.txt",
+                mtime=mtime_b,
+                embedding=_fake_emb(2),
+            ),
+        ]
+
+        # Use fallback path (n=2 <= cochange_fallback_max_n=8 by default)
+        s = DocumentSettings(
+            cochange_enabled=True,
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            min_cluster_size=2,
+            cochange_fallback_enabled=True,
+        )
+        result = cluster_changesets(docs, s, run_kind="incremental")
+        assert len(result.changesets) >= 1, "expected at least one changeset"
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+
+        peers = changed_with(store, "/root/a.txt")  # type: ignore[arg-type]
+        assert len(peers) == 1, "expected exactly one peer"
+        assert "kind" in peers[0], "changed_with result must include 'kind' field"
+        assert peers[0]["kind"] == "incremental"
+
+    def test_changeset_kind_written_to_member_metadata(self, tmp_path: Path) -> None:
+        """apply_changesets writes changeset_kind to each member's metadata."""
+        from mintmory.core.cochange import (
+            ChangedDoc,
+            apply_changesets,
+            cluster_changesets,
+        )
+        from mintmory.core.config import DocumentSettings
+        from mintmory.core.storage import StorageAdapter
+
+        store = self._make_store(tmp_path)
+        assert isinstance(store, StorageAdapter)
+
+        mtime_a = 2_000_000.0
+        mtime_b = 2_000_120.0  # 2 min later
+
+        rec_a = store.add_memory(
+            content="cold index doc A",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_a, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/cold/a.txt",
+                "rel": "a.txt",
+                "collection": "cold",
+                "mtime": mtime_a,
+            },
+        )
+        rec_b = store.add_memory(
+            content="cold index doc B",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_b, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/cold/b.txt",
+                "rel": "b.txt",
+                "collection": "cold",
+                "mtime": mtime_b,
+            },
+        )
+
+        docs = [
+            ChangedDoc(
+                memory_id=rec_a.id,
+                doc_id="/cold/a.txt",
+                rel="a.txt",
+                mtime=mtime_a,
+                embedding=_fake_emb(10),
+            ),
+            ChangedDoc(
+                memory_id=rec_b.id,
+                doc_id="/cold/b.txt",
+                rel="b.txt",
+                mtime=mtime_b,
+                embedding=_fake_emb(20),
+            ),
+        ]
+
+        s = DocumentSettings(
+            cochange_enabled=True,
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            min_cluster_size=2,
+            cochange_fallback_enabled=True,
+        )
+        result = cluster_changesets(docs, s, run_kind="cold_full_index")
+        assert len(result.changesets) >= 1, "expected at least one changeset"
+        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+
+        for mid in [rec_a.id, rec_b.id]:
+            mem = store.get_memory(mid)
+            assert mem is not None
+            assert "changeset_kind" in mem.metadata, (
+                f"member {mid} missing changeset_kind in metadata"
+            )
+            assert mem.metadata["changeset_kind"] == "cold_full_index", (
+                f"expected 'cold_full_index', got {mem.metadata['changeset_kind']!r}"
+            )
+
+    def test_chunk_records_carry_recency(self, tmp_path: Path) -> None:
+        """Body chunks carry recency fields (valid_from, modified_source=fs_mtime) but no
+        changeset_id.  This verifies the store round-trips these correctly so the CLI can
+        rely on them when setting record_role='chunk'."""
+        from mintmory.core.storage import StorageAdapter
+
+        store = self._make_store(tmp_path)
+        assert isinstance(store, StorageAdapter)
+
+        rec = store.add_memory(
+            content="First paragraph of the document",
+            category="context",
+            source="document",
+            valid_from=datetime.fromisoformat("2026-01-15T10:00:00"),
+            metadata={
+                "path": "/docs/b.md",
+                "record_role": "chunk",
+                "modified_source": "fs_mtime",
+                "collection": "test",
+            },
+        )
+
+        mem = store.get_memory(rec.id)
+        assert mem is not None
+        assert mem.valid_from is not None, "chunk must carry valid_from"
+        assert mem.valid_from.isoformat() == "2026-01-15T10:00:00", (
+            f"valid_from round-trip failed: {mem.valid_from!r}"
+        )
+        assert mem.metadata.get("modified_source") == "fs_mtime", (
+            "chunk must carry modified_source='fs_mtime'"
+        )
+        assert mem.metadata.get("record_role") == "chunk", "chunk must carry record_role='chunk'"
+        assert "changeset_id" not in mem.metadata, (
+            "body chunks must NOT carry changeset_id (spec: chunk carries recency, not timeline)"
+        )
+
+    def test_stray_old_file_not_co_changed(self, tmp_path: Path) -> None:
+        """A stray old file in the same folder as recently-changed files is NOT co-changed
+        with those files: a gap > max_cochange_gap_seconds triggers a gap-split that
+        separates the old file into its own singleton, which is dropped (< min_cluster_size)."""
+        from mintmory.core.cochange import ChangedDoc, cluster_changesets
+        from mintmory.core.config import DocumentSettings
+        from mintmory.core.storage import StorageAdapter
+
+        store = self._make_store(tmp_path)
+        assert isinstance(store, StorageAdapter)
+
+        mtime_new1 = 1_000_000.0
+        mtime_new2 = 1_000_060.0
+        mtime_old = 0.0  # 11+ days before the others — gap >> 86_400 s
+
+        rec_new1 = store.add_memory(
+            content="new file 1",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_new1, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/a/new1.txt",
+                "rel": "a/new1.txt",
+                "collection": "t",
+                "mtime": mtime_new1,
+            },
+        )
+        rec_new2 = store.add_memory(
+            content="new file 2",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_new2, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/a/new2.txt",
+                "rel": "a/new2.txt",
+                "collection": "t",
+                "mtime": mtime_new2,
+            },
+        )
+        rec_old = store.add_memory(
+            content="stray old file",
+            category="context",
+            source="document",
+            valid_from=datetime.fromtimestamp(mtime_old, tz=UTC).replace(tzinfo=None),
+            metadata={
+                "path": "/a/old_stray.txt",
+                "rel": "a/old_stray.txt",
+                "collection": "t",
+                "mtime": mtime_old,
+            },
+        )
+
+        docs = [
+            ChangedDoc(
+                memory_id=rec_new1.id,
+                doc_id="/a/new1.txt",
+                rel="a/new1.txt",
+                mtime=mtime_new1,
+                embedding=_fake_emb(1),
+            ),
+            ChangedDoc(
+                memory_id=rec_new2.id,
+                doc_id="/a/new2.txt",
+                rel="a/new2.txt",
+                mtime=mtime_new2,
+                embedding=_fake_emb(2),
+            ),
+            ChangedDoc(
+                memory_id=rec_old.id,
+                doc_id="/a/old_stray.txt",
+                rel="a/old_stray.txt",
+                mtime=mtime_old,
+                embedding=_fake_emb(3),
+            ),
+        ]
+
+        s = DocumentSettings(
+            cochange_enabled=True,
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            min_cluster_size=2,
+            max_cochange_gap_seconds=86_400,
+            cochange_fallback_enabled=True,
+            cochange_fallback_max_n=8,
+            cochange_distance_eps=0.35,
+        )
+        result = cluster_changesets(docs, s, run_kind="incremental")
+
+        # Collect all memory IDs that appear in any changeset
+        all_changeset_member_ids: set[str] = set()
+        for cs in result.changesets:
+            all_changeset_member_ids.update(cs.member_ids)
+
+        # The stray old file must not be grouped with the new files
+        assert rec_old.id not in all_changeset_member_ids, (
+            "stray old file (mtime=0.0) must not appear in any changeset alongside recent files"
+        )

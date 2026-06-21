@@ -535,7 +535,13 @@ def index_tree(
     from mintmory.core.cochange import ChangedDoc, CoChangeUnavailable, cluster_changesets
     from mintmory.core.config import load_settings
     from mintmory.core.conversion import TEXT_SUFFIXES, ConversionError, extract_markdown
-    from mintmory.core.tree_index import human_size, iter_dir_groups, render_file_record
+    from mintmory.core.tree_index import (
+        ARTIFACT_SUFFIXES,
+        IMAGE_SUFFIXES,
+        human_size,
+        iter_dir_groups,
+        render_file_record,
+    )
 
     if db:
         os.environ["MINTMORY_DB"] = db
@@ -549,6 +555,19 @@ def index_tree(
     conv = settings.convert
     store = _get_store()
     run_cochange = cochange if cochange is not None else settings.doc.cochange_enabled
+    doc_s = settings.doc
+
+    # MM-34 E: detect cold vs incremental BEFORE the walk
+    was_cold = len(store.manifest_paths(collection)) == 0
+    run_kind = "cold_full_index" if was_cold else "incremental"
+
+    # MM-34 B: build the co-change suffix exclusion set BEFORE the walk
+    _cochange_exclude: frozenset[str] = frozenset()
+    if doc_s.cochange_exclude_images:
+        _cochange_exclude |= IMAGE_SUFFIXES
+    if doc_s.cochange_exclude_artifacts:
+        _cochange_exclude |= ARTIFACT_SUFFIXES
+    _cochange_exclude |= doc_s.cochange_exclude_suffixes
 
     # Vision: lazily import + validate the provider once before the walk, so
     # a misconfigured llm/ocr provider fails fast with a clear message rather
@@ -665,6 +684,7 @@ def index_tree(
                         "folder": str(Path(entry.rel).parent),
                         "index_mode": "metadata",
                         "modified_source": "fs_mtime",
+                        "record_role": "file",  # MM-34 D
                     },
                 )
                 new_ids.append(file_record.id)
@@ -688,12 +708,15 @@ def index_tree(
                                 content=chunk,
                                 category="fact",
                                 source="document",
+                                valid_from=file_mtime_dt,  # MM-34 D
                                 metadata={
                                     "collection": collection,
                                     "source_file": path_str,
                                     "rel": entry.rel,
                                     "chunk": i,
                                     "converter": result.method,
+                                    "modified_source": "fs_mtime",  # MM-34 D
+                                    "record_role": "chunk",  # MM-34 D
                                 },
                             )
                             new_ids.append(crec.id)
@@ -819,23 +842,25 @@ def index_tree(
                 else:
                     added += 1
 
-                # Co-change: collect this doc for cluster_changesets
+                # Co-change: collect this doc for cluster_changesets (MM-34 B: exclude suffixes)
                 if run_cochange:
-                    try:
-                        _emb: NDArray[np.float32] | None = (
-                            store.embedder.embed(file_record_text) if store.embedder else None
+                    _suffix = Path(path_str).suffix.lower()
+                    if _suffix not in _cochange_exclude:
+                        try:
+                            _emb: NDArray[np.float32] | None = (
+                                store.embedder.embed(file_record_text) if store.embedder else None
+                            )
+                        except Exception:
+                            _emb = None
+                        changed_docs.append(
+                            ChangedDoc(
+                                memory_id=file_record.id,
+                                doc_id=path_str,
+                                rel=entry.rel,
+                                mtime=entry.mtime,
+                                embedding=_emb,
+                            )
                         )
-                    except Exception:
-                        _emb = None
-                    changed_docs.append(
-                        ChangedDoc(
-                            memory_id=file_record.id,
-                            doc_id=path_str,
-                            rel=entry.rel,
-                            mtime=entry.mtime,
-                            embedding=_emb,
-                        )
-                    )
 
                 store.manifest_upsert(
                     path_str,
@@ -864,13 +889,17 @@ def index_tree(
     # Co-change post-walk pass
     n_changesets = 0
     n_co_changed_files = 0
+    cochange_result_dropped_oversized = 0
+    cochange_result_dropped_singletons = 0
     if run_cochange and len(changed_docs) >= 2:
         from mintmory.core.cochange import apply_changesets
 
         try:
-            sets = cluster_changesets(changed_docs, settings.doc)
-            n_changesets = apply_changesets(store, sets)
-            n_co_changed_files = sum(len(cs.member_ids) for cs in sets)
+            cochange_result = cluster_changesets(changed_docs, doc_s, run_kind=run_kind)
+            n_changesets = apply_changesets(store, cochange_result.changesets)
+            n_co_changed_files = sum(len(cs.member_ids) for cs in cochange_result.changesets)
+            cochange_result_dropped_oversized = cochange_result.dropped_oversized
+            cochange_result_dropped_singletons = cochange_result.dropped_singletons
         except CoChangeUnavailable:
             console.print(
                 "[dim]co-change skipped: install the 'cochange' extra "
@@ -903,6 +932,11 @@ def index_tree(
     if run_cochange:
         table.add_row("changesets", str(n_changesets))
         table.add_row("co_changed_files", str(n_co_changed_files))
+        table.add_row("cochange_kind", run_kind)  # MM-34 E
+        if cochange_result_dropped_oversized > 0:
+            table.add_row("dropped_oversized", str(cochange_result_dropped_oversized))
+        if cochange_result_dropped_singletons > 0:
+            table.add_row("dropped_singletons", str(cochange_result_dropped_singletons))
     if budget_hit:
         table.add_row("budget", "[yellow]reached — remaining files metadata-only[/yellow]")
     console.print(table)
@@ -1688,14 +1722,24 @@ def docs_changed_with(
     table.add_column("peer path", style="white")
     table.add_column("strength", justify="right", style="green")
     table.add_column("observed at", style="cyan")
+    table.add_column("kind", style="magenta")
     for peer in peers:
+        peer_kind: str = peer.get("kind", "")
+        if peer_kind == "cold_full_index":
+            kind_label = "cold_full_index (co-location-dominated)"
+        else:
+            kind_label = peer_kind
         table.add_row(
             peer["path"],
             f"{peer['strength']:.3f}",
             peer["observed_at"],
+            kind_label,
         )
     console.print(table)
     console.print(f"[dim]{len(peers)} peer(s)[/dim]")
+    # Print full paths on separate lines so long paths are never truncated by Rich.
+    for peer in peers:
+        console.print(f"  [dim]path:[/dim] {peer['path']}")
 
 
 if __name__ == "__main__":

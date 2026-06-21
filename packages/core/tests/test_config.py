@@ -304,3 +304,111 @@ class TestDocumentSettings:
         s = Settings()
         assert isinstance(s.doc, DocumentSettings)
         assert s.doc.cochange_enabled is True
+
+
+class TestDocumentSettingsMM34:
+    """MM-34: new DocumentSettings knobs."""
+
+    def test_new_knob_defaults(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings()
+        assert s.max_cochange_gap_seconds == 86_400
+        assert s.max_cochange_cluster_size == 50
+        assert s.cochange_exclude_images is True
+        assert s.cochange_exclude_artifacts is True
+        assert s.cochange_exclude_suffixes_csv == ""
+        assert s.cochange_label_kind is True
+        assert s.cochange_fallback_enabled is True
+        assert s.cochange_fallback_max_n == 8
+        assert s.cochange_distance_eps == pytest.approx(0.35)
+
+    def test_max_cochange_gap_seconds_lower_bound(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(max_cochange_gap_seconds=1)
+        assert s.max_cochange_gap_seconds == 1
+
+    def test_max_cochange_gap_seconds_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(max_cochange_gap_seconds=0)
+
+    def test_max_cochange_cluster_size_lower_bound(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(max_cochange_cluster_size=2)
+        assert s.max_cochange_cluster_size == 2
+
+    def test_max_cochange_cluster_size_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(max_cochange_cluster_size=1)
+
+    def test_cochange_fallback_max_n_lower_bound(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(cochange_fallback_max_n=2)
+        assert s.cochange_fallback_max_n == 2
+
+    def test_cochange_fallback_max_n_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(cochange_fallback_max_n=1)
+
+    def test_cochange_distance_eps_bounds(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s_low = DocumentSettings(cochange_distance_eps=0.0)
+        assert s_low.cochange_distance_eps == pytest.approx(0.0)
+        s_high = DocumentSettings(cochange_distance_eps=1.0)
+        assert s_high.cochange_distance_eps == pytest.approx(1.0)
+
+    def test_cochange_distance_eps_below_zero_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(cochange_distance_eps=-0.01)
+
+    def test_cochange_distance_eps_above_one_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(cochange_distance_eps=1.01)
+
+    def test_cochange_exclude_suffixes_empty(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(cochange_exclude_suffixes_csv="")
+        assert s.cochange_exclude_suffixes == frozenset()
+
+    def test_cochange_exclude_suffixes_parsed(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(cochange_exclude_suffixes_csv=".log,.TMP, .bak ")
+        assert s.cochange_exclude_suffixes == frozenset({".log", ".tmp", ".bak"})
+
+    def test_cochange_exclude_suffixes_no_leading_dot_gets_one(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(cochange_exclude_suffixes_csv="log,tmp")
+        assert ".log" in s.cochange_exclude_suffixes
+        assert ".tmp" in s.cochange_exclude_suffixes
+
+    def test_cochange_exclude_suffixes_blanks_dropped(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(cochange_exclude_suffixes_csv=",.log,,")
+        assert s.cochange_exclude_suffixes == frozenset({".log"})
+
+    def test_env_prefix_doc_reads_new_knobs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        monkeypatch.setenv("MINTMORY_DOC_MAX_COCHANGE_GAP_SECONDS", "3600")
+        monkeypatch.setenv("MINTMORY_DOC_COCHANGE_FALLBACK_ENABLED", "false")
+        s = DocumentSettings()
+        assert s.max_cochange_gap_seconds == 3600
+        assert s.cochange_fallback_enabled is False

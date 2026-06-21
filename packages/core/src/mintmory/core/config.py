@@ -304,6 +304,27 @@ class DocumentSettings(BaseSettings):
     min_cluster_size: int = Field(default=2, ge=2)  # HDBSCAN; <2 is meaningless
     use_embeddings: bool = True  # include content dimension
 
+    # MM-34 — A: hard time-gap guard (post-cluster split)
+    max_cochange_gap_seconds: int = Field(default=86_400, ge=1)
+    # MM-34 — B: cluster-size cap + non-knowledge type exclusion
+    max_cochange_cluster_size: int = Field(default=50, ge=2)
+    cochange_exclude_images: bool = True
+    cochange_exclude_artifacts: bool = True
+    cochange_exclude_suffixes_csv: str = ""
+    # MM-34 — E: cold/incremental honesty label
+    cochange_label_kind: bool = True
+    # MM-34 — F: hybrid small-N / all-noise fallback
+    cochange_fallback_enabled: bool = True
+    cochange_fallback_max_n: int = Field(default=8, ge=2)
+    cochange_distance_eps: float = Field(default=0.35, ge=0.0, le=1.0)
+
+    @property
+    def cochange_exclude_suffixes(self) -> frozenset[str]:
+        """Extra co-change-excluded suffixes: lowercase, single leading dot, blanks dropped."""
+        return frozenset(
+            f".{tok.lstrip('.')}" for tok in _csv_set(self.cochange_exclude_suffixes_csv)
+        )
+
 
 # ---------------------------------------------------------------------------
 # History segmentation (MINTMORY_HISTORY_SEG_*) — Phase 2 segmented distiller.

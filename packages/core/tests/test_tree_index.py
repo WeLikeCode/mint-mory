@@ -141,3 +141,39 @@ def test_render_file_record_root_level_file_has_clean_location() -> None:
     text = render_file_record(e, group, "Root")
     assert "Location: Root" in text  # no trailing ' / '
     assert "/ ." not in text
+
+
+class TestImageSuffixes:
+    """MM-34: IMAGE_SUFFIXES frozenset."""
+
+    def test_image_suffixes_exported(self) -> None:
+        from mintmory.core.tree_index import IMAGE_SUFFIXES
+
+        assert isinstance(IMAGE_SUFFIXES, frozenset)
+
+    def test_contains_expected_raster_types(self) -> None:
+        from mintmory.core.tree_index import IMAGE_SUFFIXES
+
+        for suffix in (
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".bmp",
+            ".tiff",
+            ".tif",
+            ".webp",
+            ".heic",
+            ".heif",
+            ".raw",
+            ".cr2",
+            ".nef",
+            ".psd",
+            ".ico",
+        ):
+            assert suffix in IMAGE_SUFFIXES, f"{suffix} should be in IMAGE_SUFFIXES"
+
+    def test_svg_not_in_image_suffixes(self) -> None:
+        from mintmory.core.tree_index import IMAGE_SUFFIXES
+
+        assert ".svg" not in IMAGE_SUFFIXES  # SVG carries text, not excluded

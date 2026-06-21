@@ -27,6 +27,28 @@ ARTIFACT_SUFFIXES: frozenset[str] = frozenset(
     {".dll", ".exe", ".pdb", ".jar", ".class", ".o", ".obj", ".bin", ".crc", ".lib", ".so"}
 )
 
+# Raster/binary image suffixes excluded from co-change clustering by default (MM-34).
+# SVG is intentionally NOT here — it carries extractable text and is a knowledge candidate.
+IMAGE_SUFFIXES: frozenset[str] = frozenset(
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".bmp",
+        ".tiff",
+        ".tif",
+        ".webp",
+        ".heic",
+        ".heif",
+        ".raw",
+        ".cr2",
+        ".nef",
+        ".psd",
+        ".ico",
+    }
+)
+
 # Filenames that are never knowledge (macOS cruft). The custom-folder-icon file
 # is literally "Icon" followed by a carriage return — built via chr(13) so no raw
 # CR ends up in this source file.
