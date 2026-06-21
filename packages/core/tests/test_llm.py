@@ -399,3 +399,126 @@ def test_post_chat_completion_strips_trailing_slash(monkeypatch: Any) -> None:
     )
 
     assert captured["url"] == "http://host/v1/chat/completions"
+
+
+# ---------------------------------------------------------------------------
+# MM-30: max_tokens payload presence/absence (bound-llm-distiller)
+# ---------------------------------------------------------------------------
+
+
+def test_llm_client_chat_includes_max_tokens_when_gt_0(monkeypatch: Any) -> None:
+    """LLMClient.chat(max_tokens=n) includes 'max_tokens' in the payload."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "ok"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    client = LLMClient(
+        LLMSettings(provider=LLMProvider.OLLAMA, base_url="http://localhost:11434/v1")
+    )
+    client.chat("hello", max_tokens=512)
+
+    assert "max_tokens" in captured["payload"], "max_tokens must be in payload when > 0"
+    assert captured["payload"]["max_tokens"] == 512
+
+
+def test_llm_client_chat_omits_max_tokens_when_arg_is_0_and_settings_is_0(monkeypatch: Any) -> None:
+    """chat() with no arg and LLMSettings.max_tokens=0 must NOT send max_tokens field."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "ok"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    # Default LLMSettings has max_tokens=0
+    client = LLMClient(LLMSettings(provider=LLMProvider.OLLAMA))
+    client.chat("hello")  # no max_tokens arg -> falls back to settings.max_tokens=0
+
+    assert "max_tokens" not in captured["payload"], (
+        "max_tokens must NOT be sent when both arg and settings are 0"
+    )
+
+
+def test_llm_client_chat_uses_settings_max_tokens_as_fallback(monkeypatch: Any) -> None:
+    """chat() with no arg falls back to LLMSettings.max_tokens when > 0."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "ok"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    client = LLMClient(LLMSettings(provider=LLMProvider.OLLAMA, max_tokens=256))
+    client.chat("hello")  # no explicit max_tokens -> should use settings.max_tokens=256
+
+    assert "max_tokens" in captured["payload"]
+    assert captured["payload"]["max_tokens"] == 256
+
+
+def test_llm_client_chat_arg_overrides_settings_max_tokens(monkeypatch: Any) -> None:
+    """Explicit max_tokens arg takes precedence over settings.max_tokens."""
+    captured: dict[str, Any] = {}
+    body = {"choices": [{"message": {"content": "ok"}}]}
+    _patch_urlopen(monkeypatch, captured, body)
+
+    client = LLMClient(LLMSettings(provider=LLMProvider.OLLAMA, max_tokens=100))
+    client.chat("hello", max_tokens=999)
+
+    assert captured["payload"]["max_tokens"] == 999
+
+
+def test_build_history_distiller_caps_generation_via_distill_max_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """build_history_distiller's closure calls client.chat with distill_max_tokens."""
+    import json as _json
+
+    from mintmory.core.config import SegmentSettings
+    from mintmory.core.history.models import NormalizedTurn, SessionSummary
+    from mintmory.core.llm import build_history_distiller
+
+    captured_payloads: list[dict[str, Any]] = []
+
+    fake_reply = {
+        "title": "Test",
+        "kind": "fix",
+        "summary": "Summary",
+        "outcome": "done",
+        "next_context": "",
+    }
+    body = {"choices": [{"message": {"content": _json.dumps(fake_reply)}}]}
+
+    def fake_urlopen(req: Any, timeout: float | None = None) -> Any:
+        payload = _json.loads(req.data.decode("utf-8"))
+        captured_payloads.append(payload)
+
+        class _FakeResp:
+            def read(self) -> bytes:
+                return _json.dumps(body).encode()
+
+            def __enter__(self) -> _FakeResp:
+                return self
+
+            def __exit__(self, *a: object) -> None:
+                pass
+
+        return _FakeResp()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+
+    llm = LLMSettings(provider=LLMProvider.OLLAMA, base_url="http://localhost:11434/v1")
+    seg = SegmentSettings(distill_max_tokens=333)
+    distiller = build_history_distiller(llm, seg)
+    assert distiller is not None
+
+    summary = SessionSummary(
+        session_id="s1",
+        agent="claude_code",
+        repo="repo",
+        repo_path="/r",
+        branch="main",
+        ts_start="2024-01-01T10:00:00Z",
+        ts_end="2024-01-01T10:30:00Z",
+        turn_count=2,
+    )
+    turns = [NormalizedTurn(seq=0, ts=None, role="user", text="Fix parser")]
+    distiller(summary, turns, "")
+
+    assert captured_payloads, "urlopen was never called"
+    assert captured_payloads[0].get("max_tokens") == 333, (
+        f"Expected max_tokens=333 in payload, got: {captured_payloads[0]}"
+    )

@@ -2,6 +2,7 @@
 Unit tests for MintMory config settings classes.
 
 MM-22: SearchSettings (MINTMORY_SEARCH_* prefix) with vector_rrf_weight.
+MM-30: SegmentSettings + LLMSettings new fields (bound-llm-distiller).
 """
 
 from __future__ import annotations
@@ -89,3 +90,114 @@ class TestSearchSettings:
         monkeypatch.setenv("MINTMORY_VECTOR_RRF_WEIGHT", "7.0")
         s = SearchSettings()
         assert s.vector_rrf_weight == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# MM-30: SegmentSettings new fields (bound-llm-distiller)
+# ---------------------------------------------------------------------------
+
+
+class TestSegmentSettingsBounds:
+    """MM-30: SegmentSettings.max_turn_chars, max_prompt_chars, distill_max_tokens."""
+
+    def test_defaults(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        s = SegmentSettings()
+        assert s.max_turn_chars == 2000
+        assert s.max_prompt_chars == 12000
+        assert s.distill_max_tokens == 512
+
+    def test_max_turn_chars_lower_bound(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        s = SegmentSettings(max_turn_chars=100)
+        assert s.max_turn_chars == 100
+
+    def test_max_turn_chars_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        with pytest.raises(ValidationError):
+            SegmentSettings(max_turn_chars=99)
+
+    def test_max_turn_chars_upper_bound(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        s = SegmentSettings(max_turn_chars=100_000)
+        assert s.max_turn_chars == 100_000
+
+    def test_max_turn_chars_above_upper_bound_raises(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        with pytest.raises(ValidationError):
+            SegmentSettings(max_turn_chars=100_001)
+
+    def test_max_prompt_chars_lower_bound(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        s = SegmentSettings(max_prompt_chars=500)
+        assert s.max_prompt_chars == 500
+
+    def test_max_prompt_chars_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        with pytest.raises(ValidationError):
+            SegmentSettings(max_prompt_chars=499)
+
+    def test_distill_max_tokens_lower_bound(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        s = SegmentSettings(distill_max_tokens=16)
+        assert s.distill_max_tokens == 16
+
+    def test_distill_max_tokens_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        with pytest.raises(ValidationError):
+            SegmentSettings(distill_max_tokens=15)
+
+    def test_distill_max_tokens_upper_bound(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        s = SegmentSettings(distill_max_tokens=8192)
+        assert s.distill_max_tokens == 8192
+
+    def test_distill_max_tokens_above_upper_bound_raises(self) -> None:
+        from mintmory.core.config import SegmentSettings
+
+        with pytest.raises(ValidationError):
+            SegmentSettings(distill_max_tokens=8193)
+
+
+class TestLLMSettingsMaxTokens:
+    """MM-30: LLMSettings.max_tokens field."""
+
+    def test_default_max_tokens_is_0(self) -> None:
+        from mintmory.core.config import LLMSettings
+
+        s = LLMSettings()
+        assert s.max_tokens == 0
+
+    def test_max_tokens_positive_value(self) -> None:
+        from mintmory.core.config import LLMSettings
+
+        s = LLMSettings(max_tokens=512)
+        assert s.max_tokens == 512
+
+    def test_max_tokens_upper_bound(self) -> None:
+        from mintmory.core.config import LLMSettings
+
+        s = LLMSettings(max_tokens=32000)
+        assert s.max_tokens == 32000
+
+    def test_max_tokens_above_upper_bound_raises(self) -> None:
+        from mintmory.core.config import LLMSettings
+
+        with pytest.raises(ValidationError):
+            LLMSettings(max_tokens=32001)
+
+    def test_max_tokens_negative_raises(self) -> None:
+        from mintmory.core.config import LLMSettings
+
+        with pytest.raises(ValidationError):
+            LLMSettings(max_tokens=-1)

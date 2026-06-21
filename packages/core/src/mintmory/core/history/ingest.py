@@ -857,37 +857,39 @@ def backfill(
         # Preload the content-hash cache ONCE so the distill phase needs no DB access.
         cache = _preload_segment_cache(store)
 
-        # PHASE A (parallel, NO store access): segment + distill each session via
-        # the module-level _prepare_session (cache passed explicitly — no closure
-        # capture of the loop variable).
+        # Parallel + commit-as-completed (INVARIANT: all store writes on main thread only).
         prep_args = (distiller, budget, llm_only_since, seg_settings, cache)
-        prepared_sessions: list[tuple[_PreparedSession, str]] = []
         if max_concurrency > 1 and len(sessions_to_process) > 1:
             with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
-                futures = [
-                    executor.submit(_prepare_session, s, *prep_args) for s in sessions_to_process
-                ]
+                futures = {
+                    executor.submit(_prepare_session, s, *prep_args): s for s in sessions_to_process
+                }
                 for future in as_completed(futures):
                     try:
-                        prepared_sessions.append(future.result())
+                        ps, source_path = future.result()
                     except Exception as exc:  # never silently drop a session
                         report.errors += 1
                         log.warning("Session distill failed: %s", exc)
+                        continue
+                    # SERIAL commit on the main thread — never in a worker.
+                    seg_result, written_ids = commit_distilled(store, ps)
+                    _accumulate_seg_result(report, seg_result)
+                    by_source_count += 1
+                    if source_path:
+                        _manifest_update(store, source_path, source_name, memory_ids=written_ids)
         else:
             for s in sessions_to_process:
                 try:
-                    prepared_sessions.append(_prepare_session(s, *prep_args))
+                    ps, source_path = _prepare_session(s, *prep_args)
                 except Exception as exc:
                     report.errors += 1
                     log.warning("Session distill failed: %s", exc)
-
-        # PHASE B (serial, main thread ONLY): commit all writes.
-        for ps, source_path in prepared_sessions:
-            seg_result, written_ids = commit_distilled(store, ps)
-            _accumulate_seg_result(report, seg_result)
-            by_source_count += 1
-            if source_path:
-                _manifest_update(store, source_path, source_name, memory_ids=written_ids)
+                    continue
+                seg_result, written_ids = commit_distilled(store, ps)
+                _accumulate_seg_result(report, seg_result)
+                by_source_count += 1
+                if source_path:
+                    _manifest_update(store, source_path, source_name, memory_ids=written_ids)
 
         report.by_source[source_name] = by_source_count
 
@@ -969,36 +971,39 @@ def sync(
 
         cache = _preload_segment_cache(store)
 
-        # PHASE A (parallel, NO store access): segment + distill via the
-        # module-level _prepare_session (cache passed explicitly).
+        # Parallel + commit-as-completed (INVARIANT: all store writes on main thread only).
         prep_args = (distiller, budget, llm_only_since, seg_settings, cache)
-        prepared_sessions: list[tuple[_PreparedSession, str]] = []
         if max_concurrency > 1 and len(sessions_to_process) > 1:
             with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
-                futures = [
-                    executor.submit(_prepare_session, s, *prep_args) for s in sessions_to_process
-                ]
+                futures = {
+                    executor.submit(_prepare_session, s, *prep_args): s for s in sessions_to_process
+                }
                 for future in as_completed(futures):
                     try:
-                        prepared_sessions.append(future.result())
+                        ps, source_path = future.result()
                     except Exception as exc:
                         report.errors += 1
                         log.warning("Session sync distill failed: %s", exc)
+                        continue
+                    # SERIAL commit on the main thread — never in a worker.
+                    seg_result, written_ids = commit_distilled(store, ps)
+                    _accumulate_seg_result(report, seg_result)
+                    by_source_count += 1
+                    if source_path:
+                        _manifest_update(store, source_path, source_name, memory_ids=written_ids)
         else:
             for s in sessions_to_process:
                 try:
-                    prepared_sessions.append(_prepare_session(s, *prep_args))
+                    ps, source_path = _prepare_session(s, *prep_args)
                 except Exception as exc:
                     report.errors += 1
                     log.warning("Session sync distill failed: %s", exc)
-
-        # PHASE B (serial, main thread ONLY): commit + manifest.
-        for ps, source_path in prepared_sessions:
-            seg_result, written_ids = commit_distilled(store, ps)
-            _accumulate_seg_result(report, seg_result)
-            by_source_count += 1
-            if source_path:
-                _manifest_update(store, source_path, source_name, memory_ids=written_ids)
+                    continue
+                seg_result, written_ids = commit_distilled(store, ps)
+                _accumulate_seg_result(report, seg_result)
+                by_source_count += 1
+                if source_path:
+                    _manifest_update(store, source_path, source_name, memory_ids=written_ids)
 
         report.by_source[source_name] = by_source_count
 

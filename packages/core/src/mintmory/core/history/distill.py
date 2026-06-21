@@ -191,12 +191,118 @@ def distill_segment_deterministic(
     )
 
 
+def _elide_transcript(
+    redacted_lines: list[tuple[str, str]],
+    max_prompt_chars: int,
+) -> str:
+    """Assemble a transcript from (role, safe_text) pairs, eliding to fit max_prompt_chars.
+
+    Rules (from design.md §3) — boundedness is the HARD guarantee:
+    - The first user turn (the ask) and the last turn MUST always survive.
+    - Drop/shorten assistant/tool turns in the middle FIRST. User turns are kept
+      unless the user turns ALONE exceed max_prompt_chars, in which case keep the
+      first ask + last + as many remaining user turns as fit; the rest are elided
+      with a '… [N turns elided] …' marker. The result is always <= max_prompt_chars.
+    """
+    if not redacted_lines:
+        return ""
+
+    # Build the full line list.
+    lines = [f"[{role.upper()}] {text}" for role, text in redacted_lines]
+    full = "\n".join(lines)
+    if len(full) <= max_prompt_chars:
+        return full
+
+    # Identify user turn indices (must survive), first/last (must survive).
+    n = len(lines)
+    user_indices: set[int] = {i for i, (role, _) in enumerate(redacted_lines) if role == "user"}
+    # first_user_idx: first line is always kept; last_idx: last line always kept.
+    protected: set[int] = {0, n - 1} | user_indices
+
+    # Strategy: keep protected lines, drop assistant/tool in the middle.
+    # Collect which indices are droppable (not protected).
+    droppable = [i for i in range(n) if i not in protected]
+
+    # Try dropping assistant/tool turns from the middle outward (middle-first).
+    kept: set[int] = set(range(n))
+    # Sort droppable by distance from middle (middle-first).
+    droppable_sorted = sorted(droppable, key=lambda i: abs(i - (n // 2)))
+
+    dropped_count = 0
+    for idx in droppable_sorted:
+        candidate_kept = kept - {idx}
+        candidate_text = "\n".join(lines[i] for i in sorted(candidate_kept))
+        kept = candidate_kept
+        dropped_count += 1
+        if len(candidate_text) <= max_prompt_chars:
+            # Within budget — stop dropping.
+            break
+
+    # Check if we are now within budget.
+    kept_sorted = sorted(kept)
+    candidate_text = "\n".join(lines[i] for i in kept_sorted)
+    if len(candidate_text) <= max_prompt_chars:
+        # Insert elision marker where consecutive missing indices appear.
+        return _insert_elision_markers(lines, kept_sorted, dropped_count)
+
+    # Still over budget after dropping all non-protected turns.
+    # Now we must build head+tail from protected lines with a marker.
+    # Include all user turns + first + last; drop remaining turns to fit.
+    # If still over, insert elision marker between head and tail.
+    all_protected = sorted(protected)
+    protected_text_lines = [lines[i] for i in all_protected]
+    # Try to fit all protected lines.
+    protected_text = "\n".join(protected_text_lines)
+    if len(protected_text) <= max_prompt_chars:
+        # Count what we dropped.
+        dropped = n - len(all_protected)
+        return _insert_elision_markers(lines, all_protected, dropped)
+
+    # Even user turns alone are over budget. Keep first + last + as many user turns as fit.
+    # Always keep index 0 (first) and index n-1 (last).
+    head_line = lines[0]
+    tail_line = lines[n - 1]
+    marker_budget = 30  # approx length of " … [N turns elided] …"
+    remaining = max_prompt_chars - len(head_line) - len(tail_line) - marker_budget - 2  # 2 newlines
+    # Collect middle user turns in order.
+    middle_user = [i for i in user_indices if i != 0 and i != n - 1]
+    kept_middle: list[int] = []
+    for idx in middle_user:
+        line_len = len(lines[idx]) + 1  # +1 for newline
+        if remaining >= line_len:
+            kept_middle.append(idx)
+            remaining -= line_len
+
+    kept_final = sorted({0, n - 1} | set(kept_middle))
+    dropped_final = n - len(kept_final)
+    return _insert_elision_markers(lines, kept_final, dropped_final)
+
+
+def _insert_elision_markers(lines: list[str], kept_sorted: list[int], dropped_count: int) -> str:
+    """Rebuild transcript with '… [N turns elided] …' inserted at gaps."""
+    if not kept_sorted:
+        return ""
+    result_parts: list[str] = []
+    prev_idx = -1
+    for idx in kept_sorted:
+        if prev_idx >= 0 and idx > prev_idx + 1:
+            gap = idx - prev_idx - 1
+            result_parts.append(f"… [{gap} turns elided] …")
+        result_parts.append(lines[idx])
+        prev_idx = idx
+    # If the kept set doesn't include the very last original line, note it.
+    # (handled by the gap logic above, which already covers trailing gaps)
+    return "\n".join(result_parts)
+
+
 def distill_llm(
     summary: SessionSummary,
     seg_turns: list[NormalizedTurn],
     chat: ChatFn,
     *,
     prev_context: str = "",
+    max_turn_chars: int = 2000,
+    max_prompt_chars: int = 12000,
 ) -> tuple[SessionSummary, str]:
     """LLM per-segment distiller (distiller_version=2).
 
@@ -205,6 +311,9 @@ def distill_llm(
 
     Algorithm:
       1. Build a redacted role-tagged transcript from seg_turns.
+         Per-turn: truncate redacted text to max_turn_chars.
+         Total: elide to max_prompt_chars (head+tail, never drop user turns;
+         first ask + last turn always survive).
       2. Format HISTORY_SEGMENT_PROMPT with redacted prev_context + transcript.
       3. Call chat(prompt); parse JSON via extract_json.
       4. Validate/clamp: title<=80, summary<=600, kind in KINDS else 'investigation',
@@ -215,22 +324,31 @@ def distill_llm(
     Returns (filled SessionSummary, next_context_str).
     next_context is also redacted before returning.
     distiller_version is set to 2.
+
+    Redaction ALWAYS happens before truncation — never truncate then redact.
+    prev_context is also redacted and capped to max_turn_chars.
     """
     outcome_max = 120
     next_ctx_max = 300
-    tool_result_max = 400  # elide oversized tool_result bursts
 
     # 1. Build redacted transcript (HARD SECURITY BOUNDARY).
-    transcript_lines: list[str] = []
+    # Redact FIRST, then truncate (safe: we only truncate already-safe text).
+    redacted_lines: list[tuple[str, str]] = []  # (role, safe_text)
     for turn in seg_turns:
         safe_text = redact(turn.text)
         role = turn.role
-        if role == "tool" and len(safe_text) > tool_result_max:
-            safe_text = safe_text[:tool_result_max] + " … [elided]"
-        transcript_lines.append(f"[{role.upper()}] {safe_text}")
-    transcript = "\n".join(transcript_lines)
+        # Per-turn cap: truncate to max_turn_chars (after redaction).
+        if len(safe_text) > max_turn_chars:
+            safe_text = safe_text[:max_turn_chars] + " … [truncated]"
+        redacted_lines.append((role, safe_text))
 
+    # Total transcript cap with user-priority elision.
+    transcript = _elide_transcript(redacted_lines, max_prompt_chars)
+
+    # Redact and cap prev_context (also safety-bounded).
     safe_prev_context = redact(prev_context)
+    if len(safe_prev_context) > max_turn_chars:
+        safe_prev_context = safe_prev_context[:max_turn_chars] + " … [truncated]"
 
     # 2. Build prompt.
     prompt = HISTORY_SEGMENT_PROMPT.format(

@@ -148,39 +148,30 @@ class LLMClient:
     def __init__(self, settings: LLMSettings) -> None:
         self.settings = settings
 
-    def _build_request(self, prompt: str) -> urllib.request.Request:
-        payload: dict[str, Any] = {
-            "model": self.settings.model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": self.settings.temperature,
-            "stream": False,
-        }
-        headers = {"content-type": "application/json"}
-        if self.settings.api_key:
-            headers["Authorization"] = f"Bearer {self.settings.api_key}"
-        return urllib.request.Request(
-            self.settings.base_url.rstrip("/") + "/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers=headers,
-            method="POST",
-        )
-
-    def chat(self, prompt: str) -> str:
+    def chat(self, prompt: str, max_tokens: int = 0) -> str:
         """Single-turn chat completion; returns the assistant message text.
 
         Delegates to ``post_chat_completion`` (shared urllib poster). Wrapped in
         a ``gen_ai.chat`` span and ``mintmory.llm.*`` metrics (no-op unless OTel
         is enabled). Observable behaviour is byte-for-byte identical to the prior
         direct implementation.
+
+        ``max_tokens``: when > 0, sent as ``max_tokens`` in the payload to cap
+        completion length. When 0 (the default), falls back to
+        ``self.settings.max_tokens``; if that is also 0, the field is omitted
+        entirely (preserving today's behaviour for all existing callers).
         """
         model = self.settings.model
         provider = self.settings.provider.value
+        effective_max_tokens = max_tokens if max_tokens > 0 else self.settings.max_tokens
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.settings.temperature,
             "stream": False,
         }
+        if effective_max_tokens > 0:
+            payload["max_tokens"] = effective_max_tokens
         data = post_chat_completion(
             base_url=self.settings.base_url,
             api_key=self.settings.api_key,
@@ -331,13 +322,24 @@ def build_history_distiller(
         return None
 
     client = LLMClient(llm)
+    _distill_max_tokens = seg.distill_max_tokens
 
     def _distiller(
         summary: SessionSummary,
         seg_turns: list[NormalizedTurn],
         prev_context: str = "",
     ) -> tuple[SessionSummary, str]:
-        return distill_llm(summary, seg_turns, client.chat, prev_context=prev_context)
+        def _bounded_chat(prompt: str) -> str:
+            return client.chat(prompt, max_tokens=_distill_max_tokens)
+
+        return distill_llm(
+            summary,
+            seg_turns,
+            _bounded_chat,
+            prev_context=prev_context,
+            max_turn_chars=seg.max_turn_chars,
+            max_prompt_chars=seg.max_prompt_chars,
+        )
 
     return _distiller
 

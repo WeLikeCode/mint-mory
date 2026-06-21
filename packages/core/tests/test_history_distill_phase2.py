@@ -394,3 +394,287 @@ class TestDistillLlmPreservesFields:
         assert filled.session_id == "my-session"
         assert filled.repo == "special-repo"
         assert filled.branch == "dev"
+
+
+# ---------------------------------------------------------------------------
+# MM-30: Prompt-cap tests (bound-llm-distiller)
+# ---------------------------------------------------------------------------
+
+
+class TestPromptCap:
+    """Design §5: A huge segment yields a bounded, ask-preserving prompt."""
+
+    def _valid_response(self) -> dict[str, Any]:
+        return {
+            "title": "Fix the bug",
+            "kind": "fix",
+            "summary": "Patched it.",
+            "outcome": "done",
+            "next_context": "",
+        }
+
+    def _make_huge_turns(
+        self,
+        n_user: int = 4,
+        huge_char_count: int = 200_000,
+        secret: str = "",
+    ) -> list[NormalizedTurn]:
+        """Build turns with one 200k-char user turn and several long turns."""
+        turns: list[NormalizedTurn] = []
+        seq = 0
+        # First user turn: the "ask" — contains the secret to verify redaction
+        suffix_len = huge_char_count - 100 - len(secret) - 2
+        first_text = ("A" * 100) + (f" {secret} " if secret else "") + ("B" * suffix_len)
+        turns.append(NormalizedTurn(seq=seq, ts=None, role="user", text=first_text))
+        seq += 1
+        # Several long assistant turns
+        for i in range(3):
+            turns.append(
+                NormalizedTurn(
+                    seq=seq,
+                    ts=None,
+                    role="assistant",
+                    text=f"Assistant response {i}: " + "X" * 5000,
+                )
+            )
+            seq += 1
+        # More user turns
+        for i in range(n_user - 1):
+            turns.append(
+                NormalizedTurn(
+                    seq=seq,
+                    ts=None,
+                    role="user",
+                    text=f"User follow-up {i}: " + "Y" * 3000,
+                )
+            )
+            seq += 1
+            turns.append(
+                NormalizedTurn(seq=seq, ts=None, role="assistant", text=f"Reply {i}: " + "Z" * 2000)
+            )
+            seq += 1
+        # Last turn
+        turns.append(NormalizedTurn(seq=seq, ts=None, role="assistant", text="Final outcome: done"))
+        return turns
+
+    def test_prompt_bounded_by_max_prompt_chars(self) -> None:
+        """A 200k-char turn -> prompt transcript length <= max_prompt_chars + small overhead."""
+        max_turn = 500
+        max_prompt = 2000
+        turns = self._make_huge_turns(huge_char_count=200_000)
+        captured_prompts: list[str] = []
+
+        def capturing_chat(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return json.dumps(self._valid_response())
+
+        distill_llm(
+            _make_summary(),
+            turns,
+            capturing_chat,
+            max_turn_chars=max_turn,
+            max_prompt_chars=max_prompt,
+        )
+
+        assert captured_prompts, "chat function was never called"
+        prompt = captured_prompts[0]
+        # The transcript must be bounded; allow small overhead for the prompt template
+        # and elision markers. We verify the prompt length is reasonable (not 200k chars).
+        marker_overhead = 200  # for elision markers and prompt template boilerplate
+        assert len(prompt) <= max_prompt + marker_overhead + 2000, (
+            f"Prompt length {len(prompt)} exceeds max_prompt_chars={max_prompt} by too much"
+        )
+
+    def test_every_user_turn_present_in_prompt(self) -> None:
+        """Every user turn's (truncated) text must appear in the bounded prompt."""
+        max_turn = 200
+        max_prompt = 3000
+        # Create turns where each user turn has a unique marker
+        turns: list[NormalizedTurn] = []
+        user_markers = [f"USERMARKER{i:03d}" for i in range(4)]
+        for i, marker in enumerate(user_markers):
+            turns.append(
+                NormalizedTurn(
+                    seq=len(turns), ts=None, role="user", text=marker + " " + "A" * 10000
+                )
+            )
+            turns.append(
+                NormalizedTurn(
+                    seq=len(turns), ts=None, role="assistant", text=f"Reply {i}: " + "X" * 10000
+                )
+            )
+
+        captured_prompts: list[str] = []
+
+        def capturing_chat(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return json.dumps(self._valid_response())
+
+        distill_llm(
+            _make_summary(),
+            turns,
+            capturing_chat,
+            max_turn_chars=max_turn,
+            max_prompt_chars=max_prompt,
+        )
+
+        assert captured_prompts
+        prompt = captured_prompts[0]
+        # Each user turn's unique marker must be visible in the prompt.
+        for marker in user_markers:
+            assert marker in prompt, f"User turn marker {marker!r} missing from prompt"
+
+    def test_first_ask_and_last_turn_survive(self) -> None:
+        """The first user turn (ask) and last turn always survive elision."""
+        max_turn = 100
+        max_prompt = 1000
+        first_ask_marker = "FIRSTASKMARKER"
+        last_turn_marker = "LASTTURNMARKER"
+        turns = [
+            NormalizedTurn(seq=0, ts=None, role="user", text=first_ask_marker + " " + "A" * 5000),
+            NormalizedTurn(seq=1, ts=None, role="assistant", text="Middle 1: " + "B" * 5000),
+            NormalizedTurn(seq=2, ts=None, role="assistant", text="Middle 2: " + "C" * 5000),
+            NormalizedTurn(
+                seq=3, ts=None, role="assistant", text=last_turn_marker + " " + "D" * 5000
+            ),
+        ]
+
+        captured_prompts: list[str] = []
+
+        def capturing_chat(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return json.dumps(self._valid_response())
+
+        distill_llm(
+            _make_summary(),
+            turns,
+            capturing_chat,
+            max_turn_chars=max_turn,
+            max_prompt_chars=max_prompt,
+        )
+
+        assert captured_prompts
+        prompt = captured_prompts[0]
+        assert first_ask_marker in prompt, "First user ask must survive elision"
+        assert last_turn_marker in prompt, "Last turn must survive elision"
+
+    def test_secret_not_in_prompt_after_redaction_and_truncation(self) -> None:
+        """Planted secret is redacted BEFORE truncation — must never appear in prompt."""
+        secret = "mk_agent_SECRETSECRETSECRETSECRETXYZ"
+        max_turn = 500
+        max_prompt = 2000
+        turns = self._make_huge_turns(huge_char_count=200_000, secret=secret)
+
+        captured_prompts: list[str] = []
+
+        def capturing_chat(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return json.dumps(self._valid_response())
+
+        distill_llm(
+            _make_summary(),
+            turns,
+            capturing_chat,
+            max_turn_chars=max_turn,
+            max_prompt_chars=max_prompt,
+        )
+
+        assert captured_prompts
+        prompt = captured_prompts[0]
+        assert secret not in prompt, f"Secret {secret!r} leaked into the bounded prompt!"
+
+    def test_per_turn_truncation(self) -> None:
+        """Each turn's text is individually capped to max_turn_chars."""
+        max_turn = 100
+        max_prompt = 50000  # large enough so no total elision needed
+        long_text = "X" * 10000
+        turns = [
+            NormalizedTurn(seq=0, ts=None, role="user", text=long_text),
+            NormalizedTurn(seq=1, ts=None, role="assistant", text=long_text),
+        ]
+
+        captured_prompts: list[str] = []
+
+        def capturing_chat(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return json.dumps(self._valid_response())
+
+        distill_llm(
+            _make_summary(),
+            turns,
+            capturing_chat,
+            max_turn_chars=max_turn,
+            max_prompt_chars=max_prompt,
+        )
+
+        assert captured_prompts
+        prompt = captured_prompts[0]
+        # The raw long text must not appear verbatim (it's been truncated).
+        assert long_text not in prompt
+        # But truncation marker must appear.
+        assert "[truncated]" in prompt
+
+    def test_prev_context_capped_to_max_turn_chars(self) -> None:
+        """prev_context is also capped to max_turn_chars."""
+        max_turn = 50
+        max_prompt = 10000
+        long_prev = "P" * 5000
+
+        captured_prompts: list[str] = []
+
+        def capturing_chat(prompt: str) -> str:
+            captured_prompts.append(prompt)
+            return json.dumps(self._valid_response())
+
+        distill_llm(
+            _make_summary(),
+            _make_turns(),
+            capturing_chat,
+            prev_context=long_prev,
+            max_turn_chars=max_turn,
+            max_prompt_chars=max_prompt,
+        )
+
+        assert captured_prompts
+        prompt = captured_prompts[0]
+        # The full 5000-char prev_context must not appear.
+        assert long_prev not in prompt
+        assert "[truncated]" in prompt
+
+
+def test_prompt_bounded_when_user_turns_alone_exceed_budget() -> None:
+    """MM-30 review: when user turns ALONE exceed max_prompt_chars, boundedness still
+    holds and the first ask + last turn survive (middle user turns may be elided)."""
+    valid = {"title": "t", "kind": "fix", "summary": "s", "outcome": "done", "next_context": ""}
+    chat = _fake_chat(valid)
+    s = _make_summary()
+    # 60 user turns x 5000 chars each => ~300k chars of user text alone, max_prompt_chars=12000.
+    turns = [
+        NormalizedTurn(seq=i, ts=None, role="user", text=f"ASK-{i} " + ("x" * 5000))
+        for i in range(60)
+    ]
+    distill_llm(s, turns, chat, max_turn_chars=2000, max_prompt_chars=12000)
+    prompt = chat.captured[-1]  # type: ignore[attr-defined]
+    # The transcript portion must be bounded (allow generous template overhead).
+    assert len(prompt) <= 12000 + 4000, f"prompt not bounded: {len(prompt)}"
+    # First ask and last turn survive.
+    assert "ASK-0 " in prompt
+    assert "ASK-59 " in prompt
+    # It actually elided something.
+    assert "elided" in prompt
+
+
+def test_no_secret_survives_truncation() -> None:
+    """A secret in a turn that gets TRUNCATED must still be redacted (redact-before-truncate)."""
+    valid = {"title": "t", "kind": "fix", "summary": "s", "outcome": "done", "next_context": ""}
+    chat = _fake_chat(valid)
+    s = _make_summary()
+    secret = "mk_agent_" + "A" * 40
+    turns = [
+        NormalizedTurn(seq=0, ts=None, role="user", text="do it " + secret + " " + ("y" * 6000)),
+        NormalizedTurn(seq=1, ts=None, role="assistant", text="ok"),
+    ]
+    distill_llm(s, turns, chat, max_turn_chars=500, max_prompt_chars=12000)
+    prompt = chat.captured[-1]  # type: ignore[attr-defined]
+    assert secret not in prompt
+    assert "[REDACTED:mk_agent]" in prompt

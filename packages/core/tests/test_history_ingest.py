@@ -781,6 +781,84 @@ class TestLLMBudget:
         assert budget.used == 2
 
 
+def test_backfill_incremental_commit_partial_failure(
+    tmp_db: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MM-30: a mid-run per-session failure must not lose already-committed sessions.
+
+    Backfill over 3 sessions where the 3rd _prepare_session call raises ->
+    sessions #0 and #1 are persisted, report.errors == 1, no partial/duplicate rows.
+    """
+    import mintmory.core.history.ingest as ingest_mod
+    from mintmory.core.config import SegmentSettings
+
+    # Three sessions, each with 2 turns.
+    sessions_data: list[tuple[SessionSummary, list[NormalizedTurn]]] = []
+    for i in range(3):
+        sess_id = f"incr-commit-sess-{i}"
+        summary = _make_session_for_seg(
+            session_id=sess_id,
+            ts_start=f"2025-05-0{i + 1}T10:00:00Z",
+            ts_end=f"2025-05-0{i + 1}T11:00:00Z",
+        )
+        turns = _make_turns_for_segs(2)
+        sessions_data.append((summary, turns))
+
+    def _three_sessions() -> Iterator[tuple[SessionSummary, list[NormalizedTurn]]]:
+        yield from sessions_data
+
+    monkeypatch.setattr(
+        ingest_mod,
+        "_load_adapter",
+        lambda name: _three_sessions if name == "stub" else None,
+    )
+
+    # Wrap _prepare_session: fail on the 3rd call (session #2, 0-indexed).
+    _real_prepare = ingest_mod._prepare_session
+    call_counter = {"n": 0}
+
+    def _failing_prepare(
+        args: tuple[SessionSummary, list[NormalizedTurn]],
+        *extra: object,
+    ) -> tuple[object, str]:
+        call_counter["n"] += 1
+        if call_counter["n"] == 3:
+            raise RuntimeError("Simulated failure for session #3")
+        return _real_prepare(args, *extra)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ingest_mod, "_prepare_session", _failing_prepare)
+
+    seg = SegmentSettings(target_turns=25, max_turns=40)
+    report = backfill(
+        db_path=tmp_db,
+        sources=["stub"],
+        seg_settings=seg,
+        max_concurrency=1,  # serial so call order is deterministic
+    )
+
+    # report.errors == 1 (one session's prepare failed)
+    assert report.errors == 1, f"Expected errors=1, got {report.errors}"
+
+    # Sessions #0 and #1 should be persisted (not lost due to later failure).
+    store = StorageAdapter(tmp_db)
+    store.initialise()
+    conn = store.connect()
+    committed_sessions: set[str] = set()
+    rows = conn.execute(
+        "SELECT json_extract(metadata, '$.session_id') AS sid FROM memories "
+        "WHERE json_extract(metadata, '$.record_type') = 'session_summary' "
+        "  AND is_archived = 0"
+    ).fetchall()
+    for row in rows:
+        if row["sid"]:
+            committed_sessions.add(str(row["sid"]))
+    store.close()
+
+    # The first two sessions must be committed; not lost because session #2 failed.
+    assert "incr-commit-sess-0" in committed_sessions, "Session #0 was lost after session #2 failed"
+    assert "incr-commit-sess-1" in committed_sessions, "Session #1 was lost after session #2 failed"
+
+
 def test_backfill_concurrent_no_data_loss(tmp_db: str, monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression (MM-29 blocker): concurrent backfill must NOT lose rows.
 
@@ -831,3 +909,58 @@ def test_backfill_concurrent_no_data_loss(tmp_db: str, monkeypatch: pytest.Monke
     store.close()
     assert rows == expected, f"data loss: stored {rows} != expected {expected}"
     assert report.errors == 0
+
+
+def test_backfill_concurrent_partial_failure(tmp_db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MM-30: under max_concurrency=4, a single failing session must not lose the
+    others (commit-as-completed on the main thread). Failure keyed by session_id so
+    it's deterministic despite nondeterministic completion order."""
+    import mintmory.core.history.ingest as ingest_mod
+    from mintmory.core.config import SegmentSettings
+
+    sessions_data = [
+        (
+            _make_session_for_seg(
+                session_id=f"par-{i}",
+                ts_start=f"2025-05-0{i + 1}T10:00:00Z",
+                ts_end=f"2025-05-0{i + 1}T11:00:00Z",
+            ),
+            _make_turns_for_segs(2),
+        )
+        for i in range(5)
+    ]
+    monkeypatch.setattr(
+        ingest_mod,
+        "_load_adapter",
+        lambda name: (lambda: iter(sessions_data)) if name == "stub" else None,
+    )
+    real_prepare = ingest_mod._prepare_session
+    fail_id = "par-2"
+
+    def _maybe_fail(
+        args: tuple[SessionSummary, list[NormalizedTurn]], *extra: object
+    ) -> tuple[object, str]:
+        if args[0].session_id == fail_id:
+            raise RuntimeError("simulated worker failure")
+        return real_prepare(args, *extra)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ingest_mod, "_prepare_session", _maybe_fail)
+    report = backfill(
+        db_path=tmp_db, sources=["stub"], seg_settings=SegmentSettings(), max_concurrency=4
+    )
+
+    assert report.errors == 1
+    store = StorageAdapter(tmp_db)
+    store.initialise()
+    committed = {
+        r[0]
+        for r in store.connect()
+        .execute(
+            "SELECT DISTINCT json_extract(metadata,'$.session_id') FROM memories "
+            "WHERE is_archived=0 AND json_extract(metadata,'$.record_type')='session_summary'"
+        )
+        .fetchall()
+    }
+    store.close()
+    assert fail_id not in committed
+    assert {"par-0", "par-1", "par-3", "par-4"} <= committed  # the other 4 survived

@@ -148,6 +148,7 @@ class LLMSettings(BaseSettings):
     timeout_s: float = Field(default=60.0, ge=1.0, le=600.0)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     max_concurrency: int = Field(default=4, ge=1, le=32)
+    max_tokens: int = Field(default=0, ge=0, le=32000)  # 0 = unset (no cap sent)
 
     @property
     def enabled(self) -> bool:
@@ -304,6 +305,9 @@ class SegmentSettings(BaseSettings):
     gap_minutes: int = Field(default=45, ge=0, le=10000)  # 0 disables the time-gap break
     max_segments_per_session: int = Field(default=0, ge=0)  # 0 = unlimited
     allow_cloud_llm: bool = False  # gate non-localhost LLM base_url for the distiller
+    max_turn_chars: int = Field(default=2000, ge=100, le=100_000)  # cap per-turn text
+    max_prompt_chars: int = Field(default=12000, ge=500, le=500_000)  # cap total transcript
+    distill_max_tokens: int = Field(default=512, ge=16, le=8192)  # cap LLM completion length
 
 
 class Settings(BaseSettings):
