@@ -58,25 +58,42 @@ dated `repo · KIND: what happened` line with a `source_path` back-link in metad
 
 ---
 
-## Tier 2 — a dedicated, read-only history MCP (recommended, small follow-up)
+## Tier 2 — the dedicated, read-only history MCP (recommended) ✅ shipped (MM-28)
 
-A purpose-built MCP that exposes exactly two **read-only** tools, making the
-time-ranged "what changed" query first-class for agents:
+A purpose-built MCP, `mintmory-history-mcp`, that exposes exactly **three
+read-only tools** — no write/mutate tools are reachable — making the time-ranged
+"what changed" query first-class for agents:
 
-- `history_timeline(since="75d" | from/to ISO, repo?, kind?, limit?)` → the dated
-  changelog window (the "2 months ago" query).
-- `history_search(query, repo?, since?, limit?)` → hybrid search over session
+- `history_timeline(since="90d" | from_date/to_date ISO, repo?, kind?, limit?)` →
+  the dated changelog window (the "2 months ago" query).
+- `history_search(query_text, repo?, since?, limit?)` → hybrid search over session
   summaries, newest-first.
+- `history_stats()` → counts by source/kind + earliest/latest dates.
 
-This is the OpenSpec **Phase 4 MCP seam** already noted in the design. It wraps the
-same `core.history` functions the CLI uses, against `~/.mintmory/agent-history.db`,
-with the Hermes guard enforced and no write tools. Ship it as a follow-up change
-(`add-agent-history-mcp`, "MM-28") and register it the same way:
+It wraps the same `core.history.query` functions the CLI uses, reads
+`MINTMORY_HISTORY_DB` (default `~/.mintmory/agent-history.db`), and enforces the
+Hermes guard at startup (refuses the working store). Register it — **this is the
+recommended setup, replacing Tier 1**:
 
 ```bash
 claude mcp add agent-history --scope user \
   -- uv run --project /Users/alexandruiacobescu/gooseProjects/MintMory mintmory-history-mcp
 ```
+
+`--scope user` makes it available in **every** Claude Code project on this machine.
+For Cursor / other clients, use the same command/args in their `mcp.json` (no env
+needed unless your DB is non-default):
+
+```jsonc
+{ "mcpServers": { "agent-history": {
+  "command": "uv",
+  "args": ["run","--project","/Users/alexandruiacobescu/gooseProjects/MintMory","mintmory-history-mcp"]
+}}}
+```
+
+Typical agent use: *"call history_timeline with since='2m' and repo='mintkey' to
+see what was fixed there ~2 months ago"*, or `history_search("kong jwt")` for topic
+recall. Results are dated session summaries with `source_path` back-links.
 
 ---
 
