@@ -62,6 +62,10 @@ useful when it is typed, linked, and queryable — not stored as opaque blobs.
 - **Document & folder ingestion.** Bulk-ingest files (PDF/DOCX/XLSX/PPTX via the
   optional `docs` extra) and recurrently index a directory tree — including
   cloud/online-only folders, indexed by metadata without downloading.
+- **Agent history index.** Index your **Claude Code / Codex / Kiro** chat history
+  into a separate, secret-redacted changelog and ask *"what did I fix/add ~2 months
+  ago?"* via the `mintmory history` CLI or the read-only `mintmory-history-mcp`
+  server — fully isolated from your working store. Guide: **[agent-history.md](docs/agent-history.md)**.
 - **Single file.** SQLite + `sqlite-vec` + FTS5. Back it up by copying one file.
 
 ---
@@ -275,6 +279,34 @@ uv sync --extra ocr     # pytesseract: reserved for the future 'ocr' vision prov
 | `MINTMORY_VISION_MAX_IMAGE_MB` | `8.0` | Max on-disk size to embed as base64 (0 = no cap) |
 | `MINTMORY_VISION_DOWNSCALE_MAX_PX` | `1568` | Longest-edge downscale target for embedded payloads (needs `[image]`; 0 = off) |
 | `MINTMORY_VISION_MAX_DOWNLOAD_MB` | `200.0` | Budget for downloading online-only image bytes (shared with `--max-download-mb`) |
+
+---
+
+## Agent history (`mintmory history`)
+
+Index your coding agents' chat history (Claude Code, Codex, Kiro) into a separate,
+secret-redacted, time-aware changelog so you can recall *what was fixed or added,
+when* — without polluting your working memory store.
+
+```bash
+uv sync --extra local                          # better recall (optional)
+mintmory history backfill                       # index all sessions (idempotent)
+mintmory history timeline --since 2m --repo X   # "what changed ~2 months ago in X"
+mintmory history search "kong jwt"              # topic recall
+mintmory history sync                           # keep current (incremental)
+mintmory history scrub                          # audit for residual secrets
+```
+
+For agents, expose the **read-only** MCP server (tools: `history_timeline`,
+`history_search`, `history_stats`) in every project:
+
+```bash
+claude mcp add agent-history --scope user \
+  -- uv run --project /ABSOLUTE/PATH/TO/mint-mory mintmory-history-mcp
+```
+
+Full guide (humans + agents, how-to, debugging): **[docs/agent-history.md](docs/agent-history.md)**.
+MCP setup specifics: [docs/agent-history-mcp.md](docs/agent-history-mcp.md).
 
 ---
 

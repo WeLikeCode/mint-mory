@@ -6,11 +6,13 @@ SQLite file at `~/.mintmory/agent-history.db` — **separate from your working
 memory store** (`hermes.db`). This doc shows how to make that history searchable
 from inside agentic tools (Claude Code, Cursor, etc.) over MCP.
 
-There are two tiers. **Tier 1 works today with zero new code.**
+There are two tiers. **👉 Use Tier 2 (the dedicated read-only `mintmory-history-mcp`
+server) — it's the recommended setup.** Tier 1 is a zero-code fallback kept for
+reference; it works but also exposes write tools.
 
 ---
 
-## Tier 1 — point the existing MintMory MCP server at the history DB (now)
+## Tier 1 — (fallback) point the existing MintMory MCP server at the history DB
 
 MintMory already ships an MCP server (`mintmory-mcp`) whose database is chosen by
 the `MINTMORY_DB` env var. Register a **second, separate** MCP server whose DB is
@@ -22,7 +24,7 @@ isolated from your working store.
 ```bash
 claude mcp add agent-history \
   --env MINTMORY_DB=$HOME/.mintmory/agent-history.db \
-  -- uv run --project /Users/alexandruiacobescu/gooseProjects/MintMory mintmory-mcp
+  -- uv run --project /ABSOLUTE/PATH/TO/mint-mory mintmory-mcp
 ```
 
 (Use `--scope user` to make it available in every project.) You'll now have two
@@ -36,8 +38,8 @@ MintMory MCP servers: your normal one (working memory) and `agent-history`
   "mcpServers": {
     "agent-history": {
       "command": "uv",
-      "args": ["run", "--project", "/Users/alexandruiacobescu/gooseProjects/MintMory", "mintmory-mcp"],
-      "env": { "MINTMORY_DB": "/Users/alexandruiacobescu/.mintmory/agent-history.db" }
+      "args": ["run", "--project", "/ABSOLUTE/PATH/TO/mint-mory", "mintmory-mcp"],
+      "env": { "MINTMORY_DB": "/Users/you/.mintmory/agent-history.db" }
     }
   }
 }
@@ -77,7 +79,7 @@ recommended setup, replacing Tier 1**:
 
 ```bash
 claude mcp add agent-history --scope user \
-  -- uv run --project /Users/alexandruiacobescu/gooseProjects/MintMory mintmory-history-mcp
+  -- uv run --project /ABSOLUTE/PATH/TO/mint-mory mintmory-history-mcp
 ```
 
 `--scope user` makes it available in **every** Claude Code project on this machine.
@@ -87,7 +89,7 @@ needed unless your DB is non-default):
 ```jsonc
 { "mcpServers": { "agent-history": {
   "command": "uv",
-  "args": ["run","--project","/Users/alexandruiacobescu/gooseProjects/MintMory","mintmory-history-mcp"]
+  "args": ["run","--project","/ABSOLUTE/PATH/TO/mint-mory","mintmory-history-mcp"]
 }}}
 ```
 
@@ -111,7 +113,7 @@ Run it manually, or wire a `launchd`/`cron` job if you want it automatic.
 ## Querying from the CLI (no MCP needed)
 
 ```bash
-mintmory history timeline --since 75d --repo mintkey     # "~2 months ago in mintkey"
+mintmory history timeline --since 2m --repo mintkey      # "~2 months ago in mintkey"
 mintmory history timeline --from 2026-04-01 --to 2026-04-30 --kind fix
 mintmory history search "kong jwt injection" --since 90d
 mintmory history scrub                                    # audit for any residual secrets
@@ -123,5 +125,6 @@ mintmory history scrub                                    # audit for any residu
   backup/sync (it is your agents' transcript exhaust). Add it to ignore lists.
 - Secrets are redacted at ingest (`[REDACTED:…]` placeholders); `history scrub`
   re-audits and exits non-zero if anything slipped through. Run it after a backfill.
-- Never point `--db` (or the MCP `MINTMORY_DB`) at `hermes.db`/`memories.db` — the
-  tooling refuses, but the MCP env is yours to set, so keep them distinct.
+- Never point the DB selector (`--db`, or `MINTMORY_DB` for Tier-1 / `MINTMORY_HISTORY_DB`
+  for Tier-2) at `hermes.db`/`memories.db` — the tooling refuses, but the env is
+  yours to set, so keep the history DB a distinct file.
