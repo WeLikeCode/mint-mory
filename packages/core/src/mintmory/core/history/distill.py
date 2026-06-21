@@ -1,25 +1,42 @@
 """
-history/distill.py — deterministic session distiller (LLM seam).
+history/distill.py — deterministic + LLM session distiller (Phase 2).
 
-distill() fills title/kind/summary_text from the session turns WITHOUT
-any network call or LLM. It is pure and idempotent:
-  - same inputs always produce the same outputs
-  - running twice produces the same SessionSummary
+Public API:
+  distill(summary, turns) -> SessionSummary
+    Phase-1 API: whole-session deterministic distiller (distiller_version=1).
+    Kept for backward compatibility; internally delegates to
+    distill_segment_deterministic.
 
-Redaction boundary: distill() does NOT itself send anything anywhere, and its
-output (title/summary_text) is redacted by write_session BEFORE it is persisted,
-so v1 never leaks. NOTE: the raw `turns` passed in are NOT pre-redacted. A future
-distill_llm(summary, turns, client) seam MUST call redact() on each turn's text
-before building any prompt — raw turns must never reach an LLM (spec: redact
-BEFORE any LLM). v1 wires only distill(); distiller_version stays 1.
+  distill_segment_deterministic(summary, seg_turns) -> SessionSummary
+    Per-segment deterministic distiller (distiller_version=1).
+
+  distill_llm(summary, seg_turns, chat, *, prev_context='') -> (SessionSummary, str)
+    Per-segment LLM distiller (distiller_version=2). REDACTS every turn text
+    and prev_context BEFORE building the prompt.  Returns (filled summary,
+    next_context).  Raises ValueError on empty/garbage JSON (caller falls back).
+
+Redaction boundary (INVARIANT):
+  distill_segment_deterministic: no I/O; output redacted by write_session.
+  distill_llm: EVERY turn text + prev_context is redact()'d BEFORE the prompt
+  is built.  The returned summary fields are also redact()'d before persistence
+  by write_session (defense in depth).  distill_llm MUST NOT undo redaction.
+
+ChatFn = Callable[[str], str] — injected so tests use fake chat functions.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import re
+from collections.abc import Callable
 
 from mintmory.core.history.models import KINDS, NormalizedTurn, SessionSummary
+from mintmory.core.history.redact import redact
+from mintmory.core.llm import extract_json
+from mintmory.core.prompts import HISTORY_SEGMENT_PROMPT
+
+# Type alias for the chat callable (single-turn text in -> text out).
+ChatFn = Callable[[str], str]
 
 _TITLE_MAX = 80
 _SUMMARY_MAX = 600
@@ -119,24 +136,22 @@ def _collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def distill(summary: SessionSummary, turns: list[NormalizedTurn]) -> SessionSummary:
-    """
-    Fill title/kind/summary_text deterministically (NO network, NO LLM) and
-    return a NEW SessionSummary (dataclasses.replace). Rules:
+def distill_segment_deterministic(
+    summary: SessionSummary, seg_turns: list[NormalizedTurn]
+) -> SessionSummary:
+    """Deterministic per-segment distiller (Phase 2 API).
 
-    - title: first non-empty user turn, first line, trimmed to <= 80 chars.
-    - summary_text (<= 600 chars, changelog voice): combine the first user
-      turn (the ask) + the last assistant turn (the outcome) + a tools/files
-      hint ('touched N files; tools: edit, bash'); collapse whitespace.
-    - kind: keyword heuristic over title+summary.
+    Same heuristic as distill() but scoped to the segment's turn slice:
+      - title: first user turn in the slice (<=80 chars, first line).
+      - summary_text: 'Asked: <first user 200c> Outcome: <last assistant 300c>
+        tools: …' (<=600 chars).
+      - kind: keyword heuristic over title + summary.
+      - distiller_version: 1.
 
-    distill MUST NOT undo redaction; its output is redacted by write_session
-    before persistence (raw turns themselves are not pre-redacted — see module
-    docstring re: the future distill_llm seam).
-    distiller_version stays 1.
+    Pure and idempotent — no I/O, no LLM.
     """
     # --- title ---
-    first_user = _first_user_turn(turns)
+    first_user = _first_user_turn(seg_turns)
     if first_user:
         first_line = first_user.split("\n")[0].strip()
         title = first_line[:_TITLE_MAX]
@@ -144,16 +159,14 @@ def distill(summary: SessionSummary, turns: list[NormalizedTurn]) -> SessionSumm
         title = summary.title[:_TITLE_MAX] if summary.title else ""
 
     # --- summary_text ---
-    last_assistant = _last_assistant_turn(turns)
+    last_assistant = _last_assistant_turn(seg_turns)
 
-    # Tools hint
     tools_sorted = sorted(set(summary.tools_used))
     tools_hint = f"tools: {', '.join(tools_sorted)}" if tools_sorted else ""
 
     parts: list[str] = []
     if first_user:
         ask = _collapse_ws(first_user)
-        # Trim to leave room for outcome + tools
         parts.append(f"Asked: {ask[:200]}")
     if last_assistant:
         outcome = _collapse_ws(last_assistant)
@@ -166,7 +179,6 @@ def distill(summary: SessionSummary, turns: list[NormalizedTurn]) -> SessionSumm
     # --- kind ---
     kind_input = f"{title} {summary_text}"
     kind = _infer_kind(kind_input)
-    # Validate against KINDS (defensive)
     if kind not in KINDS:
         kind = "investigation"
 
@@ -177,3 +189,101 @@ def distill(summary: SessionSummary, turns: list[NormalizedTurn]) -> SessionSumm
         kind=kind,
         distiller_version=1,
     )
+
+
+def distill_llm(
+    summary: SessionSummary,
+    seg_turns: list[NormalizedTurn],
+    chat: ChatFn,
+    *,
+    prev_context: str = "",
+) -> tuple[SessionSummary, str]:
+    """LLM per-segment distiller (distiller_version=2).
+
+    SECURITY: redact() is called on EVERY turn text and on prev_context BEFORE
+    they are placed into the prompt.  Raw secrets MUST NOT reach the LLM.
+
+    Algorithm:
+      1. Build a redacted role-tagged transcript from seg_turns.
+      2. Format HISTORY_SEGMENT_PROMPT with redacted prev_context + transcript.
+      3. Call chat(prompt); parse JSON via extract_json.
+      4. Validate/clamp: title<=80, summary<=600, kind in KINDS else 'investigation',
+         outcome<=120, next_context<=300.
+      5. Raise ValueError on empty / garbage / missing-required-field result
+         (caller catches and falls back to deterministic).
+
+    Returns (filled SessionSummary, next_context_str).
+    next_context is also redacted before returning.
+    distiller_version is set to 2.
+    """
+    outcome_max = 120
+    next_ctx_max = 300
+    tool_result_max = 400  # elide oversized tool_result bursts
+
+    # 1. Build redacted transcript (HARD SECURITY BOUNDARY).
+    transcript_lines: list[str] = []
+    for turn in seg_turns:
+        safe_text = redact(turn.text)
+        role = turn.role
+        if role == "tool" and len(safe_text) > tool_result_max:
+            safe_text = safe_text[:tool_result_max] + " … [elided]"
+        transcript_lines.append(f"[{role.upper()}] {safe_text}")
+    transcript = "\n".join(transcript_lines)
+
+    safe_prev_context = redact(prev_context)
+
+    # 2. Build prompt.
+    prompt = HISTORY_SEGMENT_PROMPT.format(
+        prev_context=safe_prev_context,
+        transcript=transcript,
+        repo=summary.repo,
+    )
+
+    # 3. Call LLM.
+    raw = chat(prompt)
+
+    # 4. Parse JSON.
+    data = extract_json(raw)
+    if not data:
+        raise ValueError(f"distill_llm: LLM returned empty/garbage JSON: {raw!r}")
+
+    # Required fields
+    title = str(data.get("title", "")).strip()
+    kind = str(data.get("kind", "investigation")).strip()
+    summary_text = str(data.get("summary", "")).strip()
+    outcome = str(data.get("outcome", "")).strip()
+    next_context = str(data.get("next_context", "")).strip()
+
+    if not title and not summary_text:
+        raise ValueError(f"distill_llm: LLM returned missing title+summary: {data!r}")
+
+    # 5. Clamp / validate.
+    title = title[:_TITLE_MAX]
+    summary_text = summary_text[:_SUMMARY_MAX]
+    if kind not in KINDS:
+        kind = "investigation"
+    outcome = outcome[:outcome_max]
+    next_context = redact(next_context[:next_ctx_max])
+
+    filled = dataclasses.replace(
+        summary,
+        title=title,
+        summary_text=summary_text,
+        kind=kind,
+        outcome=outcome,
+        distiller_version=2,
+    )
+    return filled, next_context
+
+
+def distill(summary: SessionSummary, turns: list[NormalizedTurn]) -> SessionSummary:
+    """Whole-session deterministic distiller — Phase-1 backward-compatible API.
+
+    Delegates to distill_segment_deterministic (same heuristic, same output
+    contract).  distiller_version stays 1.
+
+    distill MUST NOT undo redaction; its output is redacted by write_session
+    before persistence (raw turns are not pre-redacted here — distill_llm is
+    the seam that MUST redact before LLM).
+    """
+    return distill_segment_deterministic(summary, turns)

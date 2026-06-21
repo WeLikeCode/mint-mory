@@ -21,17 +21,20 @@ import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from mintmory.core.history.ingest import (
     HermesGuardError,
     IngestReport,
+    LLMBudget,
     _assert_not_working_db,
     _find_by_session_id,
     backfill,
     write_session,
+    write_session_segments,
 )
-from mintmory.core.history.models import NormalizedTurn, SessionSummary
+from mintmory.core.history.models import NormalizedTurn, Segment, SessionSummary
 from mintmory.core.storage import StorageAdapter
 from mintmory.core.types import MemoryCategory, MemorySource
 
@@ -349,3 +352,482 @@ class TestIngestReport:
         report = IngestReport(by_source={"claude_code": 5, "codex": 3})
         assert report.by_source["claude_code"] == 5
         assert report.by_source["codex"] == 3
+
+    def test_phase2_report_fields(self) -> None:
+        """Phase-2 IngestReport has segment fields."""
+        report = IngestReport()
+        assert report.segments_written == 0
+        assert report.llm_calls == 0
+        assert report.llm_cache_hits == 0
+        assert report.llm_fallbacks == 0
+        assert report.llm_calls_deferred == 0
+
+
+# ---------------------------------------------------------------------------
+# Phase-2: write_session_segments helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_session_for_seg(
+    session_id: str = "seg-session-001",
+    ts_start: str = "2025-03-01T10:00:00Z",
+    ts_end: str = "2025-03-01T11:00:00Z",
+) -> SessionSummary:
+    return SessionSummary(
+        session_id=session_id,
+        agent="claude_code",
+        repo="myproject",
+        repo_path="/home/user/myproject",
+        branch="main",
+        ts_start=ts_start,
+        ts_end=ts_end,
+        turn_count=10,
+        tools_used=["bash"],
+        kind="investigation",
+        title="",
+        summary_text="",
+        source_path="",
+        distiller_version=1,
+    )
+
+
+def _make_turns_for_segs(n: int, ts_prefix: str = "2025-03-01T10:") -> list[NormalizedTurn]:
+    """Build n turns with alternating user/assistant roles."""
+    turns = []
+    for i in range(n):
+        role = "user" if i % 2 == 0 else "assistant"
+        ts = f"{ts_prefix}{i:02d}:00Z"
+        turns.append(NormalizedTurn(seq=i, ts=ts, role=role, text=f"Turn {i}: {role} text"))
+    return turns
+
+
+def _make_segment(
+    idx: int,
+    lo: int,
+    hi: int,
+    ts_start: str = "2025-03-01T10:00:00Z",
+    ts_end: str = "2025-03-01T10:30:00Z",
+) -> Segment:
+    return Segment(idx=idx, turn_lo=lo, turn_hi=hi, ts_start=ts_start, ts_end=ts_end)
+
+
+def _get_all_segment_rows(store: StorageAdapter, session_id: str) -> list[dict[str, Any]]:
+    """Return all non-archived segment rows for a session."""
+    conn = store.connect()
+    rows = conn.execute(
+        "SELECT id, metadata, valid_from, is_archived FROM memories "
+        "WHERE json_extract(metadata, '$.session_id') = ? "
+        "  AND json_extract(metadata, '$.segment_id') IS NOT NULL",
+        (session_id,),
+    ).fetchall()
+    result = []
+    for row in rows:
+        meta = json.loads(row["metadata"] or "{}")
+        result.append(
+            {
+                "id": row["id"],
+                "meta": meta,
+                "valid_from": row["valid_from"],
+                "is_archived": row["is_archived"],
+            }
+        )
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Phase-2: write_session_segments tests
+# ---------------------------------------------------------------------------
+
+
+class TestWriteSessionSegments:
+    def test_n_segments_produce_n_rows(self, store: StorageAdapter) -> None:
+        """N segments -> N memory rows with correct segment_id/index/count."""
+        summary = _make_session_for_seg(session_id="seg-n-001")
+        turns = _make_turns_for_segs(6)
+        segments = [
+            _make_segment(0, 0, 2, "2025-03-01T10:00:00Z", "2025-03-01T10:15:00Z"),
+            _make_segment(1, 3, 5, "2025-03-01T10:16:00Z", "2025-03-01T10:30:00Z"),
+        ]
+
+        result = write_session_segments(store, summary, segments, turns)
+        assert result.written == 2
+        assert result.cache_hits == 0
+
+        rows = _get_all_segment_rows(store, "seg-n-001")
+        active = [r for r in rows if not r["is_archived"]]
+        assert len(active) == 2
+
+        metas = sorted([r["meta"] for r in active], key=lambda m: m["segment_index"])
+        assert metas[0]["segment_id"] == "seg-n-001#0"
+        assert metas[0]["segment_index"] == 0
+        assert metas[0]["segment_count"] == 2
+        assert metas[0]["turn_lo"] == 0
+        assert metas[0]["turn_hi"] == 2
+        assert metas[1]["segment_id"] == "seg-n-001#1"
+        assert metas[1]["segment_index"] == 1
+        assert metas[1]["segment_count"] == 2
+
+    def test_three_segments_all_fields(self, store: StorageAdapter) -> None:
+        """3-segment session: all envelope fields are present."""
+        summary = _make_session_for_seg(session_id="seg-three-001")
+        turns = _make_turns_for_segs(9)
+        segments = [
+            _make_segment(0, 0, 2, "2025-03-01T09:00:00Z", "2025-03-01T09:15:00Z"),
+            _make_segment(1, 3, 5, "2025-03-01T09:16:00Z", "2025-03-01T09:30:00Z"),
+            _make_segment(2, 6, 8, "2025-03-01T09:31:00Z", "2025-03-01T09:45:00Z"),
+        ]
+
+        result = write_session_segments(store, summary, segments, turns)
+        assert result.written == 3
+
+        rows = _get_all_segment_rows(store, "seg-three-001")
+        active = [r for r in rows if not r["is_archived"]]
+        assert len(active) == 3
+
+        for r in active:
+            meta = r["meta"]
+            assert "segment_id" in meta
+            assert "segment_index" in meta
+            assert "segment_count" in meta
+            assert meta["segment_count"] == 3
+            assert "turn_lo" in meta
+            assert "turn_hi" in meta
+            assert "title" in meta
+            assert "outcome" in meta
+            assert "session_ts_start" in meta
+            assert "session_ts_end" in meta
+            assert "content_hash" in meta
+            assert "seg_signature" in meta
+            assert "session_id" in meta
+
+    def test_valid_from_equals_segment_ts_start(self, store: StorageAdapter) -> None:
+        """valid_from == segment ts_start (not session ts_start)."""
+        summary = _make_session_for_seg(session_id="seg-vf-001")
+        turns = _make_turns_for_segs(4)
+        # Two segments with distinct timestamps
+        seg_ts_start_0 = "2025-03-01T09:00:00Z"
+        seg_ts_start_1 = "2025-03-01T10:00:00Z"
+        segments = [
+            _make_segment(0, 0, 1, seg_ts_start_0, "2025-03-01T09:30:00Z"),
+            _make_segment(1, 2, 3, seg_ts_start_1, "2025-03-01T10:30:00Z"),
+        ]
+
+        write_session_segments(store, summary, segments, turns)
+
+        rows = _get_all_segment_rows(store, "seg-vf-001")
+        active = sorted(
+            [r for r in rows if not r["is_archived"]],
+            key=lambda r: r["meta"]["segment_index"],
+        )
+        # Segment 0: valid_from should contain "09:00"
+        assert "09:00" in active[0]["valid_from"]
+        # Segment 1: valid_from should contain "10:00"
+        assert "10:00" in active[1]["valid_from"]
+
+    def test_orphan_sweep_archives_excess_segments(self, store: StorageAdapter) -> None:
+        """Re-ingest with FEWER segments archives the orphaned higher-index segments."""
+        session_id = "seg-orphan-001"
+        summary = _make_session_for_seg(session_id=session_id)
+        turns = _make_turns_for_segs(10)
+
+        # First ingest: 5 segments
+        segs5 = [_make_segment(i, i * 2, i * 2 + 1) for i in range(5)]
+        result5 = write_session_segments(store, summary, segs5, turns)
+        assert result5.written == 5
+
+        # Second ingest: 3 segments only
+        segs3 = [_make_segment(i, i * 2, i * 2 + 1) for i in range(3)]
+        write_session_segments(store, summary, segs3, turns)
+
+        # All rows (including archived)
+        all_rows = _get_all_segment_rows(store, session_id)
+        assert len(all_rows) == 5  # total rows, 5 created
+
+        # Active: only 3
+        active = [r for r in all_rows if not r["is_archived"]]
+        assert len(active) == 3
+
+        # Archived: 2 (indices 3, 4)
+        archived = [r for r in all_rows if r["is_archived"]]
+        assert len(archived) == 2
+        archived_indices = {r["meta"]["segment_index"] for r in archived}
+        assert archived_indices == {3, 4}
+
+    def test_orphan_sweep_absent_from_timeline(
+        self, store: StorageAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Archived orphan segments must not appear in timeline results."""
+        from mintmory.core.history.query import timeline
+
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db_path = str(tmp_path / "orphan-tl.db")
+
+        new_store = StorageAdapter(db_path)
+        new_store.initialise()
+
+        session_id = "seg-orphan-tl-001"
+        summary = _make_session_for_seg(
+            session_id=session_id,
+            ts_start="2025-06-01T10:00:00Z",
+            ts_end="2025-06-01T11:00:00Z",
+        )
+        turns = _make_turns_for_segs(10)
+
+        ts_start = "2025-06-01T10:00:00Z"
+        ts_end = "2025-06-01T10:30:00Z"
+        # First: 5 segments
+        segs5 = [_make_segment(i, i * 2, i * 2 + 1, ts_start, ts_end) for i in range(5)]
+        write_session_segments(new_store, summary, segs5, turns)
+
+        # Re-ingest with 3 segments — segments 3 and 4 are archived
+        segs3 = [_make_segment(i, i * 2, i * 2 + 1, ts_start, ts_end) for i in range(3)]
+        write_session_segments(new_store, summary, segs3, turns)
+
+        # Timeline should only return 3 rows for this session
+        rows = timeline(db_path, since="400d")
+        session_rows = [r for r in rows if r["session_id"] == session_id]
+        assert len(session_rows) == 3
+        segment_indices = {r["segment_index"] for r in session_rows}
+        assert segment_indices == {0, 1, 2}
+
+    def test_content_hash_cache_skips_unchanged_segments(self, store: StorageAdapter) -> None:
+        """Same segment content on re-ingest -> cache hit, no re-write."""
+        session_id = "seg-cache-001"
+        summary = _make_session_for_seg(session_id=session_id)
+        turns = _make_turns_for_segs(4)
+        segs = [
+            _make_segment(0, 0, 1, "2025-03-01T10:00:00Z", "2025-03-01T10:15:00Z"),
+            _make_segment(1, 2, 3, "2025-03-01T10:16:00Z", "2025-03-01T10:30:00Z"),
+        ]
+
+        # First write
+        result1 = write_session_segments(store, summary, segs, turns)
+        assert result1.written == 2
+        assert result1.cache_hits == 0
+
+        # Second write with identical turns/settings -> cache hit
+        result2 = write_session_segments(store, summary, segs, turns)
+        assert result2.cache_hits == 2
+        assert result2.written == 0
+
+    def test_budget_caps_llm_calls_then_deterministic(self, store: StorageAdapter) -> None:
+        """LLMBudget(max_calls=1) allows 1 LLM call, rest fall back to deterministic."""
+        session_id = "seg-budget-001"
+        summary = _make_session_for_seg(session_id=session_id)
+        turns = _make_turns_for_segs(6)
+        segs = [
+            _make_segment(0, 0, 1, "2025-03-01T10:00:00Z", "2025-03-01T10:10:00Z"),
+            _make_segment(1, 2, 3, "2025-03-01T10:11:00Z", "2025-03-01T10:20:00Z"),
+            _make_segment(2, 4, 5, "2025-03-01T10:21:00Z", "2025-03-01T10:30:00Z"),
+        ]
+
+        # Track LLM calls
+        call_count = 0
+
+        def fake_distiller(
+            seg_sum: SessionSummary,
+            seg_turns: list[NormalizedTurn],
+            prev_context: str = "",
+        ) -> tuple[SessionSummary, str]:
+            import dataclasses as _dc
+
+            nonlocal call_count
+            call_count += 1
+            filled = _dc.replace(
+                seg_sum,
+                title="LLM title",
+                summary_text="LLM summary",
+                kind="feature",
+                outcome="done",
+                distiller_version=2,
+            )
+            return filled, "next ctx"
+
+        budget = LLMBudget(max_calls=1)
+        result = write_session_segments(store, summary, segs, turns, fake_distiller, budget=budget)
+
+        # Only 1 LLM call allowed
+        assert result.llm_calls == 1
+        assert result.llm_fallbacks == 2  # remaining 2 segments use deterministic
+        assert call_count == 1
+
+        # All 3 segments still written
+        rows = _get_all_segment_rows(store, session_id)
+        active = [r for r in rows if not r["is_archived"]]
+        assert len(active) == 3
+
+    def test_llm_distiller_error_falls_back(self, store: StorageAdapter) -> None:
+        """LLM error on a segment -> fallback to deterministic, not abort."""
+        session_id = "seg-err-001"
+        summary = _make_session_for_seg(session_id=session_id)
+        turns = _make_turns_for_segs(4)
+        segs = [
+            _make_segment(0, 0, 1, "2025-03-01T10:00:00Z", "2025-03-01T10:15:00Z"),
+            _make_segment(1, 2, 3, "2025-03-01T10:16:00Z", "2025-03-01T10:30:00Z"),
+        ]
+
+        def failing_distiller(
+            seg_sum: SessionSummary,
+            seg_turns: list[NormalizedTurn],
+            prev_context: str = "",
+        ) -> tuple[SessionSummary, str]:
+            raise RuntimeError("LLM down")
+
+        result = write_session_segments(store, summary, segs, turns, failing_distiller)
+        assert result.llm_fallbacks == 2
+        assert result.llm_calls == 0
+        # All segments still written via fallback
+        rows = _get_all_segment_rows(store, session_id)
+        active = [r for r in rows if not r["is_archived"]]
+        assert len(active) == 2
+
+    def test_idempotent_reingest_same_count(self, store: StorageAdapter) -> None:
+        """Re-ingest with same segment count: rows updated (not duplicated)."""
+        session_id = "seg-idem-001"
+        summary = _make_session_for_seg(session_id=session_id)
+        turns = _make_turns_for_segs(4)
+        segs = [
+            _make_segment(0, 0, 1, "2025-03-01T10:00:00Z", "2025-03-01T10:15:00Z"),
+            _make_segment(1, 2, 3, "2025-03-01T10:16:00Z", "2025-03-01T10:30:00Z"),
+        ]
+
+        write_session_segments(store, summary, segs, turns)
+
+        # Re-ingest with same segments but different turn text (forces re-distill)
+        turns2 = [
+            NormalizedTurn(seq=i, ts=t.ts, role=t.role, text=f"NEW turn {i}")
+            for i, t in enumerate(turns)
+        ]
+        result2 = write_session_segments(store, summary, segs, turns2)
+        assert result2.updated == 2
+        assert result2.written == 0
+
+        # Still exactly 2 active rows (no duplicates)
+        rows = _get_all_segment_rows(store, session_id)
+        active = [r for r in rows if not r["is_archived"]]
+        assert len(active) == 2
+
+    def test_no_segments_returns_empty_result(self, store: StorageAdapter) -> None:
+        """Empty segments list -> SegWriteResult with zeros, no DB writes."""
+        summary = _make_session_for_seg(session_id="seg-empty-001")
+        result = write_session_segments(store, summary, [], [])
+        assert result.written == 0
+        assert result.cache_hits == 0
+        assert result.llm_calls == 0
+
+    def test_fake_llm_distiller_prev_context_chain(self, store: StorageAdapter) -> None:
+        """prev_context is chained: next_context from seg N becomes prev_context of seg N+1."""
+        session_id = "seg-ctx-001"
+        summary = _make_session_for_seg(session_id=session_id)
+        turns = _make_turns_for_segs(6)
+        segs = [
+            _make_segment(0, 0, 1, "2025-03-01T10:00:00Z", "2025-03-01T10:10:00Z"),
+            _make_segment(1, 2, 3, "2025-03-01T10:11:00Z", "2025-03-01T10:20:00Z"),
+            _make_segment(2, 4, 5, "2025-03-01T10:21:00Z", "2025-03-01T10:30:00Z"),
+        ]
+
+        received_prev_contexts: list[str] = []
+
+        def tracking_distiller(
+            seg_sum: SessionSummary,
+            seg_turns: list[NormalizedTurn],
+            prev_context: str = "",
+        ) -> tuple[SessionSummary, str]:
+            import dataclasses as _dc
+
+            received_prev_contexts.append(prev_context)
+            filled = _dc.replace(
+                seg_sum,
+                title=f"Seg {seg_sum.segment_index}",
+                summary_text=f"Summary {seg_sum.segment_index}",
+                kind="feature",
+                outcome="done",
+                distiller_version=2,
+            )
+            return filled, f"context-after-{seg_sum.segment_index}"
+
+        write_session_segments(store, summary, segs, turns, tracking_distiller)
+
+        # prev_context for seg 0 is ""
+        assert received_prev_contexts[0] == ""
+        # prev_context for seg 1 is what seg 0 returned
+        assert received_prev_contexts[1] == "context-after-0"
+        # prev_context for seg 2 is what seg 1 returned
+        assert received_prev_contexts[2] == "context-after-1"
+
+
+# ---------------------------------------------------------------------------
+# Phase-2: LLMBudget tests
+# ---------------------------------------------------------------------------
+
+
+class TestLLMBudget:
+    def test_unlimited_budget_always_grants(self) -> None:
+        budget = LLMBudget(max_calls=0)
+        for _ in range(1000):
+            assert budget.request() is True
+
+    def test_limited_budget_caps_calls(self) -> None:
+        budget = LLMBudget(max_calls=3)
+        assert budget.request() is True
+        assert budget.request() is True
+        assert budget.request() is True
+        assert budget.request() is False  # exhausted
+
+    def test_used_counter(self) -> None:
+        budget = LLMBudget(max_calls=5)
+        budget.request()
+        budget.request()
+        assert budget.used == 2
+
+
+def test_backfill_concurrent_no_data_loss(tmp_db: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression (MM-29 blocker): concurrent backfill must NOT lose rows.
+
+    Many multi-segment sessions ingested with max_concurrency=4 must land EVERY
+    segment row (writes are serialized on the main thread; distill is parallel)."""
+    import mintmory.core.history.ingest as ingest_mod
+    from mintmory.core.config import SegmentSettings
+
+    n_sessions, turns_per = 40, 60  # 60 turns -> multiple segments at target=25
+
+    def _big_sessions() -> Iterator[tuple[SessionSummary, list[NormalizedTurn]]]:
+        for s in range(n_sessions):
+            turns = [
+                NormalizedTurn(
+                    seq=i,
+                    ts=f"2025-03-01T10:{i:02d}:00Z",
+                    role="user" if i % 2 == 0 else "assistant",
+                    text=f"s{s} turn {i}",
+                )
+                for i in range(turns_per)
+            ]
+            yield _make_session(session_id=f"big-{s}", summary_text=f"session {s}"), turns
+
+    monkeypatch.setattr(
+        ingest_mod, "_load_adapter", lambda name: _big_sessions if name == "stub" else None
+    )
+    seg = SegmentSettings(target_turns=25, max_turns=40)
+    report = backfill(db_path=tmp_db, sources=["stub"], seg_settings=seg, max_concurrency=4)
+
+    # Recompute expected segment count deterministically and compare to stored rows.
+    from mintmory.core.history.segment import segment_turns
+
+    expected = 0
+    for _summary, turns in _big_sessions():
+        expected += len(segment_turns(turns, seg))
+    assert expected > n_sessions  # sanity: these sessions really do split
+
+    store = StorageAdapter(tmp_db)
+    store.initialise()
+    rows = (
+        store.connect()
+        .execute(
+            "SELECT COUNT(*) FROM memories WHERE is_archived=0 "
+            "AND json_extract(metadata,'$.record_type')='session_summary'"
+        )
+        .fetchone()[0]
+    )
+    store.close()
+    assert rows == expected, f"data loss: stored {rows} != expected {expected}"
+    assert report.errors == 0

@@ -282,6 +282,30 @@ class SearchSettings(BaseSettings):
     vector_rrf_weight: float = Field(default=1.0, ge=0.0, le=16.0)
 
 
+# ---------------------------------------------------------------------------
+# History segmentation (MINTMORY_HISTORY_SEG_*) — Phase 2 segmented distiller.
+# Defaults: segmentation ON, local-only LLM distiller.
+# ---------------------------------------------------------------------------
+class SegmentSettings(BaseSettings):
+    """Session segmentation knobs for the Phase-2 history distiller.
+
+    Segmentation is ON by default (enabled=True). With provider=none it is
+    fully offline — the deterministic path is used for every segment.
+    allow_cloud_llm gates non-localhost LLM endpoints; set explicitly or via
+    MINTMORY_HISTORY_SEG_ALLOW_CLOUD_LLM=true to use a cloud distiller.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_HISTORY_SEG_", extra="ignore")
+
+    enabled: bool = True  # default ON
+    target_turns: int = Field(default=25, ge=4, le=500)
+    min_turns: int = Field(default=12, ge=1, le=500)  # trailing-runt merge threshold
+    max_turns: int = Field(default=40, ge=4, le=1000)  # hard cap if no user boundary
+    gap_minutes: int = Field(default=45, ge=0, le=10000)  # 0 disables the time-gap break
+    max_segments_per_session: int = Field(default=0, ge=0)  # 0 = unlimited
+    allow_cloud_llm: bool = False  # gate non-localhost LLM base_url for the distiller
+
+
 class Settings(BaseSettings):
     """Aggregate of every settings group. Each group still reads its own env vars."""
 
@@ -297,6 +321,7 @@ class Settings(BaseSettings):
     note: NoteSettings = Field(default_factory=NoteSettings)
     vision: VisionSettings = Field(default_factory=VisionSettings)  # image understanding (G5)
     search: SearchSettings = Field(default_factory=SearchSettings)
+    seg: SegmentSettings = Field(default_factory=SegmentSettings)  # history segmentation (Phase 2)
 
 
 def load_settings() -> Settings:

@@ -1246,20 +1246,59 @@ def history_backfill(
     ),
     db: str = typer.Option("", "--db", help="History DB path (default: agent-history.db)"),
     limit: int = typer.Option(0, "--limit", help="Cap sessions per source (0 = unlimited)"),
+    max_llm_calls: int = typer.Option(
+        0, "--max-llm-calls", help="Max LLM distiller calls (0=unlimited)"
+    ),
+    llm_only_since: str | None = typer.Option(
+        None, "--llm-only-since", help="Only use LLM for sessions on/after DATE (ISO)"
+    ),
+    allow_cloud_llm: bool = typer.Option(
+        False,
+        "--allow-cloud-llm/--no-allow-cloud-llm",
+        help="Allow non-localhost LLM endpoint for distillation",
+    ),
 ) -> None:
     """Backfill all sessions from agent adapters into the history DB."""
+    from mintmory.core.config import load_settings
     from mintmory.core.history.ingest import (
         DEFAULT_HISTORY_DB,
         HermesGuardError,
+        LLMBudget,
         backfill,
     )
+    from mintmory.core.llm import build_history_distiller
 
     db_path = db if db else DEFAULT_HISTORY_DB
+    settings = load_settings()
+
+    seg_settings = (
+        settings.seg.model_copy(update={"allow_cloud_llm": True})
+        if allow_cloud_llm
+        else settings.seg
+    )
+
+    distiller = build_history_distiller(settings.llm, seg_settings)
+    budget = LLMBudget(max_calls=max_llm_calls) if max_llm_calls > 0 else None
+
+    llm_since_dt: datetime | None = None
+    if llm_only_since:
+        try:
+            llm_since_dt = datetime.fromisoformat(llm_only_since)
+        except ValueError as exc:
+            raise typer.BadParameter(
+                f"invalid --llm-only-since {llm_only_since!r}; expected ISO date"
+            ) from exc
+
     try:
         report = backfill(
             db_path=db_path,
             sources=list(source) if source else None,
             limit=limit,
+            seg_settings=seg_settings,
+            distiller=distiller,
+            budget=budget,
+            llm_only_since=llm_since_dt,
+            max_concurrency=settings.llm.max_concurrency,
         )
     except HermesGuardError as exc:
         console.print(f"[red]error[/red]: {exc}")
@@ -1272,6 +1311,10 @@ def history_backfill(
     table.add_row("written", str(report.written))
     table.add_row("updated", str(report.updated))
     table.add_row("skipped", str(report.skipped))
+    table.add_row("segments_written", str(report.segments_written))
+    table.add_row("llm_calls", str(report.llm_calls))
+    table.add_row("llm_cache_hits", str(report.llm_cache_hits))
+    table.add_row("llm_fallbacks", str(report.llm_fallbacks))
     for src_name, count in report.by_source.items():
         table.add_row(f"  {src_name}", str(count))
     console.print(table)
@@ -1283,19 +1326,58 @@ def history_sync(
         [], "--source", help="Adapter(s): claude_code, codex, kiro (repeatable)"
     ),
     db: str = typer.Option("", "--db", help="History DB path"),
+    max_llm_calls: int = typer.Option(
+        0, "--max-llm-calls", help="Max LLM distiller calls (0=unlimited)"
+    ),
+    llm_only_since: str | None = typer.Option(
+        None, "--llm-only-since", help="Only use LLM for sessions on/after DATE (ISO)"
+    ),
+    allow_cloud_llm: bool = typer.Option(
+        False,
+        "--allow-cloud-llm/--no-allow-cloud-llm",
+        help="Allow non-localhost LLM endpoint for distillation",
+    ),
 ) -> None:
     """Sync new/changed sessions only (skip unchanged files per manifest)."""
+    from mintmory.core.config import load_settings
     from mintmory.core.history.ingest import (
         DEFAULT_HISTORY_DB,
         HermesGuardError,
+        LLMBudget,
         sync,
     )
+    from mintmory.core.llm import build_history_distiller
 
     db_path = db if db else DEFAULT_HISTORY_DB
+    settings = load_settings()
+
+    seg_settings = (
+        settings.seg.model_copy(update={"allow_cloud_llm": True})
+        if allow_cloud_llm
+        else settings.seg
+    )
+
+    distiller = build_history_distiller(settings.llm, seg_settings)
+    budget = LLMBudget(max_calls=max_llm_calls) if max_llm_calls > 0 else None
+
+    llm_since_dt: datetime | None = None
+    if llm_only_since:
+        try:
+            llm_since_dt = datetime.fromisoformat(llm_only_since)
+        except ValueError as exc:
+            raise typer.BadParameter(
+                f"invalid --llm-only-since {llm_only_since!r}; expected ISO date"
+            ) from exc
+
     try:
         report = sync(
             db_path=db_path,
             sources=list(source) if source else None,
+            seg_settings=seg_settings,
+            distiller=distiller,
+            budget=budget,
+            llm_only_since=llm_since_dt,
+            max_concurrency=settings.llm.max_concurrency,
         )
     except HermesGuardError as exc:
         console.print(f"[red]error[/red]: {exc}")
@@ -1307,6 +1389,10 @@ def history_sync(
     table.add_row("scanned", str(report.scanned))
     table.add_row("written", str(report.written))
     table.add_row("skipped", str(report.skipped))
+    table.add_row("segments_written", str(report.segments_written))
+    table.add_row("llm_calls", str(report.llm_calls))
+    table.add_row("llm_cache_hits", str(report.llm_cache_hits))
+    table.add_row("llm_fallbacks", str(report.llm_fallbacks))
     for src_name, count in report.by_source.items():
         table.add_row(f"  {src_name}", str(count))
     console.print(table)
@@ -1323,6 +1409,11 @@ def history_timeline(
     kind: str | None = typer.Option(None, "--kind", help="Filter by kind (fix/feature/...)"),
     limit: int = typer.Option(50, "--limit", help="Max rows"),
     db: str = typer.Option("", "--db", help="History DB path"),
+    group_by_session: bool = typer.Option(
+        False,
+        "--group-by-session/--no-group-by-session",
+        help="Group multi-segment sessions together",
+    ),
 ) -> None:
     """Print a dated changelog of sessions within the time window."""
     from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, HermesGuardError
@@ -1338,6 +1429,7 @@ def history_timeline(
             repo=repo,
             kind=kind,
             limit=limit,
+            group_by_session=group_by_session,
         )
     except HermesGuardError as exc:
         console.print(f"[red]error[/red]: {exc}")
@@ -1349,16 +1441,22 @@ def history_timeline(
     table.add_column("date", style="yellow", no_wrap=True)
     table.add_column("repo", style="cyan")
     table.add_column("kind", style="magenta")
+    table.add_column("title")
     table.add_column("summary")
     for row in rows:
+        seg_count = row.get("segment_count", 1)
+        seg_idx = row.get("segment_index", 0)
+        marker = f"[{seg_idx + 1}/{seg_count}] " if seg_count > 1 else ""
+        title_cell = f"{marker}{row.get('title', '')}"
         table.add_row(
             row["date"],
             row["repo"],
             row["kind"],
-            row["summary"][:120],
+            title_cell,
+            row["summary"][:100],
         )
     console.print(table)
-    console.print(f"[dim]{len(rows)} session(s)[/dim]")
+    console.print(f"[dim]{len(rows)} segment(s)[/dim]")
 
 
 @history_app.command("search")

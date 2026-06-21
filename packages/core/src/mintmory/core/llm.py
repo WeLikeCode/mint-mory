@@ -25,7 +25,13 @@ import urllib.request
 from typing import TYPE_CHECKING, Any
 
 from mintmory.core import telemetry
-from mintmory.core.config import LinkSettings, LLMProvider, LLMSettings, SummarySettings
+from mintmory.core.config import (
+    LinkSettings,
+    LLMProvider,
+    LLMSettings,
+    SegmentSettings,
+    SummarySettings,
+)
 from mintmory.core.dreaming import ConflictResolver, DreamingEngine, Summarizer
 from mintmory.core.prompts import CONTRADICTION_DETECTION_PROMPT, SUMMARY_PROMPT
 from mintmory.core.types import BatchResolutionAction, ConflictCheckResult, MemoryRecord
@@ -278,6 +284,62 @@ def build_conflict_resolver(
             return [BatchResolutionAction(action="NONE", reason="unparseable resolver reply")]
 
     return resolve
+
+
+def _is_local_base_url(url: str) -> bool:
+    """Return True if url's host resolves to localhost / loopback.
+
+    Recognised forms: localhost, 127.x.x.x, ::1, [::1].
+    The scheme is ignored; only the host component matters.
+    """
+    import urllib.parse  # noqa: PLC0415
+
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or ""
+    host_lower = host.lower()
+    # Exact localhost
+    if host_lower == "localhost":
+        return True
+    # IPv4 loopback (127.0.0.0/8)
+    if host_lower.startswith("127."):
+        return True
+    # IPv6 loopback
+    return host_lower in ("::1", "[::1]")
+
+
+def build_history_distiller(
+    llm: LLMSettings,
+    seg: SegmentSettings,
+) -> Any | None:
+    """Return a per-segment LLM distiller callable, or None (use deterministic).
+
+    Returns None when:
+      - llm.provider is NONE (offline default), OR
+      - llm.base_url is non-local AND seg.allow_cloud_llm is False.
+
+    Otherwise returns a closure
+      (summary, seg_turns, prev_context='') -> (SessionSummary, next_context)
+    that calls distill_llm with the LLMClient.chat method.
+    """
+    from mintmory.core.history.distill import distill_llm  # noqa: PLC0415
+    from mintmory.core.history.models import NormalizedTurn, SessionSummary  # noqa: PLC0415
+
+    if llm.provider is LLMProvider.NONE:
+        return None
+
+    if not _is_local_base_url(llm.base_url) and not seg.allow_cloud_llm:
+        return None
+
+    client = LLMClient(llm)
+
+    def _distiller(
+        summary: SessionSummary,
+        seg_turns: list[NormalizedTurn],
+        prev_context: str = "",
+    ) -> tuple[SessionSummary, str]:
+        return distill_llm(summary, seg_turns, client.chat, prev_context=prev_context)
+
+    return _distiller
 
 
 def build_dreaming_engine(

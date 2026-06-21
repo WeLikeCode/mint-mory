@@ -148,7 +148,7 @@ class TestHistoryTimeline:
             ["history", "timeline", "--db", history_db, "--since", "30d"],
         )
         assert result.exit_code == 0, result.output
-        assert "0 session(s)" in result.output
+        assert "0 segment(s)" in result.output
 
     def test_timeline_shows_session_in_window(self, history_db: str, cli_db: Path) -> None:
         """A session within --since window appears in the timeline."""
@@ -165,7 +165,7 @@ class TestHistoryTimeline:
             ["history", "timeline", "--db", history_db, "--since", "30d"],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_excludes_session_outside_window(self, history_db: str, cli_db: Path) -> None:
         """A session older than --since window is excluded."""
@@ -182,7 +182,7 @@ class TestHistoryTimeline:
             ["history", "timeline", "--db", history_db, "--since", "30d"],
         )
         assert result.exit_code == 0, result.output
-        assert "0 session(s)" in result.output
+        assert "0 segment(s)" in result.output
 
     def test_timeline_filters_inside_outside_window(self, history_db: str, cli_db: Path) -> None:
         """Two sessions: one inside and one outside --since 30d; only 1 returned."""
@@ -205,7 +205,7 @@ class TestHistoryTimeline:
             ["history", "timeline", "--db", history_db, "--since", "30d"],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_repo_filter(self, history_db: str, cli_db: Path) -> None:
         """--repo filters by repository name."""
@@ -236,7 +236,7 @@ class TestHistoryTimeline:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_kind_filter(self, history_db: str, cli_db: Path) -> None:
         """--kind filters by session kind stored in metadata."""
@@ -269,7 +269,7 @@ class TestHistoryTimeline:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_from_to_window(self, history_db: str, cli_db: Path) -> None:
         """--from/--to ISO window works instead of --since."""
@@ -293,7 +293,7 @@ class TestHistoryTimeline:
             ],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_since_weeks_syntax(self, history_db: str, cli_db: Path) -> None:
         """--since 4w (weeks) parses correctly."""
@@ -308,7 +308,7 @@ class TestHistoryTimeline:
             ["history", "timeline", "--db", history_db, "--since", "4w"],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_since_months_syntax(self, history_db: str, cli_db: Path) -> None:
         """--since 2m (months) parses correctly."""
@@ -323,7 +323,7 @@ class TestHistoryTimeline:
             ["history", "timeline", "--db", history_db, "--since", "2m"],
         )
         assert result.exit_code == 0, result.output
-        assert "1 session(s)" in result.output
+        assert "1 segment(s)" in result.output
 
     def test_timeline_invalid_since_errors(self, history_db: str, cli_db: Path) -> None:
         """An invalid --since value exits non-zero."""

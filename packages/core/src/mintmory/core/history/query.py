@@ -7,6 +7,12 @@ and the ``mintmory-history-mcp`` server — results are therefore identical
 across both surfaces.
 
 All times are naive-UTC to match the storage layer's valid_from column.
+
+Phase-2 changes:
+- _shape_row adds segment_index, segment_count, turn_lo, turn_hi, title, outcome.
+- timeline ORDER BY valid_from DESC, session_id ASC, segment_index ASC (tiebreak).
+- timeline(..., group_by_session=False): when True, group rows by session_id.
+- search ranks segments individually; shape is unchanged otherwise.
 """
 
 from __future__ import annotations
@@ -112,7 +118,10 @@ def _open_history(db_path: str) -> StorageAdapter:
 
 
 def _shape_row(content: str, meta: dict[str, Any], valid_from: str | None) -> dict[str, Any]:
-    """Convert a raw DB row into the standard row-dict shape."""
+    """Convert a raw DB row into the standard row-dict shape.
+
+    Phase-2: adds segment_index, segment_count, turn_lo, turn_hi, title, outcome.
+    """
     date_str = (valid_from or "")[:10]
     return {
         "date": date_str,
@@ -126,6 +135,12 @@ def _shape_row(content: str, meta: dict[str, Any], valid_from: str | None) -> di
         "summary": content,
         "session_id": meta.get("session_id", ""),
         "source_path": meta.get("source_path", ""),
+        # Phase-2 segment fields
+        "segment_index": meta.get("segment_index", 0),
+        "segment_count": meta.get("segment_count", 1),
+        "turn_lo": meta.get("turn_lo", 0),
+        "turn_hi": meta.get("turn_hi", 0),
+        "outcome": meta.get("outcome", ""),
     }
 
 
@@ -144,17 +159,26 @@ def timeline(
     kind: str | None = None,
     limit: int = 50,
     now: datetime | None = None,
+    group_by_session: bool = False,
 ) -> list[dict[str, Any]]:
     """Return session summaries whose valid_from falls in the resolved window.
 
-    Results are newest-first, filtered by ``repo`` and/or ``kind`` when
-    supplied. Each element is a dict with: date, ts_start, agent, collection,
-    repo, branch, kind, title, summary (=content), session_id, source_path.
+    Results are newest-first (with segment tiebreak), filtered by ``repo`` and/or
+    ``kind`` when supplied. Each element is a dict with: date, ts_start, agent,
+    collection, repo, branch, kind, title, summary (=content), session_id,
+    source_path, segment_index, segment_count, turn_lo, turn_hi, outcome.
+
+    Phase-2 ORDER BY: valid_from DESC, session_id ASC, segment_index ASC — the
+    tiebreak is REQUIRED so segments within the same second stay in author order.
+
+    When group_by_session=True: rows are grouped by session_id (each group in
+    ascending segment_index order), groups ordered by newest valid_from.
 
     Query: is_archived=0 AND metadata.record_type='session_summary'
            AND valid_from in [start, end]
            (+ optional metadata.repo / metadata.kind)
-           ORDER BY valid_from DESC LIMIT ?.
+           ORDER BY valid_from DESC, session_id ASC, segment_index ASC
+           LIMIT ?.
     """
     if now is None:
         now = datetime.now(UTC).replace(tzinfo=None)
@@ -168,7 +192,9 @@ def timeline(
         "WHERE is_archived = 0 "
         "  AND json_extract(metadata, '$.record_type') = 'session_summary' "
         "  AND valid_from >= ? AND valid_from <= ? "
-        "ORDER BY valid_from DESC "
+        "ORDER BY valid_from DESC, "
+        "         json_extract(metadata, '$.session_id') ASC, "
+        "         CAST(json_extract(metadata, '$.segment_index') AS INTEGER) ASC "
         "LIMIT ?",
         (
             start.isoformat(),
@@ -186,7 +212,33 @@ def timeline(
             continue
         result.append(_shape_row(row["content"], meta, row["valid_from"]))
 
+    if group_by_session:
+        result = _group_rows_by_session(result)
+
     return result
+
+
+def _group_rows_by_session(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group flat rows by session_id, preserving newest-first group order.
+
+    Each group is in ascending segment_index order.  Groups are ordered by the
+    newest valid_from seen within that session (i.e. the order the session's
+    first segment appeared in the incoming newest-first list).
+    """
+    seen_order: list[str] = []
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        sid = row["session_id"]
+        if sid not in groups:
+            seen_order.append(sid)
+            groups[sid] = []
+        groups[sid].append(row)
+
+    out: list[dict[str, Any]] = []
+    for sid in seen_order:
+        group = sorted(groups[sid], key=lambda r: r.get("segment_index", 0))
+        out.extend(group)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +259,8 @@ def search(
 
     Optionally constrained to ``repo`` and/or ``valid_from >= (now - since)``.
     Returns the same row-dict shape as timeline(), in search-rank order.
+
+    Phase-2: rows now include segment_index, segment_count, turn_lo, turn_hi, outcome.
     """
     if now is None:
         now = datetime.now(UTC).replace(tzinfo=None)

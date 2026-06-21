@@ -20,8 +20,8 @@ from typing import Any
 
 import pytest
 from fastmcp import Client
-from mintmory.core.history.ingest import HermesGuardError, write_session
-from mintmory.core.history.models import SessionSummary
+from mintmory.core.history.ingest import HermesGuardError, write_session, write_session_segments
+from mintmory.core.history.models import NormalizedTurn, Segment, SessionSummary
 from mintmory.core.storage import StorageAdapter
 from mintmory.mcp import history_server
 from mintmory.mcp.history_server import mcp
@@ -152,7 +152,7 @@ async def test_history_timeline_returns_rows(history_client: Client[Any]) -> Non
 
 
 async def test_history_timeline_row_keys(history_client: Client[Any]) -> None:
-    """Every row has the documented set of keys."""
+    """Every row has the documented set of keys (including Phase-2 segment fields)."""
     res = await history_client.call_tool("history_timeline", {"since": "30d"})
     data = res.data
     assert len(data) >= 1
@@ -168,6 +168,12 @@ async def test_history_timeline_row_keys(history_client: Client[Any]) -> None:
         "summary",
         "session_id",
         "source_path",
+        # Phase-2 segment fields
+        "segment_index",
+        "segment_count",
+        "turn_lo",
+        "turn_hi",
+        "outcome",
     }
     assert expected_keys == set(data[0].keys())
 
@@ -238,7 +244,8 @@ async def test_history_stats_returns_expected_shape(history_client: Client[Any])
     res = await history_client.call_tool("history_stats", {})
     data = res.data
     assert isinstance(data, dict)
-    assert "total" in data
+    assert "total_sessions" in data
+    assert "total_segments" in data
     assert "by_collection" in data
     assert "by_kind" in data
     assert "earliest" in data
@@ -246,9 +253,10 @@ async def test_history_stats_returns_expected_shape(history_client: Client[Any])
 
 
 async def test_history_stats_counts_seeded_session(history_client: Client[Any]) -> None:
-    """history_stats total >= 1 after seeding."""
+    """history_stats total_sessions >= 1 after seeding."""
     res = await history_client.call_tool("history_stats", {})
-    assert res.data["total"] >= 1
+    assert res.data["total_sessions"] >= 1
+    assert res.data["total_segments"] >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -284,3 +292,111 @@ def test_main_guard_refuses_env_db(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
     with pytest.raises((HermesGuardError, SystemExit)):
         history_server.main()
+
+
+# ---------------------------------------------------------------------------
+# Phase-2: segment fields in MCP rows + history_stats sessions vs segments
+# ---------------------------------------------------------------------------
+
+
+def _make_seg(idx: int, lo: int, hi: int, ts: str) -> Segment:
+    return Segment(idx=idx, turn_lo=lo, turn_hi=hi, ts_start=ts, ts_end=ts)
+
+
+def _make_seg_turns(n: int) -> list[NormalizedTurn]:
+    return [
+        NormalizedTurn(seq=i, ts=None, role="user" if i % 2 == 0 else "assistant", text=f"turn {i}")
+        for i in range(n)
+    ]
+
+
+@pytest.fixture
+async def seg_history_client(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[Client[Any]]:
+    """Client seeded with a 2-segment session + the original 1-segment session."""
+    monkeypatch.delenv("MINTMORY_DB", raising=False)
+
+    db_file = str(tmp_path / "seg-history.db")
+    store = _open_store(db_file)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    recent = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Session A: 2 segments (write_session_segments)
+    summary_a = SessionSummary(
+        session_id="mcp-seg-A",
+        agent="claude_code",
+        repo="testrepo",
+        repo_path="/tmp/repo",
+        branch="main",
+        ts_start=recent,
+        ts_end=recent,
+        turn_count=4,
+        tools_used=[],
+        kind="feature",
+        title="",
+        summary_text="",
+        source_path="",
+        distiller_version=1,
+    )
+    turns_a = _make_seg_turns(4)
+    turns_a[0] = NormalizedTurn(seq=0, ts=None, role="user", text="implement login feature")
+    segs_a = [_make_seg(0, 0, 1, recent), _make_seg(1, 2, 3, recent)]
+    write_session_segments(store, summary_a, segs_a, turns_a)
+
+    # Session B: 1 segment (write_session — legacy path)
+    _seed(
+        store,
+        session_id="mcp-sess-1",
+        ts_start=recent,
+        ts_end=recent,
+        summary_text="Implemented OAuth2 PKCE flow in auth.py",
+        kind="feature",
+        repo="myrepo",
+    )
+    store.close()
+
+    monkeypatch.setenv("MINTMORY_HISTORY_DB", db_file)
+
+    async with Client(mcp) as client:
+        yield client
+
+
+async def test_history_timeline_rows_have_segment_fields(
+    seg_history_client: Client[Any],
+) -> None:
+    """history_timeline rows include segment_index, segment_count, turn_lo, turn_hi, outcome."""
+    res = await seg_history_client.call_tool("history_timeline", {"since": "30d"})
+    data = res.data
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    # At least one row from the 2-segment session
+    for row in data:
+        assert "segment_index" in row
+        assert "segment_count" in row
+        assert "turn_lo" in row
+        assert "turn_hi" in row
+        assert "outcome" in row
+
+
+async def test_history_stats_sessions_vs_segments(
+    seg_history_client: Client[Any],
+) -> None:
+    """history_stats returns total_sessions (distinct session_id) AND total_segments (row count)."""
+    res = await seg_history_client.call_tool("history_stats", {})
+    data = res.data
+    assert "total_sessions" in data
+    assert "total_segments" in data
+    # Session A has 2 segment rows + Session B has 1 = 3 total segments
+    # But distinct session_ids = 2
+    assert data["total_segments"] >= data["total_sessions"]
+    assert data["total_sessions"] >= 2
+    assert data["total_segments"] >= 3
+
+
+async def test_history_timeline_group_param(
+    seg_history_client: Client[Any],
+) -> None:
+    """history_timeline with group=True returns rows without error."""
+    res = await seg_history_client.call_tool("history_timeline", {"since": "30d", "group": True})
+    assert isinstance(res.data, list)

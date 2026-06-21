@@ -6,6 +6,10 @@ Exposes exactly three tools (NO write/mutate tools):
   history_search    — hybrid search across session summaries
   history_stats     — counts + date range of indexed sessions
 
+Phase-2: rows include segment_index, segment_count, turn_lo, turn_hi, title,
+outcome. history_stats returns total_sessions (distinct session_id) AND
+total_segments (row count). timeline supports group_by_session.
+
 The DB is resolved from MINTMORY_HISTORY_DB (or --db), defaulting to
 ~/.mintmory/agent-history.db.  At startup the Hermes guard is enforced so
 a misconfigured path (pointing to the working store) fails fast.
@@ -39,7 +43,7 @@ mcp: FastMCP[Any] = FastMCP(
         "Use 'history_timeline' for 'what changed / was fixed in the last N days/weeks/months' "
         "queries — returns newest-first dated session summaries with source_path back-links. "
         "Use 'history_search' for topic recall across all indexed sessions. "
-        "Use 'history_stats' to see counts of sessions by source and kind, plus the "
+        "Use 'history_stats' to see counts of sessions/segments by source and kind, plus the "
         "earliest/latest session dates. "
         "No tool here writes, adds, archives, dreams, or otherwise mutates any store."
     ),
@@ -64,12 +68,14 @@ def history_timeline(
     repo: str | None = None,
     kind: str | None = None,
     limit: int = 50,
+    group: bool = False,
 ) -> list[dict[str, Any]]:
     """Dated changelog of agent sessions in a time window (the 'what changed N ago' query).
 
     Returns newest-first session summaries from the agent-history index.
     Each result is a dict with: date, ts_start, agent, collection, repo, branch,
-    kind, title, summary, session_id, source_path.
+    kind, title, summary, session_id, source_path, segment_index, segment_count,
+    turn_lo, turn_hi, outcome.
 
     Args:
         since: Relative window like '90d', '8w', '3m', '2y' (default '90d').
@@ -79,6 +85,8 @@ def history_timeline(
         repo: Optional repo-name filter (exact match on metadata.repo).
         kind: Optional kind filter (fix/feature/refactor/…).
         limit: Max rows to return (default 50).
+        group: When True, group segments by session (each session's segments
+               in ascending segment_index order, groups newest-first).
     """
     # If both from_date and to_date are None but since has its default value,
     # pass since through as-is.  If the caller explicitly passes from_date or
@@ -95,6 +103,7 @@ def history_timeline(
         repo=repo,
         kind=kind,
         limit=limit,
+        group_by_session=group,
     )
 
 
@@ -125,14 +134,15 @@ def history_search(
 
 @mcp.tool()
 def history_stats() -> dict[str, Any]:
-    """Counts of indexed sessions by source (collection) and kind, plus earliest/latest dates.
+    """Counts of indexed sessions and segments by source (collection) and kind, plus date range.
 
     Read-only.  Returns a dict with:
-      total: total session_summary count
+      total_sessions: distinct session_id count (logical sessions)
+      total_segments: total row count (one per segment per session)
       by_collection: {collection_name: count}
       by_kind: {kind: count}
-      earliest: ISO date of the oldest session (or null)
-      latest: ISO date of the newest session (or null)
+      earliest: ISO date of the oldest segment (or null)
+      latest: ISO date of the newest segment (or null)
     """
     import json as _json
 
@@ -151,6 +161,7 @@ def history_stats() -> dict[str, Any]:
     by_kind: dict[str, int] = {}
     earliest: str | None = None
     latest: str | None = None
+    session_ids: set[str] = set()
 
     for row in rows:
         meta: dict[str, Any] = _json.loads(row["metadata"] or "{}")
@@ -163,9 +174,13 @@ def history_stats() -> dict[str, Any]:
             if earliest is None:
                 earliest = vf
             latest = vf
+        sid = meta.get("session_id", "")
+        if sid:
+            session_ids.add(sid)
 
     return {
-        "total": len(rows),
+        "total_sessions": len(session_ids),
+        "total_segments": len(rows),
         "by_collection": by_collection,
         "by_kind": by_kind,
         "earliest": earliest,

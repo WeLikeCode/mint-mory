@@ -19,11 +19,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from mintmory.core.history.ingest import HermesGuardError, write_session
-from mintmory.core.history.models import SessionSummary
+from mintmory.core.history.ingest import HermesGuardError, write_session, write_session_segments
+from mintmory.core.history.models import NormalizedTurn, Segment, SessionSummary
 from mintmory.core.history.query import (
     DEFAULT_WINDOW_DAYS,
     _open_history,
+    _shape_row,
     resolve_window,
     search,
     timeline,
@@ -283,6 +284,12 @@ class TestTimeline:
             "summary",
             "session_id",
             "source_path",
+            # Phase-2 segment fields
+            "segment_index",
+            "segment_count",
+            "turn_lo",
+            "turn_hi",
+            "outcome",
         }
         assert expected_keys == set(row.keys())
 
@@ -425,6 +432,12 @@ class TestSearch:
                 "summary",
                 "session_id",
                 "source_path",
+                # Phase-2 segment fields
+                "segment_index",
+                "segment_count",
+                "turn_lo",
+                "turn_hi",
+                "outcome",
             }
             assert expected_keys == set(row.keys())
 
@@ -437,3 +450,238 @@ def test_timeline_creates_missing_parent_dir(
     db = str(tmp_path / "nope" / "deeper" / "agent-history.db")  # parent does not exist
     rows = timeline(db, since="30d")  # must NOT raise sqlite OperationalError
     assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# Phase-2 query tests: segment fields, tiebreak ordering, group_by_session
+# ---------------------------------------------------------------------------
+
+
+def _make_seg_session(
+    session_id: str = "sess-seg-001",
+    ts_start: str = "2025-06-01T10:00:00Z",
+    ts_end: str = "2025-06-01T10:30:00Z",
+) -> SessionSummary:
+    return SessionSummary(
+        session_id=session_id,
+        agent="claude_code",
+        repo="myproject",
+        repo_path="/home/user/myproject",
+        branch="main",
+        ts_start=ts_start,
+        ts_end=ts_end,
+        turn_count=6,
+        tools_used=["bash"],
+        kind="investigation",
+        title="",
+        summary_text="",
+        source_path="",
+        distiller_version=1,
+    )
+
+
+def _make_seg_turns(n: int) -> list[NormalizedTurn]:
+    return [
+        NormalizedTurn(seq=i, ts=None, role="user" if i % 2 == 0 else "assistant", text=f"turn {i}")
+        for i in range(n)
+    ]
+
+
+def _make_seg(idx: int, lo: int, hi: int, ts_start: str, ts_end: str) -> Segment:
+    return Segment(idx=idx, turn_lo=lo, turn_hi=hi, ts_start=ts_start, ts_end=ts_end)
+
+
+class TestPhase2ShapeRow:
+    def test_shape_row_has_segment_fields(self) -> None:
+        """_shape_row includes segment_index, segment_count, turn_lo, turn_hi, outcome."""
+        meta = {
+            "agent": "claude_code",
+            "collection": "claude-code",
+            "repo": "testrepo",
+            "branch": "main",
+            "kind": "fix",
+            "title": "Fix bug",
+            "session_id": "s1",
+            "source_path": "/tmp/foo",
+            "ts_start": "2025-06-01T10:00:00Z",
+            "segment_index": 1,
+            "segment_count": 3,
+            "turn_lo": 5,
+            "turn_hi": 10,
+            "outcome": "partial",
+        }
+        row = _shape_row("summary text", meta, "2025-06-01T10:00:00")
+        assert row["segment_index"] == 1
+        assert row["segment_count"] == 3
+        assert row["turn_lo"] == 5
+        assert row["turn_hi"] == 10
+        assert row["outcome"] == "partial"
+        assert row["title"] == "Fix bug"
+
+    def test_shape_row_defaults_for_single_segment(self) -> None:
+        """Single-segment rows (no Phase-2 keys in meta) default to 0/1/''."""
+        meta = {
+            "agent": "claude_code",
+            "collection": "claude-code",
+            "repo": "r",
+            "branch": "main",
+            "kind": "fix",
+            "title": "",
+            "session_id": "s1",
+            "source_path": "",
+            "ts_start": "2025-06-01T10:00:00Z",
+        }
+        row = _shape_row("text", meta, "2025-06-01")
+        assert row["segment_index"] == 0
+        assert row["segment_count"] == 1
+        assert row["turn_lo"] == 0
+        assert row["turn_hi"] == 0
+        assert row["outcome"] == ""
+
+
+class TestPhase2TimelineTiebreak:
+    def test_same_second_segments_ordered_by_segment_index(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Two segments with the same valid_from must appear in ascending segment_index order."""
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db = str(tmp_path / "tiebreak.db")
+        store = _open_store(db)
+
+        session_id = "tiebreak-sess"
+        # Same second for both segments
+        same_ts = "2025-06-01T10:00:00Z"
+        summary = _make_seg_session(session_id=session_id, ts_start=same_ts, ts_end=same_ts)
+        turns = _make_seg_turns(4)
+        segs = [
+            _make_seg(0, 0, 1, same_ts, same_ts),
+            _make_seg(1, 2, 3, same_ts, same_ts),
+        ]
+        write_session_segments(store, summary, segs, turns)
+        store.close()
+
+        rows = timeline(db, since="400d")
+        session_rows = [r for r in rows if r["session_id"] == session_id]
+        assert len(session_rows) == 2
+        assert session_rows[0]["segment_index"] == 0
+        assert session_rows[1]["segment_index"] == 1
+
+    def test_timeline_row_keys_include_phase2(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Timeline rows include segment_index, segment_count, turn_lo, turn_hi, outcome."""
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db = str(tmp_path / "seg-keys.db")
+        store = _open_store(db)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        ts = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        summary = _make_seg_session(session_id="seg-keys-001", ts_start=ts, ts_end=ts)
+        turns = _make_seg_turns(2)
+        segs = [_make_seg(0, 0, 1, ts, ts)]
+        write_session_segments(store, summary, segs, turns)
+        store.close()
+
+        rows = timeline(db, since="30d")
+        assert len(rows) == 1
+        row = rows[0]
+        assert "segment_index" in row
+        assert "segment_count" in row
+        assert "turn_lo" in row
+        assert "turn_hi" in row
+        assert "outcome" in row
+        assert "title" in row
+
+
+class TestPhase2GroupBySession:
+    def test_group_by_session_groups_segments(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """group_by_session=True groups segments by session, each group ascending by index."""
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db = str(tmp_path / "group.db")
+        store = _open_store(db)
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        # Session A: 3 segments at t=10min ago
+        ts_a = (now - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        summary_a = _make_seg_session("sess-group-A", ts_start=ts_a, ts_end=ts_a)
+        turns_a = _make_seg_turns(6)
+        segs_a = [
+            _make_seg(0, 0, 1, ts_a, ts_a),
+            _make_seg(1, 2, 3, ts_a, ts_a),
+            _make_seg(2, 4, 5, ts_a, ts_a),
+        ]
+        write_session_segments(store, summary_a, segs_a, turns_a)
+
+        # Session B: 2 segments at t=20min ago
+        ts_b = (now - timedelta(minutes=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        summary_b = _make_seg_session("sess-group-B", ts_start=ts_b, ts_end=ts_b)
+        turns_b = _make_seg_turns(4)
+        segs_b = [
+            _make_seg(0, 0, 1, ts_b, ts_b),
+            _make_seg(1, 2, 3, ts_b, ts_b),
+        ]
+        write_session_segments(store, summary_b, segs_b, turns_b)
+        store.close()
+
+        rows = timeline(db, since="30d", group_by_session=True)
+        # Session A is newer — its 3 segments come first
+        sess_ids = [r["session_id"] for r in rows]
+        a_positions = [i for i, sid in enumerate(sess_ids) if sid == "sess-group-A"]
+        b_positions = [i for i, sid in enumerate(sess_ids) if sid == "sess-group-B"]
+
+        # A's group comes before B's group
+        assert max(a_positions) < min(b_positions)
+        # Within each group, segment_index is ascending
+        a_indices = [rows[p]["segment_index"] for p in a_positions]
+        b_indices = [rows[p]["segment_index"] for p in b_positions]
+        assert a_indices == sorted(a_indices)
+        assert b_indices == sorted(b_indices)
+
+    def test_group_by_session_false_is_flat(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """group_by_session=False (default) returns flat list in newest-first order."""
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db = str(tmp_path / "flat.db")
+        store = _open_store(db)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        ts = (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        summary = _make_seg_session("sess-flat-001", ts_start=ts, ts_end=ts)
+        turns = _make_seg_turns(4)
+        segs = [_make_seg(0, 0, 1, ts, ts), _make_seg(1, 2, 3, ts, ts)]
+        write_session_segments(store, summary, segs, turns)
+        store.close()
+
+        rows = timeline(db, since="30d", group_by_session=False)
+        # Should return 2 rows (flat, not nested)
+        assert isinstance(rows, list)
+        assert len(rows) == 2
+
+
+class TestPhase2SearchSegmentFields:
+    def test_search_rows_have_segment_fields(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """search() rows include segment_index, segment_count, turn_lo, turn_hi, outcome."""
+        monkeypatch.delenv("MINTMORY_DB", raising=False)
+        db = str(tmp_path / "srch-seg.db")
+        store = _open_store(db)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        ts = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        summary = _make_seg_session("seg-search-001", ts_start=ts, ts_end=ts)
+        turns = _make_seg_turns(2)
+        turns[0] = NormalizedTurn(
+            seq=0, ts=None, role="user", text="implement OAuth2 authentication flow"
+        )
+        segs = [_make_seg(0, 0, 1, ts, ts)]
+        write_session_segments(store, summary, segs, turns)
+        store.close()
+
+        results = search(db, "OAuth2 authentication")
+        for row in results:
+            assert "segment_index" in row
+            assert "segment_count" in row
+            assert "turn_lo" in row
+            assert "turn_hi" in row
+            assert "outcome" in row

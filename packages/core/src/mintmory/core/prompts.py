@@ -88,6 +88,40 @@ IMAGE_CAPTION_PROMPT = (
 )
 
 # ---------------------------------------------------------------------------
+# History segment distiller (Phase 2).
+# Placeholders: {prev_context}, {transcript}, {repo}
+# ---------------------------------------------------------------------------
+HISTORY_SEGMENT_PROMPT = """\
+You are summarising one segment of an agentic coding session in the repository \
+"{repo}" as a changelog entry.
+
+Previous segment context (what happened before this segment):
+{prev_context}
+
+Session transcript (role-tagged, secrets already redacted):
+{transcript}
+
+Output ONLY a strict JSON object — no prose, no markdown fences — with EXACTLY \
+these keys:
+
+{{
+  "title": "<imperative verb phrase, ≤8 words>",
+  "kind": "<one of: fix | feature | refactor | investigation | chore | docs | incident>",
+  "summary": "<what was done or decided — ≤2 sentences>",
+  "outcome": "<single short clause: done | partial | blocked | …>",
+  "next_context": "<≤1 sentence to brief the next segment>"
+}}
+
+Rules:
+- "title" must start with an imperative verb and be ≤8 words.
+- "kind" must be exactly one of the seven values listed above.
+- "summary" ≤2 sentences; focus on decisions and concrete changes.
+- "outcome" ≤1 short clause (e.g. "done", "partial — tests pending").
+- "next_context" ≤1 sentence; leave blank ("") if this is the final segment.
+- Do NOT include any text outside the JSON object.
+"""
+
+# ---------------------------------------------------------------------------
 # L3 concept summary (dreaming step 3). Placeholders: {concept}, {notes}
 # ---------------------------------------------------------------------------
 SUMMARY_PROMPT = """\
