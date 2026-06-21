@@ -284,6 +284,28 @@ class SearchSettings(BaseSettings):
 
 
 # ---------------------------------------------------------------------------
+# Document indexing (MINTMORY_DOC_*) — recency + co-change clustering.
+# ---------------------------------------------------------------------------
+class DocumentSettings(BaseSettings):
+    """Document-indexing knobs: recency (valid_from=mtime) and optional co-change
+    clustering (HDBSCAN over time + path + content). Env prefix ``MINTMORY_DOC_``.
+
+    ``cochange_enabled`` is True by default but is a no-op when scikit-learn
+    is not installed — the run completes with a one-line install hint.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_DOC_", extra="ignore")
+
+    cochange_enabled: bool = True  # run the co-change pass when possible
+    weight_time: float = Field(default=1.0, ge=0.0)  # composite-distance weights
+    weight_path: float = Field(default=0.5, ge=0.0)
+    weight_content: float = Field(default=0.5, ge=0.0)
+    tau_seconds: int = Field(default=3600, ge=1)  # time-delta normalisation scale
+    min_cluster_size: int = Field(default=2, ge=2)  # HDBSCAN; <2 is meaningless
+    use_embeddings: bool = True  # include content dimension
+
+
+# ---------------------------------------------------------------------------
 # History segmentation (MINTMORY_HISTORY_SEG_*) — Phase 2 segmented distiller.
 # Defaults: segmentation ON, local-only LLM distiller.
 # ---------------------------------------------------------------------------
@@ -329,6 +351,8 @@ class Settings(BaseSettings):
     vision: VisionSettings = Field(default_factory=VisionSettings)  # image understanding (G5)
     search: SearchSettings = Field(default_factory=SearchSettings)
     seg: SegmentSettings = Field(default_factory=SegmentSettings)  # history segmentation (Phase 2)
+    # document recency + co-change (MM-33)
+    doc: DocumentSettings = Field(default_factory=DocumentSettings)
 
 
 def load_settings() -> Settings:

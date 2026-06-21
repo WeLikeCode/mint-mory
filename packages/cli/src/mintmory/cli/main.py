@@ -26,8 +26,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import numpy as np
 import typer
 from mintmory.core.types import ConceptLinkType, MemoryCategory, MemorySource
+from numpy.typing import NDArray
 from rich.console import Console
 from rich.table import Table
 
@@ -502,6 +504,15 @@ def index_tree(
             "(llm/ocr, future). Records index_mode='vision'."
         ),
     ),
+    cochange: bool | None = typer.Option(
+        None,
+        "--cochange/--no-cochange",
+        help=(
+            "Cluster changed files into co-change sets (HDBSCAN over time+path+content). "
+            "Requires the 'cochange' extra (scikit-learn). "
+            "Defaults to settings.doc.cochange_enabled."
+        ),
+    ),
 ) -> None:
     """Recurrently index a directory tree.
 
@@ -521,6 +532,7 @@ def index_tree(
     import hashlib
     import json
 
+    from mintmory.core.cochange import ChangedDoc, CoChangeUnavailable, cluster_changesets
     from mintmory.core.config import load_settings
     from mintmory.core.conversion import TEXT_SUFFIXES, ConversionError, extract_markdown
     from mintmory.core.tree_index import human_size, iter_dir_groups, render_file_record
@@ -536,6 +548,7 @@ def index_tree(
     settings = load_settings()
     conv = settings.convert
     store = _get_store()
+    run_cochange = cochange if cochange is not None else settings.doc.cochange_enabled
 
     # Vision: lazily import + validate the provider once before the walk, so
     # a misconfigured llm/ocr provider fails fast with a clear message rather
@@ -564,6 +577,8 @@ def index_tree(
     images_described = 0
     vision_skipped = 0
     seen: set[str] = set()
+    # Co-change: collect ChangedDoc for every added/updated file
+    changed_docs: list[ChangedDoc] = []
     # Size cap for raster images (used when captioner is not None).
     max_image_bytes: int | None = settings.vision.max_image_bytes if vision else None
 
@@ -632,10 +647,13 @@ def index_tree(
                         continue
 
                 new_ids: list[str] = []
+                file_mtime_dt = datetime.fromtimestamp(entry.mtime, tz=UTC).replace(tzinfo=None)
+                file_record_text = render_file_record(entry, group, root_label)
                 file_record = store.add_memory(
-                    content=render_file_record(entry, group, root_label),
+                    content=file_record_text,
                     category="context",
                     source="document",
+                    valid_from=file_mtime_dt,
                     metadata={
                         "collection": collection,
                         "path": path_str,
@@ -646,6 +664,7 @@ def index_tree(
                         "online_only": entry.online_only,
                         "folder": str(Path(entry.rel).parent),
                         "index_mode": "metadata",
+                        "modified_source": "fs_mtime",
                     },
                 )
                 new_ids.append(file_record.id)
@@ -799,6 +818,25 @@ def index_tree(
                     updated += 1
                 else:
                     added += 1
+
+                # Co-change: collect this doc for cluster_changesets
+                if run_cochange:
+                    try:
+                        _emb: NDArray[np.float32] | None = (
+                            store.embedder.embed(file_record_text) if store.embedder else None
+                        )
+                    except Exception:
+                        _emb = None
+                    changed_docs.append(
+                        ChangedDoc(
+                            memory_id=file_record.id,
+                            doc_id=path_str,
+                            rel=entry.rel,
+                            mtime=entry.mtime,
+                            embedding=_emb,
+                        )
+                    )
+
                 store.manifest_upsert(
                     path_str,
                     collection,
@@ -823,6 +861,22 @@ def index_tree(
                 store.manifest_delete(gone)
                 pruned += 1
 
+    # Co-change post-walk pass
+    n_changesets = 0
+    n_co_changed_files = 0
+    if run_cochange and len(changed_docs) >= 2:
+        from mintmory.core.cochange import apply_changesets
+
+        try:
+            sets = cluster_changesets(changed_docs, settings.doc)
+            n_changesets = apply_changesets(store, sets)
+            n_co_changed_files = sum(len(cs.member_ids) for cs in sets)
+        except CoChangeUnavailable:
+            console.print(
+                "[dim]co-change skipped: install the 'cochange' extra "
+                "(pip install mintmory[cochange])[/dim]"
+            )
+
     table = Table(title=f"index-tree [{collection}]")
     table.add_column("metric", style="cyan")
     table.add_column("value", justify="right")
@@ -846,6 +900,9 @@ def index_tree(
             table.add_row("images-queued", str(images_queued))
         if vision_skipped:
             table.add_row("vision-skipped", str(vision_skipped))
+    if run_cochange:
+        table.add_row("changesets", str(n_changesets))
+        table.add_row("co_changed_files", str(n_co_changed_files))
     if budget_hit:
         table.add_row("budget", "[yellow]reached — remaining files metadata-only[/yellow]")
     console.print(table)
@@ -1546,6 +1603,99 @@ def history_scrub(
         raise typer.Exit(code=1)
     else:
         console.print("[green]ok[/green] no residual secrets found")
+
+
+# ---------------------------------------------------------------------------
+# mintmory docs — document index query sub-commands (MM-33)
+# ---------------------------------------------------------------------------
+
+docs_app = typer.Typer(name="docs", help="Document index query commands")
+app.add_typer(docs_app)
+
+
+@docs_app.command("timeline")
+def docs_timeline(
+    since: str | None = typer.Option(
+        None, "--since", help="Window like '30d', '4w', '2m' (mutually exclusive with --from/--to)"
+    ),
+    from_iso: str | None = typer.Option(None, "--from", help="ISO start date (e.g. 2026-01-01)"),
+    to_iso: str | None = typer.Option(None, "--to", help="ISO end date (e.g. 2026-06-30)"),
+    collection: str | None = typer.Option(None, help="Filter by collection name"),
+    limit: int = typer.Option(50, help="Max rows"),
+    db: str | None = typer.Option(None, help="Target DB path (overrides MINTMORY_DB)"),
+) -> None:
+    """List indexed documents newest-first (by file mtime / valid_from).
+
+    Shows documents indexed by index-tree, ordered by file modified-time
+    (recorded as valid_from). Filters source='document' only.
+    """
+    from mintmory.core.cochange import documents_timeline
+
+    if db:
+        os.environ["MINTMORY_DB"] = db
+
+    store = _get_store()
+    try:
+        rows = documents_timeline(
+            store,
+            since=since,
+            from_iso=from_iso,
+            to_iso=to_iso,
+            collection=collection,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    table = Table(title="Documents timeline (newest first)")
+    table.add_column("date", style="cyan", no_wrap=True)
+    table.add_column("collection", style="magenta")
+    table.add_column("path", style="white")
+    table.add_column("title", style="dim")
+    for row in rows:
+        table.add_row(row["date"], row["collection"], row["path"], row["title"])
+    console.print(table)
+    console.print(f"[dim]{len(rows)} document(s)[/dim]")
+
+
+@docs_app.command("changed-with")
+def docs_changed_with(
+    path: str = typer.Argument(..., help="Absolute path of the document to look up"),
+    db: str | None = typer.Option(None, help="Target DB path (overrides MINTMORY_DB)"),
+) -> None:
+    """Show documents observed to co-change with the given path.
+
+    Observed co-change (time + folder + content) — not a version-controlled commit.
+    Co-change is inferred from HDBSCAN clustering of the index-tree run that
+    processed these files; it is NOT an atomic git change-set.
+    """
+    from mintmory.core.cochange import changed_with
+
+    if db:
+        os.environ["MINTMORY_DB"] = db
+
+    store = _get_store()
+    peers = changed_with(store, path)
+
+    console.print(
+        "[dim]observed co-change (time+folder+content) — not a version-controlled commit[/dim]"
+    )
+    if not peers:
+        console.print(f"[dim]no co-change peers found for {path!r}[/dim]")
+        return
+
+    table = Table(title=f"Co-changed with: {path}")
+    table.add_column("peer path", style="white")
+    table.add_column("strength", justify="right", style="green")
+    table.add_column("observed at", style="cyan")
+    for peer in peers:
+        table.add_row(
+            peer["path"],
+            f"{peer['strength']:.3f}",
+            peer["observed_at"],
+        )
+    console.print(table)
+    console.print(f"[dim]{len(peers)} peer(s)[/dim]")
 
 
 if __name__ == "__main__":

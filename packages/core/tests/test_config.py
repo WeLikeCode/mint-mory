@@ -3,6 +3,7 @@ Unit tests for MintMory config settings classes.
 
 MM-22: SearchSettings (MINTMORY_SEARCH_* prefix) with vector_rrf_weight.
 MM-30: SegmentSettings + LLMSettings new fields (bound-llm-distiller).
+MM-33: DocumentSettings (MINTMORY_DOC_* prefix).
 """
 
 from __future__ import annotations
@@ -201,3 +202,105 @@ class TestLLMSettingsMaxTokens:
 
         with pytest.raises(ValidationError):
             LLMSettings(max_tokens=-1)
+
+
+# ---------------------------------------------------------------------------
+# MM-33: DocumentSettings (document recency + co-change)
+# ---------------------------------------------------------------------------
+
+
+class TestDocumentSettings:
+    """MM-33: DocumentSettings with MINTMORY_DOC_* env prefix."""
+
+    def test_defaults(self) -> None:
+        """All defaults match the spec."""
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings()
+        assert s.cochange_enabled is True
+        assert s.weight_time == pytest.approx(1.0)
+        assert s.weight_path == pytest.approx(0.5)
+        assert s.weight_content == pytest.approx(0.5)
+        assert s.tau_seconds == 3600
+        assert s.min_cluster_size == 2
+        assert s.use_embeddings is True
+
+    def test_env_prefix_mintmory_doc(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """MINTMORY_DOC_* prefix is read."""
+        from mintmory.core.config import DocumentSettings
+
+        monkeypatch.setenv("MINTMORY_DOC_TAU_SECONDS", "7200")
+        s = DocumentSettings()
+        assert s.tau_seconds == 7200
+
+    def test_cochange_enabled_env_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """MINTMORY_DOC_COCHANGE_ENABLED=false disables co-change."""
+        from mintmory.core.config import DocumentSettings
+
+        monkeypatch.setenv("MINTMORY_DOC_COCHANGE_ENABLED", "false")
+        s = DocumentSettings()
+        assert s.cochange_enabled is False
+
+    def test_weight_time_lower_bound(self) -> None:
+        """weight_time=0.0 is at the lower bound (ge=0.0)."""
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(weight_time=0.0)
+        assert s.weight_time == pytest.approx(0.0)
+
+    def test_weight_time_below_lower_bound_raises(self) -> None:
+        """weight_time < 0.0 raises ValidationError."""
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(weight_time=-0.1)
+
+    def test_weight_path_lower_bound(self) -> None:
+        """weight_path=0.0 is valid."""
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(weight_path=0.0)
+        assert s.weight_path == pytest.approx(0.0)
+
+    def test_weight_content_lower_bound(self) -> None:
+        """weight_content=0.0 is valid."""
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(weight_content=0.0)
+        assert s.weight_content == pytest.approx(0.0)
+
+    def test_tau_seconds_lower_bound(self) -> None:
+        """tau_seconds=1 is at the lower bound (ge=1)."""
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(tau_seconds=1)
+        assert s.tau_seconds == 1
+
+    def test_tau_seconds_below_lower_bound_raises(self) -> None:
+        """tau_seconds=0 raises ValidationError (ge=1)."""
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(tau_seconds=0)
+
+    def test_min_cluster_size_lower_bound(self) -> None:
+        """min_cluster_size=2 is at the lower bound (ge=2)."""
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(min_cluster_size=2)
+        assert s.min_cluster_size == 2
+
+    def test_min_cluster_size_below_lower_bound_raises(self) -> None:
+        """min_cluster_size=1 raises ValidationError (ge=2)."""
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(min_cluster_size=1)
+
+    def test_settings_aggregate_has_doc(self) -> None:
+        """Settings() has a .doc field of type DocumentSettings."""
+        from mintmory.core.config import DocumentSettings, Settings
+
+        s = Settings()
+        assert isinstance(s.doc, DocumentSettings)
+        assert s.doc.cochange_enabled is True
