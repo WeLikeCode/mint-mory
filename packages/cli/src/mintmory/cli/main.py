@@ -1325,76 +1325,40 @@ def history_timeline(
     db: str = typer.Option("", "--db", help="History DB path"),
 ) -> None:
     """Print a dated changelog of sessions within the time window."""
-    import json as _json
-
     from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, HermesGuardError
+    from mintmory.core.history.query import timeline as _timeline
 
     db_path = db if db else DEFAULT_HISTORY_DB
     try:
-        store = _get_history_store(db_path)
+        rows = _timeline(
+            db_path,
+            since=since,
+            from_iso=from_date,
+            to_iso=to_date,
+            repo=repo,
+            kind=kind,
+            limit=limit,
+        )
     except HermesGuardError as exc:
         console.print(f"[red]error[/red]: {exc}")
         raise typer.Exit(code=1) from exc
-
-    # Resolve time window
-    if since is not None and (from_date is not None or to_date is not None):
-        raise typer.BadParameter("--since and --from/--to are mutually exclusive")
-
-    now = datetime.now(UTC).replace(tzinfo=None)
-    if since is not None:
-        window_start = _parse_since(since)
-        window_end = now
-    elif from_date is not None or to_date is not None:
-        window_start = _parse_iso(from_date) or datetime.min
-        window_end = _parse_iso(to_date) or now
-    else:
-        # Default: last 90 days
-        from datetime import timedelta
-
-        window_start = now - timedelta(days=90)
-        window_end = now
-
-    # Query the history DB for session_summary records in the window
-    conn = store.connect()
-    rows = conn.execute(
-        "SELECT content, metadata, valid_from FROM memories "
-        "WHERE is_archived = 0 "
-        "  AND json_extract(metadata, '$.record_type') = 'session_summary' "
-        "  AND valid_from >= ? AND valid_from <= ? "
-        "ORDER BY valid_from DESC "
-        "LIMIT ?",
-        (
-            window_start.isoformat(),
-            window_end.isoformat(),
-            limit,
-        ),
-    ).fetchall()
-
-    # Filter by repo/kind
-    filtered = []
-    for row in rows:
-        meta = _json.loads(row["metadata"] or "{}")
-        if repo is not None and meta.get("repo", "") != repo:
-            continue
-        if kind is not None and meta.get("kind", "") != kind:
-            continue
-        filtered.append((row["valid_from"], meta, row["content"]))
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     table = Table(title="history timeline")
     table.add_column("date", style="yellow", no_wrap=True)
     table.add_column("repo", style="cyan")
     table.add_column("kind", style="magenta")
     table.add_column("summary")
-    for valid_from, meta, content in filtered:
-        date_str = (valid_from or "")[:10]
+    for row in rows:
         table.add_row(
-            date_str,
-            meta.get("repo", ""),
-            meta.get("kind", ""),
-            content[:120],
+            row["date"],
+            row["repo"],
+            row["kind"],
+            row["summary"][:120],
         )
     console.print(table)
-    console.print(f"[dim]{len(filtered)} session(s)[/dim]")
+    console.print(f"[dim]{len(rows)} session(s)[/dim]")
 
 
 @history_app.command("search")
@@ -1406,61 +1370,29 @@ def history_search(
     db: str = typer.Option("", "--db", help="History DB path"),
 ) -> None:
     """Hybrid search over session summaries in the history DB."""
-    import json as _json
-
     from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, HermesGuardError
-    from mintmory.core.types import MemoryFilter, SearchRequest
+    from mintmory.core.history.query import search as _search
 
     db_path = db if db else DEFAULT_HISTORY_DB
     try:
-        store = _get_history_store(db_path)
+        results = _search(db_path, query, repo=repo, since=since, limit=limit)
     except HermesGuardError as exc:
         console.print(f"[red]error[/red]: {exc}")
         raise typer.Exit(code=1) from exc
-
-    response = store.search(
-        SearchRequest(
-            query=query,
-            limit=limit * 3,  # fetch extra for post-filter
-            filter=MemoryFilter(active_only=True),
-        )
-    )
-
-    # Post-filter: record_type=session_summary + optional repo + optional since
-    window_start: datetime | None = None
-    if since is not None:
-        window_start = _parse_since(since)
-
-    results = []
-    for mem in response.memories:
-        meta = _json.loads(mem.metadata) if isinstance(mem.metadata, str) else (mem.metadata or {})
-        if meta.get("record_type") != "session_summary":
-            continue
-        if repo is not None and meta.get("repo", "") != repo:
-            continue
-        too_old = (
-            window_start is not None
-            and mem.valid_from is not None
-            and mem.valid_from < window_start
-        )
-        if too_old:
-            continue
-        results.append((mem, meta))
-        if len(results) >= limit:
-            break
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     table = Table(title=f"history search: {query!r}")
     table.add_column("date", style="yellow", no_wrap=True)
     table.add_column("repo", style="cyan")
     table.add_column("kind", style="magenta")
     table.add_column("summary")
-    for mem, meta in results:
-        date_str = mem.valid_from.isoformat()[:10] if mem.valid_from else ""
+    for row in results:
         table.add_row(
-            date_str,
-            meta.get("repo", ""),
-            meta.get("kind", ""),
-            mem.content[:120],
+            row["date"],
+            row["repo"],
+            row["kind"],
+            row["summary"][:120],
         )
     console.print(table)
     console.print(f"[dim]{len(results)} result(s)[/dim]")
