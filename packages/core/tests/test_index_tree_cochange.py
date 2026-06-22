@@ -33,7 +33,8 @@ def _store(db_path: Path) -> StorageAdapter:
 def _fake_emb(seed: int, dim: int = 8) -> NDArray[np.float32]:
     rng = np.random.default_rng(seed)
     vec = rng.random(dim).astype(np.float32) + 0.01
-    return (vec / np.linalg.norm(vec)).astype(np.float32)
+    out: NDArray[np.float32] = (vec / np.linalg.norm(vec)).astype(np.float32)
+    return out
 
 
 def _settings(
