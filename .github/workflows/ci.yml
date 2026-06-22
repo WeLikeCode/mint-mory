@@ -22,7 +22,10 @@ jobs:
           enable-cache: true
 
       - name: Sync dependencies
-        run: uv sync
+        # --extra cochange installs scikit-learn so the document co-change HDBSCAN
+        # path is exercised by mypy + pytest (the fallback/degradation paths are
+        # still covered without it via monkeypatched tests).
+        run: uv sync --extra cochange
 
       - name: Ruff (lint)
         run: uv run ruff check .

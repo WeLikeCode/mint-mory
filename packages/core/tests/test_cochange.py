@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from mintmory.core.cochange import ChangedDoc
+from mintmory.core.config import DocumentSettings
 from numpy.typing import NDArray
 
 # ---------------------------------------------------------------------------
@@ -22,9 +24,7 @@ def _make_doc(
     rel: str,
     mtime: float,
     embedding: NDArray[np.float32] | None = None,
-) -> object:
-    from mintmory.core.cochange import ChangedDoc
-
+) -> ChangedDoc:
     return ChangedDoc(
         memory_id=memory_id,
         doc_id=doc_id,
@@ -42,9 +42,7 @@ def _settings(
     tau_seconds: int = 3600,
     min_cluster_size: int = 2,
     use_embeddings: bool = True,
-) -> object:
-    from mintmory.core.config import DocumentSettings
-
+) -> DocumentSettings:
     return DocumentSettings(
         cochange_enabled=cochange_enabled,
         weight_time=weight_time,
@@ -73,9 +71,7 @@ def _settings_mm34(
     cochange_exclude_artifacts: bool = False,
     cochange_exclude_suffixes_csv: str = "",
     cochange_label_kind: bool = True,
-) -> object:
-    from mintmory.core.config import DocumentSettings
-
+) -> DocumentSettings:
     return DocumentSettings(
         cochange_enabled=cochange_enabled,
         weight_time=weight_time,
@@ -113,7 +109,7 @@ class TestEdgeCases:
         from mintmory.core.cochange import cluster_changesets
 
         s = _settings()
-        result = cluster_changesets([], s)  # type: ignore[arg-type]
+        result = cluster_changesets([], s)
         assert result.changesets == []
 
     def test_single_doc_returns_empty(self) -> None:
@@ -121,7 +117,7 @@ class TestEdgeCases:
 
         docs = [_make_doc("m1", "/a/b.txt", "b.txt", 1_000.0)]
         s = _settings()
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         assert result.changesets == []
 
     def test_disabled_returns_empty(self) -> None:
@@ -132,7 +128,7 @@ class TestEdgeCases:
             _make_doc("m2", "/a/c.txt", "c.txt", 1_001.0),
         ]
         s = _settings(cochange_enabled=False)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         assert result.changesets == []
 
     def test_noise_label_is_excluded_from_changesets(self) -> None:
@@ -153,7 +149,7 @@ class TestEdgeCases:
         labels = np.array([0, 0, -1], dtype=np.int32)
         probs = np.array([1.0, 1.0, 0.0], dtype=np.float64)
 
-        sets, _, _ = _changesets_from_labels(  # type: ignore[arg-type]
+        sets, _, _ = _changesets_from_labels(
             docs,
             labels,
             probs,
@@ -260,7 +256,7 @@ class TestDistanceBounds:
 class TestClustering:
     """Clustering tests (small-N → connected-components fallback path)."""
 
-    def _two_burst_docs(self) -> list[object]:
+    def _two_burst_docs(self) -> list[ChangedDoc]:
         """Four docs: two in burst A (low mtime, same folder),
         two in burst B (high mtime, same folder)."""
         # Burst A: folder_a/, mtime ~0
@@ -284,7 +280,7 @@ class TestClustering:
         # tau=3600 means 60s gap → time_dist very small; 10000s gap → 1.0
         # The big temporal and path gap should separate the two bursts.
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         sets = result.changesets
         assert len(sets) == 2
 
@@ -294,8 +290,8 @@ class TestClustering:
 
         docs = self._two_burst_docs()
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result_a = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        result_b = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result_a = cluster_changesets(docs, s)
+        result_b = cluster_changesets(docs, s)
         ids_a = sorted(cs.changeset_id for cs in result_a.changesets)
         ids_b = sorted(cs.changeset_id for cs in result_b.changesets)
         assert ids_a == ids_b
@@ -305,7 +301,7 @@ class TestClustering:
 
         docs = self._two_burst_docs()
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         for cs in result.changesets:
             assert len(cs.changeset_id) == 16
 
@@ -315,7 +311,7 @@ class TestClustering:
 
         docs = self._two_burst_docs()
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         for cs in result.changesets:
             assert cs.member_ids == sorted(cs.member_ids)
 
@@ -325,7 +321,7 @@ class TestClustering:
 
         docs = self._two_burst_docs()
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         for cs in result.changesets:
             for _src, _dst, strength in cs.edges:
                 assert 0.0 <= strength <= 1.0
@@ -341,7 +337,7 @@ class TestClustering:
             _make_doc("mb2", "/root/b/f4.txt", "b/f4.txt", 10_060.0, None),
         ]
         s = _settings(tau_seconds=3600, min_cluster_size=2, use_embeddings=False)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         sets = result.changesets
         # Should still produce 2 changesets (time + path suffice)
         assert len(sets) == 2
@@ -362,7 +358,7 @@ class TestClustering:
             min_cluster_size=2,
             weight_content=0.0,
         )
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         # With weight_content=0 the effective denominator = w_t + w_p; still clusters
         assert isinstance(result.changesets, list)
 
@@ -377,7 +373,7 @@ class TestClustering:
             _make_doc("mb2", "/root/b/f4.txt", "b/f4.txt", 10_060.0, _fake_emb(11)),
         ]
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         for cs in result.changesets:
             assert len(cs.order) == len(cs.member_ids)
 
@@ -390,7 +386,7 @@ class TestClustering:
             _make_doc("m2", "/a/y.txt", "a/y.txt", 10.0, _fake_emb(1)),
         ]
         s = _settings()
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         assert isinstance(result.changesets, list)
         for cs in result.changesets:
             assert isinstance(cs, ChangeSet)
@@ -408,7 +404,7 @@ class TestCoChangeResult:
         from mintmory.core.cochange import CoChangeResult, cluster_changesets
 
         s = _settings_mm34()
-        result = cluster_changesets([], s)  # type: ignore[arg-type]
+        result = cluster_changesets([], s)
         assert isinstance(result, CoChangeResult)
         assert result.changesets == []
         assert result.dropped_oversized == 0
@@ -422,7 +418,7 @@ class TestCoChangeResult:
             _make_doc("m2", "/a/c.txt", "c.txt", 1_001.0),
         ]
         s = _settings_mm34(cochange_enabled=False)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         assert isinstance(result, CoChangeResult)
         assert result.changesets == []
 
@@ -454,7 +450,7 @@ class TestChangeSetKind:
         labels = np.array([0, 0], dtype=np.int32)
         probs = np.array([1.0, 1.0], dtype=np.float64)
         sets, dropped_oversized, dropped_singletons = _changesets_from_labels(
-            docs,  # type: ignore[arg-type]
+            docs,
             labels,
             probs,
             run_kind="cold_full_index",
@@ -474,7 +470,7 @@ class TestChangeSetKind:
         labels = np.array([0, 0], dtype=np.int32)
         probs = np.array([1.0, 1.0], dtype=np.float64)
         sets, _, _ = _changesets_from_labels(
-            docs,  # type: ignore[arg-type]
+            docs,
             labels,
             probs,
             run_kind="incremental",
@@ -496,7 +492,7 @@ class TestTimeGapSplit:
             _make_doc("m2", "/a/f2.txt", "f2.txt", 2000.0),
             _make_doc("m3", "/a/f3.txt", "f3.txt", 3000.0),
         ]
-        groups, dropped = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)  # type: ignore[arg-type]
+        groups, dropped = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)
         assert len(groups) == 1
         assert len(groups[0]) == 3
         assert dropped == 0
@@ -511,7 +507,7 @@ class TestTimeGapSplit:
             _make_doc("b1", "/root/a/f3.txt", "a/f3.txt", float(two_years)),
             _make_doc("b2", "/root/a/f4.txt", "a/f4.txt", float(two_years + 60)),
         ]
-        groups, dropped = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)  # type: ignore[arg-type]
+        groups, dropped = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)
         assert len(groups) == 2, f"Expected 2 groups after 2-year gap, got {len(groups)}"
         assert dropped == 0
 
@@ -523,7 +519,7 @@ class TestTimeGapSplit:
             _make_doc("a2", "/a/f2.txt", "f2.txt", 60.0),
             _make_doc("lone", "/a/f3.txt", "f3.txt", float(90 * 24 * 3600)),
         ]
-        groups, dropped = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)  # type: ignore[arg-type]
+        groups, dropped = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)
         assert len(groups) == 1
         assert dropped == 1
 
@@ -531,11 +527,11 @@ class TestTimeGapSplit:
         from mintmory.core.cochange import _split_on_time_gap
 
         docs = [_make_doc(f"m{i}", f"/a/f{i}.txt", f"f{i}.txt", float(i * 100)) for i in range(4)]
-        groups, _ = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)  # type: ignore[arg-type]
+        groups, _ = _split_on_time_gap(docs, gap_seconds=86_400, min_size=2)
         for group in groups:
-            sorted_group = sorted(group, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
+            sorted_group = sorted(group, key=lambda d: (d.mtime, d.doc_id))
             for k in range(len(sorted_group) - 1):
-                gap = sorted_group[k + 1].mtime - sorted_group[k].mtime  # type: ignore[attr-defined]
+                gap = sorted_group[k + 1].mtime - sorted_group[k].mtime
                 assert gap <= 86_400
 
     def test_fragment_changeset_id_is_deterministic(self) -> None:
@@ -553,7 +549,7 @@ class TestTimeGapSplit:
         sets_a, _, _ = _changesets_from_labels(
             docs,
             labels,
-            probs,  # type: ignore[arg-type]
+            probs,
             run_kind="incremental",
             gap_seconds=86_400,
             min_size=2,
@@ -562,7 +558,7 @@ class TestTimeGapSplit:
         sets_b, _, _ = _changesets_from_labels(
             docs,
             labels,
-            probs,  # type: ignore[arg-type]
+            probs,
             run_kind="incremental",
             gap_seconds=86_400,
             min_size=2,
@@ -585,7 +581,7 @@ class TestSizeCap:
         sets, dropped_oversized, _ = _changesets_from_labels(
             docs,
             labels,
-            probs,  # type: ignore[arg-type]
+            probs,
             run_kind="incremental",
             gap_seconds=86_400,
             min_size=2,
@@ -603,7 +599,7 @@ class TestSizeCap:
         sets, dropped_oversized, _ = _changesets_from_labels(
             docs,
             labels,
-            probs,  # type: ignore[arg-type]
+            probs,
             run_kind="incremental",
             gap_seconds=86_400,
             min_size=2,
@@ -667,7 +663,7 @@ class TestConnectedComponentsFallback:
         sets, dropped_oversized, dropped_singletons = _changesets_from_components(
             docs,
             components,
-            "incremental",  # type: ignore[arg-type]
+            "incremental",
             gap_seconds=86_400,
             min_size=2,
             max_cluster_size=50,
@@ -695,7 +691,7 @@ class TestConnectedComponentsFallback:
             min_cluster_size=2,
             use_embeddings=False,
         )
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert len(result.changesets) == 1
         assert len(result.changesets[0].member_ids) == 4
 
@@ -716,7 +712,7 @@ class TestConnectedComponentsFallback:
             use_embeddings=False,
             cochange_label_kind=False,
         )
-        result = cluster_changesets(docs, s, run_kind="cold_full_index")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="cold_full_index")
         assert result.changesets
         assert all(cs.kind == "" for cs in result.changesets)
 
@@ -735,8 +731,8 @@ class TestConnectedComponentsFallback:
             min_cluster_size=2,
             use_embeddings=False,
         )
-        r1 = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
-        r2 = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        r1 = cluster_changesets(docs, s, run_kind="incremental")
+        r2 = cluster_changesets(docs, s, run_kind="incremental")
         ids1 = sorted(cs.changeset_id for cs in r1.changesets)
         ids2 = sorted(cs.changeset_id for cs in r2.changesets)
         assert ids1 == ids2
@@ -759,7 +755,7 @@ class TestConnectedComponentsFallback:
             min_cluster_size=2,
             use_embeddings=False,
         )
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert len(result.changesets) == 0
 
     def test_fallback_obeys_gap_split_and_size_cap(self) -> None:
@@ -770,7 +766,7 @@ class TestConnectedComponentsFallback:
         sets, dropped_oversized, _ = _changesets_from_components(
             docs,
             components,
-            "incremental",  # type: ignore[arg-type]
+            "incremental",
             gap_seconds=86_400,
             min_size=2,
             max_cluster_size=50,
@@ -789,7 +785,7 @@ class TestConnectedComponentsFallback:
         sets, dropped_oversized, _ = _changesets_from_labels(
             docs,
             labels,
-            probs,  # type: ignore[arg-type]
+            probs,
             run_kind="incremental",
             gap_seconds=86_400,
             min_size=2,
@@ -840,7 +836,7 @@ class TestHdbscanBranch:
             min_cluster_size=2,
             use_embeddings=False,
         )
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         # HDBSCAN said all-noise; the components fallback recovers the tight group.
         assert len(result.changesets) == 1
         assert len(result.changesets[0].member_ids) == 10
@@ -877,7 +873,7 @@ class TestHdbscanBranch:
             min_cluster_size=2,
             use_embeddings=True,
         )
-        result = cluster_changesets(docs, s, run_kind="cold_full_index")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="cold_full_index")
         # At least one change-set, and no change-set mixes burst A with burst B.
         assert result.changesets
         for cs in result.changesets:
@@ -898,7 +894,7 @@ class TestBuildBlocks:
             _make_doc("mb1", "/root/b/f3.txt", "b/f3.txt", 120.0),
             _make_doc("mb2", "/root/b/f4.txt", "b/f4.txt", 180.0),
         ]
-        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)
         assert len(blocks) == 2
         assert truncated == 0
 
@@ -909,11 +905,11 @@ class TestBuildBlocks:
             _make_doc("a1", "/root/a/f1.txt", "a/f1.txt", 0.0),
             _make_doc("b1", "/root/b/f2.txt", "b/f2.txt", 10.0),
         ]
-        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)
         assert len(blocks) == 2
         assert truncated == 0
         for block in blocks:
-            folders = {(d.rel.rsplit("/", 1)[0] if "/" in d.rel else "") for d in block}  # type: ignore[attr-defined]
+            folders = {(d.rel.rsplit("/", 1)[0] if "/" in d.rel else "") for d in block}
             assert len(folders) == 1
 
     def test_root_files_share_empty_key(self) -> None:
@@ -923,7 +919,7 @@ class TestBuildBlocks:
             _make_doc("r1", "/f1.txt", "f1.txt", 0.0),
             _make_doc("r2", "/f2.txt", "f2.txt", 60.0),
         ]
-        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)
         assert len(blocks) == 1
         assert len(blocks[0]) == 2
         assert truncated == 0
@@ -937,7 +933,7 @@ class TestBuildBlocks:
             _make_doc("e3", "/root/a/f3.txt", "a/f3.txt", 2 * 86_400.0),
             _make_doc("e4", "/root/a/f4.txt", "a/f4.txt", 2 * 86_400.0 + 60),
         ]
-        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)
         assert len(blocks) == 2
         assert truncated == 0
 
@@ -951,11 +947,11 @@ class TestBuildBlocks:
         ]
         shuffled = docs.copy()
         random.shuffle(shuffled)
-        blocks, truncated = _build_blocks(shuffled, bucket_seconds=86_400, max_block=3)  # type: ignore[arg-type]
+        blocks, truncated = _build_blocks(shuffled, bucket_seconds=86_400, max_block=3)
         assert len(blocks) == 1
         assert len(blocks[0]) == 3
         assert truncated == 2
-        kept_ids = [d.doc_id for d in blocks[0]]  # type: ignore[attr-defined]
+        kept_ids = [d.doc_id for d in blocks[0]]
         expected = [f"/root/a/f{i}.txt" for i in range(3)]
         assert kept_ids == expected
 
@@ -971,39 +967,35 @@ class TestBuildBlocks:
             _make_doc("b2", "/root/b/f4.txt", "b/f4.txt", 180.0),
             _make_doc("c1", "/root/c/f5.txt", "c/f5.txt", 240.0),
         ]
-        blocks_a, _ = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        blocks_a, _ = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)
         shuffled = docs.copy()
         random.shuffle(shuffled)
-        blocks_b, _ = _build_blocks(shuffled, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
-        keys_a = [[d.doc_id for d in b] for b in blocks_a]  # type: ignore[attr-defined]
-        keys_b = [[d.doc_id for d in b] for b in blocks_b]  # type: ignore[attr-defined]
+        blocks_b, _ = _build_blocks(shuffled, bucket_seconds=86_400, max_block=2000)
+        keys_a = [[d.doc_id for d in b] for b in blocks_a]
+        keys_b = [[d.doc_id for d in b] for b in blocks_b]
         assert keys_a == keys_b
 
 
 class TestBlockDistanceMatrix:
     """MM-35: _block_distance_matrix parity with scalar oracle within 1e-9."""
 
-    def _scalar_dist(self, a: object, b: object, s: object) -> float:
+    def _scalar_dist(self, a: ChangedDoc, b: ChangedDoc, s: DocumentSettings) -> float:
         """Replicate the MM-34 scalar pair computation as oracle."""
         from mintmory.core.cochange import _cosine_distance, _path_distance, _time_distance
-        from mintmory.core.config import DocumentSettings
 
-        assert isinstance(s, DocumentSettings)
         tau = float(s.tau_seconds)
         w_t = s.weight_time
         w_p = s.weight_path
         w_c = s.weight_content
-        t_dist = _time_distance(a, b, tau)  # type: ignore[arg-type]
-        p_dist = _path_distance(a, b)  # type: ignore[arg-type]
-        has_content = (
-            s.use_embeddings
-            and a.embedding is not None  # type: ignore[attr-defined]
-            and b.embedding is not None  # type: ignore[attr-defined]
-        )
+        t_dist = _time_distance(a, b, tau)
+        p_dist = _path_distance(a, b)
+        has_content = s.use_embeddings and a.embedding is not None and b.embedding is not None
         if has_content:
+            assert a.embedding is not None
+            assert b.embedding is not None
             c_dist = _cosine_distance(
-                a.embedding,  # type: ignore[attr-defined]
-                b.embedding,  # type: ignore[attr-defined]
+                a.embedding,
+                b.embedding,
             )
             w_c_eff = w_c
         else:
@@ -1030,7 +1022,7 @@ class TestBlockDistanceMatrix:
             tau_seconds=3600,
             use_embeddings=True,
         )
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         n = len(docs)
         for i in range(n):
             for j in range(n):
@@ -1055,7 +1047,7 @@ class TestBlockDistanceMatrix:
             tau_seconds=3600,
             use_embeddings=False,
         )
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         n = len(docs)
         for i in range(n):
             for j in range(n):
@@ -1079,7 +1071,7 @@ class TestBlockDistanceMatrix:
             tau_seconds=3600,
             use_embeddings=True,
         )
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         n = len(docs)
         for i in range(n):
             for j in range(n):
@@ -1105,7 +1097,7 @@ class TestBlockDistanceMatrix:
             tau_seconds=3600,
             use_embeddings=True,
         )
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         expected = self._scalar_dist(docs[0], docs[1], s)
         assert abs(float(D[0, 1]) - expected) < 1e-9
 
@@ -1133,11 +1125,11 @@ class TestBlockDistanceMatrix:
         # Case A: first doc has zero-norm embedding (present but zero)
         zero_emb = np.zeros(8, dtype=np.float32)
         doc_zero = _make_doc("zero", "/root/a/f1.txt", "a/f1.txt", 0.0, zero_emb)
-        D_zero = _block_distance_matrix([doc_zero, partner], s)  # type: ignore[arg-type]  # noqa: N806
+        D_zero = _block_distance_matrix([doc_zero, partner], s)  # noqa: N806
 
         # Case B: first doc has None embedding (content dropped)
         doc_none = _make_doc("none_emb", "/root/a/f1.txt", "a/f1.txt", 0.0, None)
-        D_none = _block_distance_matrix([doc_none, partner], s)  # type: ignore[arg-type]  # noqa: N806
+        D_none = _block_distance_matrix([doc_none, partner], s)  # noqa: N806
 
         # They must differ because zero-norm keeps content (at 0.5) while None drops it
         assert abs(float(D_zero[0, 1]) - float(D_none[0, 1])) > 1e-6, (
@@ -1160,7 +1152,7 @@ class TestBlockDistanceMatrix:
             tau_seconds=3600,
             use_embeddings=False,
         )
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         expected = self._scalar_dist(docs[0], docs[1], s)
         assert abs(float(D[0, 1]) - expected) < 1e-9
 
@@ -1174,7 +1166,7 @@ class TestBlockDistanceMatrix:
             _make_doc("m3", "/root/c/f3.txt", "c/f3.txt", 1200.0, None),
         ]
         s = DocumentSettings()
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         for i in range(len(docs)):
             assert D[i, i] == pytest.approx(0.0)
 
@@ -1188,7 +1180,7 @@ class TestBlockDistanceMatrix:
             _make_doc("m3", "/root/a/f3.txt", "a/f3.txt", 7200.0, None),
         ]
         s = DocumentSettings()
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         np.testing.assert_allclose(D, D.T, atol=1e-12)
 
     def test_parity_random_inputs(self) -> None:
@@ -1223,7 +1215,7 @@ class TestBlockDistanceMatrix:
             tau_seconds=3600,
             use_embeddings=True,
         )
-        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        D = _block_distance_matrix(docs, s)  # noqa: N806
         for i in range(len(docs)):
             for j in range(len(docs)):
                 expected = 0.0 if i == j else self._scalar_dist(docs[i], docs[j], s)
@@ -1249,9 +1241,7 @@ class TestMM35ClusterChangesets:
         fallback_max_n: int = 8,
         use_embeddings: bool = True,
         weight_content: float = 0.5,
-    ) -> object:
-        from mintmory.core.config import DocumentSettings
-
+    ) -> DocumentSettings:
         return DocumentSettings(
             cochange_enabled=True,
             weight_time=1.0,
@@ -1271,7 +1261,7 @@ class TestMM35ClusterChangesets:
             max_cochange_partition_size=max_partition,
         )
 
-    def _two_folder_burst_docs(self) -> list[object]:
+    def _two_folder_burst_docs(self) -> list[ChangedDoc]:
         return [
             _make_doc("ma1", "/root/a/f1.txt", "a/f1.txt", 0.0, _fake_emb(0)),
             _make_doc("ma2", "/root/a/f2.txt", "a/f2.txt", 60.0, _fake_emb(1)),
@@ -1285,7 +1275,7 @@ class TestMM35ClusterChangesets:
 
         docs = self._two_folder_burst_docs()
         s = self._settings_mm35(block_by_folder=False, max_partition=2000)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         # Should produce 2 change-sets (bursts are far apart in time and folder)
         assert len(result.changesets) == 2
         assert result.truncated == 0
@@ -1296,7 +1286,7 @@ class TestMM35ClusterChangesets:
 
         docs = self._two_folder_burst_docs()
         s = self._settings_mm35(block_by_folder=True)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert len(result.changesets) == 2
         # Verify no change-set mixes members from different folders
         for cs in result.changesets:
@@ -1312,10 +1302,10 @@ class TestMM35ClusterChangesets:
 
         docs = self._two_folder_burst_docs()
         s = self._settings_mm35()
-        r1 = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        r1 = cluster_changesets(docs, s, run_kind="incremental")
         shuffled = list(docs)
         random.shuffle(shuffled)
-        r2 = cluster_changesets(shuffled, s, run_kind="incremental")  # type: ignore[arg-type]
+        r2 = cluster_changesets(shuffled, s, run_kind="incremental")
         ids1 = sorted(cs.changeset_id for cs in r1.changesets)
         ids2 = sorted(cs.changeset_id for cs in r2.changesets)
         assert ids1 == ids2
@@ -1328,7 +1318,7 @@ class TestMM35ClusterChangesets:
             _make_doc(f"m{i}", f"/root/a/f{i}.txt", f"a/f{i}.txt", float(i * 10)) for i in range(5)
         ]
         s = self._settings_mm35(block_by_folder=True, max_partition=3)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert result.truncated == 2
 
     def test_truncation_blocking_off(self) -> None:
@@ -1339,7 +1329,7 @@ class TestMM35ClusterChangesets:
             _make_doc(f"m{i}", f"/root/a/f{i}.txt", f"a/f{i}.txt", float(i * 10)) for i in range(5)
         ]
         s = self._settings_mm35(block_by_folder=False, max_partition=3)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert result.truncated == 2
 
     def test_no_truncation_within_cap(self) -> None:
@@ -1347,7 +1337,7 @@ class TestMM35ClusterChangesets:
 
         docs = self._two_folder_burst_docs()
         s = self._settings_mm35(max_partition=2000)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert result.truncated == 0
 
     def test_small_block_uses_components_fallback(self) -> None:
@@ -1365,7 +1355,7 @@ class TestMM35ClusterChangesets:
             use_embeddings=False,
             weight_content=0.0,
         )
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert len(result.changesets) == 1
         assert len(result.changesets[0].member_ids) == 3
 
@@ -1375,7 +1365,7 @@ class TestMM35ClusterChangesets:
 
         docs = self._two_folder_burst_docs()
         s = self._settings_mm35(max_partition=2000)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
         assert result.truncated == 0
         assert hasattr(result, "truncated")
 
@@ -1396,7 +1386,7 @@ class TestMM35ClusterChangesets:
             _make_doc("e1", "/root/a/f1.txt", "a/f1.txt", 0.0),
             _make_doc("e2", "/root/a/f2.txt", "a/f2.txt", 7200.0),  # 2h later
         ]
-        blocks, truncated = _build_blocks(docs, bucket_seconds=bucket_seconds, max_block=2000)  # type: ignore[arg-type]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=bucket_seconds, max_block=2000)
         assert len(blocks) == 2, f"Expected 2 blocks (different time buckets), got {len(blocks)}"
         assert truncated == 0
 
@@ -1426,17 +1416,17 @@ class TestMM35ClusterChangesets:
         assert isinstance(s, DocumentSettings)
 
         # Run cluster_changesets with blocking disabled (single global block)
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
 
         # Reproduce what a direct components path on the same sorted docs would give:
-        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
-        dist_mat = _block_distance_matrix(sorted_docs, s)  # type: ignore[arg-type]
+        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))
+        dist_mat = _block_distance_matrix(sorted_docs, s)
         components = _connected_components(
             dist_mat, eps=s.cochange_distance_eps, min_size=s.min_cluster_size
         )
         kind_value = "incremental" if s.cochange_label_kind else ""
         ref_sets, _, _ = _changesets_from_components(
-            sorted_docs,  # type: ignore[arg-type]
+            sorted_docs,
             components,
             kind_value,
             gap_seconds=float(s.max_cochange_gap_seconds),
@@ -1486,11 +1476,11 @@ class TestMM35ClusterChangesets:
         s = self._settings_mm35(
             block_by_folder=False, fallback_max_n=2, use_embeddings=True, weight_content=0.5
         )
-        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s, run_kind="incremental")
 
         # Oracle: one global block -> identical matrix -> HDBSCAN -> the MM-34 path.
-        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
-        d_mat = _block_distance_matrix(sorted_docs, s)  # type: ignore[arg-type]
+        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))
+        d_mat = _block_distance_matrix(sorted_docs, s)
         hdb = HDBSCAN(metric="precomputed", min_cluster_size=s.min_cluster_size).fit(d_mat)
         labels = np.asarray(hdb.labels_, dtype=np.int32)
         probs = np.asarray(hdb.probabilities_, dtype=np.float64)
@@ -1499,7 +1489,7 @@ class TestMM35ClusterChangesets:
                 d_mat, eps=s.cochange_distance_eps, min_size=s.min_cluster_size
             )
             ref_sets, _, _ = _changesets_from_components(
-                sorted_docs,  # type: ignore[arg-type]
+                sorted_docs,
                 comps,
                 "incremental",
                 gap_seconds=float(s.max_cochange_gap_seconds),
@@ -1508,7 +1498,7 @@ class TestMM35ClusterChangesets:
             )
         else:
             ref_sets, _, _ = _changesets_from_labels(
-                sorted_docs,  # type: ignore[arg-type]
+                sorted_docs,
                 labels,
                 probs,
                 run_kind="incremental",
@@ -1541,8 +1531,8 @@ class TestMM35ClusterChangesets:
                         None,
                     )
                 )
-        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
-        blocks, truncated = _build_blocks(sorted_docs, 86_400, 2000)  # type: ignore[arg-type]
+        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))
+        blocks, truncated = _build_blocks(sorted_docs, 86_400, 2000)
         assert truncated == 0
         assert blocks
         # Each folder (distinct time base) is its own small block — never one big matrix.

@@ -14,6 +14,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from mintmory.core.cochange import ChangedDoc
+from mintmory.core.config import DocumentSettings
+from mintmory.core.storage import StorageAdapter
 from numpy.typing import NDArray
 
 # ---------------------------------------------------------------------------
@@ -21,9 +24,7 @@ from numpy.typing import NDArray
 # ---------------------------------------------------------------------------
 
 
-def _store(db_path: Path) -> object:
-    from mintmory.core.storage import StorageAdapter
-
+def _store(db_path: Path) -> StorageAdapter:
     store = StorageAdapter(str(db_path))
     store.initialise()
     return store
@@ -40,9 +41,7 @@ def _settings(
     tau_seconds: int = 3600,
     use_embeddings: bool = True,
     weight_content: float = 0.5,
-) -> object:
-    from mintmory.core.config import DocumentSettings
-
+) -> DocumentSettings:
     return DocumentSettings(
         cochange_enabled=True,
         weight_time=1.0,
@@ -112,7 +111,7 @@ class TestValidFrom:
 
         from mintmory.core.cochange import documents_timeline
 
-        rows = documents_timeline(store, limit=10)  # type: ignore[arg-type]
+        rows = documents_timeline(store, limit=10)
         assert len(rows) == 2
         # Newest-first ordering
         assert rows[0]["path"] == "/new.txt"
@@ -129,13 +128,10 @@ sklearn = pytest.importorskip("sklearn", reason="scikit-learn not installed")
 class TestCoChangeIntegration:
     """End-to-end co-change tests: two bursts → two changesets + edges."""
 
-    def _setup_two_bursts(self, store: object) -> tuple[list[str], list[str]]:
+    def _setup_two_bursts(self, store: StorageAdapter) -> tuple[list[str], list[str]]:
         """Insert 4 document memories: 2 in burst A (close mtime, folder_a),
         2 in burst B (far mtime, folder_b). Returns (burst_a_ids, burst_b_ids)."""
-        from mintmory.core.storage import StorageAdapter
-
-        s = store  # type: ignore[assignment]
-        assert isinstance(s, StorageAdapter)
+        s = store
 
         mtime_a1 = 1_000_000.0
         mtime_a2 = 1_000_060.0  # 60s later (same burst)
@@ -164,23 +160,18 @@ class TestCoChangeIntegration:
                     "modified_source": "fs_mtime",
                 },
             )
-            ids.append(rec.id)  # type: ignore[arg-type]
+            ids.append(rec.id)
 
         return ids_a, ids_b
 
     def _build_changed_docs(
         self,
-        store: object,
+        store: StorageAdapter,
         ids_a: list[str],
         ids_b: list[str],
-    ) -> list[object]:
-        from mintmory.core.cochange import ChangedDoc
-        from mintmory.core.storage import StorageAdapter
-
-        s = store  # type: ignore[assignment]
-        assert isinstance(s, StorageAdapter)
-
-        docs = []
+    ) -> list[ChangedDoc]:
+        s = store
+        docs: list[ChangedDoc] = []
         for mid in ids_a:
             mem = s.get_memory(mid)
             assert mem is not None
@@ -219,9 +210,9 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
         assert len(result.changesets) == 2
-        n = apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        n = apply_changesets(store, result.changesets)
         assert n == 2
 
         # Check that members carry metadata
@@ -243,10 +234,10 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
 
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)
+        apply_changesets(store, result.changesets)
 
         # Count concept_links — should not be doubled
         conn = store.connect()
@@ -280,8 +271,8 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
+        apply_changesets(store, result.changesets)
 
         # Non-doc memory should be unchanged
         fetched = store.get_memory(non_doc.id)
@@ -300,15 +291,15 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
+        apply_changesets(store, result.changesets)
 
         # Pick a doc from burst A and check its peer
         mem_a1 = store.get_memory(ids_a[0])
         assert mem_a1 is not None
         path_a1 = mem_a1.metadata["path"]
 
-        peers = changed_with(store, path_a1)  # type: ignore[arg-type]
+        peers = changed_with(store, path_a1)
         # Should find 1 peer (the other doc in burst A)
         assert len(peers) == 1
         peer_paths = {p["path"] for p in peers}
@@ -331,7 +322,7 @@ class TestCoChangeIntegration:
             metadata={"path": "/some/path.txt", "changeset_id": "fake123"},
         )
 
-        peers = changed_with(store, "/some/path.txt")  # type: ignore[arg-type]
+        peers = changed_with(store, "/some/path.txt")
         # Should not return the agent memory even though it has the same path
         # (changed_with filters source='document')
         assert all(True for _ in peers)  # no crash; result may be empty
@@ -362,7 +353,7 @@ class TestCoChangeIntegration:
             metadata={"custom": "value"},
         )
 
-        rows = documents_timeline(store, limit=50)  # type: ignore[arg-type]
+        rows = documents_timeline(store, limit=50)
         for row in rows:
             # All returned rows must have been the document, not the agent memory
             assert row["path"] != "" or row["collection"] != ""
@@ -393,7 +384,7 @@ class TestCoChangeIntegration:
                 },
             )
 
-        rows = documents_timeline(store, collection="alpha", limit=50)  # type: ignore[arg-type]
+        rows = documents_timeline(store, collection="alpha", limit=50)
         assert len(rows) == 2
         for row in rows:
             assert row["collection"] == "alpha"
@@ -410,8 +401,8 @@ class TestCoChangeIntegration:
         ids_a, ids_b = self._setup_two_bursts(store)
         docs = self._build_changed_docs(store, ids_a, ids_b)
         s = _settings(tau_seconds=3600, min_cluster_size=2)
-        result = cluster_changesets(docs, s)  # type: ignore[arg-type]
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        result = cluster_changesets(docs, s)
+        apply_changesets(store, result.changesets)
 
         for cs in result.changesets:
             conn = store.connect()
@@ -434,10 +425,8 @@ class TestCoChangeIntegration:
 class TestQuerySideMM34:
     """MM-34: Store query side — chunks excluded, kind in changed_with."""
 
-    def _make_store(self, tmp_path: Path) -> object:
+    def _make_store(self, tmp_path: Path) -> StorageAdapter:
         """Create an in-memory store for testing."""
-        from mintmory.core.storage import StorageAdapter
-
         store = StorageAdapter(str(tmp_path / "test.db"))
         store.initialise()
         return store
@@ -470,7 +459,7 @@ class TestQuerySideMM34:
             metadata={"path": "/docs/a.md", "record_role": "chunk", "collection": "test"},
         )
 
-        rows = documents_timeline(store)  # type: ignore[arg-type]
+        rows = documents_timeline(store)
         paths = [r["path"] for r in rows]
         assert "/docs/a.md" in paths, "file-record must appear in timeline"
         # The file appears once (the file-record), not twice
@@ -495,7 +484,7 @@ class TestQuerySideMM34:
             metadata={"path": "/legacy/doc.txt", "collection": "legacy"},
         )
 
-        rows = documents_timeline(store)  # type: ignore[arg-type]
+        rows = documents_timeline(store)
         paths = [r["path"] for r in rows]
         assert "/legacy/doc.txt" in paths, (
             "legacy record without record_role must appear in timeline"
@@ -572,9 +561,9 @@ class TestQuerySideMM34:
         )
         result = cluster_changesets(docs, s, run_kind="incremental")
         assert len(result.changesets) >= 1, "expected at least one changeset"
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)
 
-        peers = changed_with(store, "/root/a.txt")  # type: ignore[arg-type]
+        peers = changed_with(store, "/root/a.txt")
         assert len(peers) == 1, "expected exactly one peer"
         assert "kind" in peers[0], "changed_with result must include 'kind' field"
         assert peers[0]["kind"] == "incremental"
@@ -648,7 +637,7 @@ class TestQuerySideMM34:
         )
         result = cluster_changesets(docs, s, run_kind="cold_full_index")
         assert len(result.changesets) >= 1, "expected at least one changeset"
-        apply_changesets(store, result.changesets)  # type: ignore[arg-type]
+        apply_changesets(store, result.changesets)
 
         for mid in [rec_a.id, rec_b.id]:
             mem = store.get_memory(mid)
