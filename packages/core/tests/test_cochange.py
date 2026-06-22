@@ -884,3 +884,666 @@ class TestHdbscanBranch:
             has_a = any(m.startswith("a") for m in cs.member_ids)
             has_b = any(m.startswith("b") for m in cs.member_ids)
             assert not (has_a and has_b), f"burst A and B merged in {cs.member_ids}"
+
+
+class TestBuildBlocks:
+    """MM-35: _build_blocks partitions by (folder, time-bucket)."""
+
+    def test_two_folders_two_blocks(self) -> None:
+        from mintmory.core.cochange import _build_blocks
+
+        docs = [
+            _make_doc("ma1", "/root/a/f1.txt", "a/f1.txt", 0.0),
+            _make_doc("ma2", "/root/a/f2.txt", "a/f2.txt", 60.0),
+            _make_doc("mb1", "/root/b/f3.txt", "b/f3.txt", 120.0),
+            _make_doc("mb2", "/root/b/f4.txt", "b/f4.txt", 180.0),
+        ]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        assert len(blocks) == 2
+        assert truncated == 0
+
+    def test_cross_folder_never_share_block(self) -> None:
+        from mintmory.core.cochange import _build_blocks
+
+        docs = [
+            _make_doc("a1", "/root/a/f1.txt", "a/f1.txt", 0.0),
+            _make_doc("b1", "/root/b/f2.txt", "b/f2.txt", 10.0),
+        ]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        assert len(blocks) == 2
+        assert truncated == 0
+        for block in blocks:
+            folders = {(d.rel.rsplit("/", 1)[0] if "/" in d.rel else "") for d in block}  # type: ignore[attr-defined]
+            assert len(folders) == 1
+
+    def test_root_files_share_empty_key(self) -> None:
+        from mintmory.core.cochange import _build_blocks
+
+        docs = [
+            _make_doc("r1", "/f1.txt", "f1.txt", 0.0),
+            _make_doc("r2", "/f2.txt", "f2.txt", 60.0),
+        ]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        assert len(blocks) == 1
+        assert len(blocks[0]) == 2
+        assert truncated == 0
+
+    def test_different_time_buckets_two_blocks(self) -> None:
+        from mintmory.core.cochange import _build_blocks
+
+        docs = [
+            _make_doc("e1", "/root/a/f1.txt", "a/f1.txt", 0.0),
+            _make_doc("e2", "/root/a/f2.txt", "a/f2.txt", 60.0),
+            _make_doc("e3", "/root/a/f3.txt", "a/f3.txt", 2 * 86_400.0),
+            _make_doc("e4", "/root/a/f4.txt", "a/f4.txt", 2 * 86_400.0 + 60),
+        ]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        assert len(blocks) == 2
+        assert truncated == 0
+
+    def test_truncation_keeps_first_by_mtime_docid(self) -> None:
+        import random
+
+        from mintmory.core.cochange import _build_blocks
+
+        docs = [
+            _make_doc(f"m{i}", f"/root/a/f{i}.txt", f"a/f{i}.txt", float(i * 10)) for i in range(5)
+        ]
+        shuffled = docs.copy()
+        random.shuffle(shuffled)
+        blocks, truncated = _build_blocks(shuffled, bucket_seconds=86_400, max_block=3)  # type: ignore[arg-type]
+        assert len(blocks) == 1
+        assert len(blocks[0]) == 3
+        assert truncated == 2
+        kept_ids = [d.doc_id for d in blocks[0]]  # type: ignore[attr-defined]
+        expected = [f"/root/a/f{i}.txt" for i in range(3)]
+        assert kept_ids == expected
+
+    def test_block_order_deterministic(self) -> None:
+        import random
+
+        from mintmory.core.cochange import _build_blocks
+
+        docs = [
+            _make_doc("a1", "/root/a/f1.txt", "a/f1.txt", 0.0),
+            _make_doc("a2", "/root/a/f2.txt", "a/f2.txt", 60.0),
+            _make_doc("b1", "/root/b/f3.txt", "b/f3.txt", 120.0),
+            _make_doc("b2", "/root/b/f4.txt", "b/f4.txt", 180.0),
+            _make_doc("c1", "/root/c/f5.txt", "c/f5.txt", 240.0),
+        ]
+        blocks_a, _ = _build_blocks(docs, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        shuffled = docs.copy()
+        random.shuffle(shuffled)
+        blocks_b, _ = _build_blocks(shuffled, bucket_seconds=86_400, max_block=2000)  # type: ignore[arg-type]
+        keys_a = [[d.doc_id for d in b] for b in blocks_a]  # type: ignore[attr-defined]
+        keys_b = [[d.doc_id for d in b] for b in blocks_b]  # type: ignore[attr-defined]
+        assert keys_a == keys_b
+
+
+class TestBlockDistanceMatrix:
+    """MM-35: _block_distance_matrix parity with scalar oracle within 1e-9."""
+
+    def _scalar_dist(self, a: object, b: object, s: object) -> float:
+        """Replicate the MM-34 scalar pair computation as oracle."""
+        from mintmory.core.cochange import _cosine_distance, _path_distance, _time_distance
+        from mintmory.core.config import DocumentSettings
+
+        assert isinstance(s, DocumentSettings)
+        tau = float(s.tau_seconds)
+        w_t = s.weight_time
+        w_p = s.weight_path
+        w_c = s.weight_content
+        t_dist = _time_distance(a, b, tau)  # type: ignore[arg-type]
+        p_dist = _path_distance(a, b)  # type: ignore[arg-type]
+        has_content = (
+            s.use_embeddings
+            and a.embedding is not None  # type: ignore[attr-defined]
+            and b.embedding is not None  # type: ignore[attr-defined]
+        )
+        if has_content:
+            c_dist = _cosine_distance(
+                a.embedding,  # type: ignore[attr-defined]
+                b.embedding,  # type: ignore[attr-defined]
+            )
+            w_c_eff = w_c
+        else:
+            c_dist = 0.0
+            w_c_eff = 0.0
+        denom = w_t + w_p + w_c_eff
+        return float(
+            (w_t * t_dist + w_p * p_dist + w_c_eff * c_dist) / denom if denom != 0.0 else 0.0
+        )
+
+    def test_parity_with_embeddings(self) -> None:
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, _fake_emb(1)),
+            _make_doc("m2", "/root/a/f2.txt", "a/f2.txt", 600.0, _fake_emb(2)),
+            _make_doc("m3", "/root/b/f3.txt", "b/f3.txt", 1200.0, _fake_emb(3)),
+        ]
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            use_embeddings=True,
+        )
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        n = len(docs)
+        for i in range(n):
+            for j in range(n):
+                expected = 0.0 if i == j else self._scalar_dist(docs[i], docs[j], s)
+                assert abs(float(D[i, j]) - expected) < 1e-9, (
+                    f"D[{i},{j}]={D[i, j]:.10f} vs scalar={expected:.10f}"
+                )
+
+    def test_parity_no_embeddings(self) -> None:
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, None),
+            _make_doc("m2", "/root/b/f2.txt", "b/f2.txt", 3600.0, None),
+            _make_doc("m3", "/root/c/f3.txt", "c/f3.txt", 7200.0, None),
+        ]
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            use_embeddings=False,
+        )
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        n = len(docs)
+        for i in range(n):
+            for j in range(n):
+                expected = 0.0 if i == j else self._scalar_dist(docs[i], docs[j], s)
+                assert abs(float(D[i, j]) - expected) < 1e-9
+
+    def test_parity_mixed_none_embeddings(self) -> None:
+        """Some docs have embeddings, some don't. Pairs with missing emb drop content."""
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, _fake_emb(1)),
+            _make_doc("m2", "/root/a/f2.txt", "a/f2.txt", 600.0, None),
+            _make_doc("m3", "/root/b/f3.txt", "b/f3.txt", 1200.0, _fake_emb(3)),
+        ]
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            use_embeddings=True,
+        )
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        n = len(docs)
+        for i in range(n):
+            for j in range(n):
+                expected = 0.0 if i == j else self._scalar_dist(docs[i], docs[j], s)
+                assert abs(float(D[i, j]) - expected) < 1e-9, (
+                    f"D[{i},{j}]={D[i, j]:.10f} vs scalar={expected:.10f}"
+                )
+
+    def test_parity_zero_norm_embedding(self) -> None:
+        """Zero-norm embedding → cosine=0.5 (neutral), content KEPT (not dropped)."""
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        zero_emb = np.zeros(8, dtype=np.float32)
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, zero_emb),
+            _make_doc("m2", "/root/a/f2.txt", "a/f2.txt", 60.0, _fake_emb(5)),
+        ]
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            use_embeddings=True,
+        )
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        expected = self._scalar_dist(docs[0], docs[1], s)
+        assert abs(float(D[0, 1]) - expected) < 1e-9
+
+    def test_zero_norm_differs_from_none(self) -> None:
+        """Zero-norm embedding (content KEPT at 0.5) differs from None (content DROPPED).
+
+        This is a critical semantic: use_embeddings=True with zero-norm embedding
+        keeps content in the distance formula (cosine=0.5, w_c_eff=w_c), while
+        use_embeddings=True with embedding=None drops content (w_c_eff=0, denom shrinks).
+        The resulting distances must be numerically different.
+        """
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            use_embeddings=True,
+        )
+        # Partner has a non-trivial embedding
+        partner = _make_doc("partner", "/root/a/f2.txt", "a/f2.txt", 60.0, _fake_emb(5))
+
+        # Case A: first doc has zero-norm embedding (present but zero)
+        zero_emb = np.zeros(8, dtype=np.float32)
+        doc_zero = _make_doc("zero", "/root/a/f1.txt", "a/f1.txt", 0.0, zero_emb)
+        D_zero = _block_distance_matrix([doc_zero, partner], s)  # type: ignore[arg-type]  # noqa: N806
+
+        # Case B: first doc has None embedding (content dropped)
+        doc_none = _make_doc("none_emb", "/root/a/f1.txt", "a/f1.txt", 0.0, None)
+        D_none = _block_distance_matrix([doc_none, partner], s)  # type: ignore[arg-type]  # noqa: N806
+
+        # They must differ because zero-norm keeps content (at 0.5) while None drops it
+        assert abs(float(D_zero[0, 1]) - float(D_none[0, 1])) > 1e-6, (
+            f"Expected zero-norm ({D_zero[0, 1]:.6f}) != none ({D_none[0, 1]:.6f})"
+        )
+
+    def test_parity_root_files(self) -> None:
+        """Root files (no '/' in rel) have depth=0 → path_distance=0 between them."""
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("r1", "/f1.txt", "f1.txt", 0.0, None),
+            _make_doc("r2", "/f2.txt", "f2.txt", 60.0, None),
+        ]
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.0,
+            tau_seconds=3600,
+            use_embeddings=False,
+        )
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        expected = self._scalar_dist(docs[0], docs[1], s)
+        assert abs(float(D[0, 1]) - expected) < 1e-9
+
+    def test_diagonal_is_zero(self) -> None:
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, _fake_emb(1)),
+            _make_doc("m2", "/root/b/f2.txt", "b/f2.txt", 600.0, _fake_emb(2)),
+            _make_doc("m3", "/root/c/f3.txt", "c/f3.txt", 1200.0, None),
+        ]
+        s = DocumentSettings()
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        for i in range(len(docs)):
+            assert D[i, i] == pytest.approx(0.0)
+
+    def test_matrix_is_symmetric(self) -> None:
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, _fake_emb(1)),
+            _make_doc("m2", "/root/b/f2.txt", "b/f2.txt", 3600.0, _fake_emb(2)),
+            _make_doc("m3", "/root/a/f3.txt", "a/f3.txt", 7200.0, None),
+        ]
+        s = DocumentSettings()
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        np.testing.assert_allclose(D, D.T, atol=1e-12)
+
+    def test_parity_random_inputs(self) -> None:
+        """Property-style test: 20 random docs, all pairs within 1e-9."""
+        import random
+
+        from mintmory.core.cochange import _block_distance_matrix
+        from mintmory.core.config import DocumentSettings
+
+        rng = np.random.default_rng(42)
+        random.seed(42)
+        folders = ["a", "b", "c", ""]
+        docs = []
+        for i in range(20):
+            folder = random.choice(folders)
+            rel = f"{folder}/f{i}.txt" if folder else f"f{i}.txt"
+            mtime = float(rng.integers(0, 200_000))
+            emb_choice = rng.integers(0, 3)
+            if emb_choice == 0:
+                emb = None
+            elif emb_choice == 1:
+                emb = np.zeros(8, dtype=np.float32)
+            else:
+                raw = rng.random(8).astype(np.float32)
+                emb = raw / (np.linalg.norm(raw) + 1e-8)
+            docs.append(_make_doc(f"m{i}", f"/root/{rel}", rel, mtime, emb))
+
+        s = DocumentSettings(
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=0.5,
+            tau_seconds=3600,
+            use_embeddings=True,
+        )
+        D = _block_distance_matrix(docs, s)  # type: ignore[arg-type]  # noqa: N806
+        for i in range(len(docs)):
+            for j in range(len(docs)):
+                expected = 0.0 if i == j else self._scalar_dist(docs[i], docs[j], s)
+                assert abs(float(D[i, j]) - expected) < 1e-9, (
+                    f"pair ({i},{j}): vectorized={D[i, j]:.12f} scalar={expected:.12f}"
+                )
+
+
+# ---------------------------------------------------------------------------
+# MM-35 integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestMM35ClusterChangesets:
+    """MM-35: blocking-on/off, parity with MM-34, truncation, determinism."""
+
+    def _settings_mm35(
+        self,
+        block_by_folder: bool = True,
+        bucket_seconds: int = 86_400,
+        max_partition: int = 2000,
+        fallback_enabled: bool = True,
+        fallback_max_n: int = 8,
+        use_embeddings: bool = True,
+        weight_content: float = 0.5,
+    ) -> object:
+        from mintmory.core.config import DocumentSettings
+
+        return DocumentSettings(
+            cochange_enabled=True,
+            weight_time=1.0,
+            weight_path=0.5,
+            weight_content=weight_content,
+            tau_seconds=3600,
+            min_cluster_size=2,
+            use_embeddings=use_embeddings,
+            max_cochange_gap_seconds=86_400,
+            max_cochange_cluster_size=50,
+            cochange_fallback_enabled=fallback_enabled,
+            cochange_fallback_max_n=fallback_max_n,
+            cochange_distance_eps=0.35,
+            cochange_label_kind=True,
+            cochange_block_by_folder=block_by_folder,
+            cochange_time_bucket_seconds=bucket_seconds,
+            max_cochange_partition_size=max_partition,
+        )
+
+    def _two_folder_burst_docs(self) -> list[object]:
+        return [
+            _make_doc("ma1", "/root/a/f1.txt", "a/f1.txt", 0.0, _fake_emb(0)),
+            _make_doc("ma2", "/root/a/f2.txt", "a/f2.txt", 60.0, _fake_emb(1)),
+            _make_doc("mb1", "/root/b/f3.txt", "b/f3.txt", 10_000.0, _fake_emb(10)),
+            _make_doc("mb2", "/root/b/f4.txt", "b/f4.txt", 10_060.0, _fake_emb(11)),
+        ]
+
+    def test_blocking_off_single_global_pass(self) -> None:
+        """blocking=False → single block containing all docs."""
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = self._two_folder_burst_docs()
+        s = self._settings_mm35(block_by_folder=False, max_partition=2000)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        # Should produce 2 change-sets (bursts are far apart in time and folder)
+        assert len(result.changesets) == 2
+        assert result.truncated == 0
+
+    def test_blocking_on_isolates_folders(self) -> None:
+        """blocking=True → each folder is its own block → 2 change-sets."""
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = self._two_folder_burst_docs()
+        s = self._settings_mm35(block_by_folder=True)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        assert len(result.changesets) == 2
+        # Verify no change-set mixes members from different folders
+        for cs in result.changesets:
+            has_a = any(m.startswith("ma") for m in cs.member_ids)
+            has_b = any(m.startswith("mb") for m in cs.member_ids)
+            assert not (has_a and has_b)
+
+    def test_determinism_across_shuffles(self) -> None:
+        """Same change-set ids regardless of input order."""
+        import random
+
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = self._two_folder_burst_docs()
+        s = self._settings_mm35()
+        r1 = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        shuffled = list(docs)
+        random.shuffle(shuffled)
+        r2 = cluster_changesets(shuffled, s, run_kind="incremental")  # type: ignore[arg-type]
+        ids1 = sorted(cs.changeset_id for cs in r1.changesets)
+        ids2 = sorted(cs.changeset_id for cs in r2.changesets)
+        assert ids1 == ids2
+
+    def test_truncation_reported_in_result(self) -> None:
+        """A block > max_partition → truncated > 0 in result."""
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = [
+            _make_doc(f"m{i}", f"/root/a/f{i}.txt", f"a/f{i}.txt", float(i * 10)) for i in range(5)
+        ]
+        s = self._settings_mm35(block_by_folder=True, max_partition=3)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        assert result.truncated == 2
+
+    def test_truncation_blocking_off(self) -> None:
+        """blocking=False: single block capped at max_partition → truncated count."""
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = [
+            _make_doc(f"m{i}", f"/root/a/f{i}.txt", f"a/f{i}.txt", float(i * 10)) for i in range(5)
+        ]
+        s = self._settings_mm35(block_by_folder=False, max_partition=3)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        assert result.truncated == 2
+
+    def test_no_truncation_within_cap(self) -> None:
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = self._two_folder_burst_docs()
+        s = self._settings_mm35(max_partition=2000)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        assert result.truncated == 0
+
+    def test_small_block_uses_components_fallback(self) -> None:
+        """n <= fallback_max_n per block → connected-components (no sklearn needed)."""
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, None),
+            _make_doc("m2", "/root/a/f2.txt", "a/f2.txt", 60.0, None),
+            _make_doc("m3", "/root/a/f3.txt", "a/f3.txt", 120.0, None),
+        ]
+        s = self._settings_mm35(
+            fallback_enabled=True,
+            fallback_max_n=8,
+            use_embeddings=False,
+            weight_content=0.0,
+        )
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        assert len(result.changesets) == 1
+        assert len(result.changesets[0].member_ids) == 3
+
+    def test_result_truncated_field_default_zero(self) -> None:
+        """result.truncated is 0 when no truncation occurs."""
+        from mintmory.core.cochange import cluster_changesets
+
+        docs = self._two_folder_burst_docs()
+        s = self._settings_mm35(max_partition=2000)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+        assert result.truncated == 0
+        assert hasattr(result, "truncated")
+
+    def test_bucket_clamped_to_gap_seconds(self) -> None:
+        """bucket = min(cochange_time_bucket_seconds, max_cochange_gap_seconds).
+
+        When cochange_time_bucket_seconds > max_cochange_gap_seconds, the effective
+        bucket is capped to max_cochange_gap_seconds. Docs farther than the gap
+        apart must not share a block even if the raw time bucket would group them.
+        """
+        from mintmory.core.cochange import _build_blocks
+
+        # Two docs 2 hours apart; bucket=7 days but gap=1 hour → effective bucket=1 hour.
+        # floor(0 / 3600) = 0; floor(7200 / 3600) = 2 → different buckets → different blocks.
+        gap_seconds = 3600
+        bucket_seconds = min(86_400 * 7, gap_seconds)  # effective = 3600
+        docs = [
+            _make_doc("e1", "/root/a/f1.txt", "a/f1.txt", 0.0),
+            _make_doc("e2", "/root/a/f2.txt", "a/f2.txt", 7200.0),  # 2h later
+        ]
+        blocks, truncated = _build_blocks(docs, bucket_seconds=bucket_seconds, max_block=2000)  # type: ignore[arg-type]
+        assert len(blocks) == 2, f"Expected 2 blocks (different time buckets), got {len(blocks)}"
+        assert truncated == 0
+
+    def test_blocking_off_parity_changeset_ids(self) -> None:
+        """blocking=False + sub-cap corpus → changeset_ids match direct components path."""
+        from mintmory.core.cochange import (
+            _block_distance_matrix,
+            _changesets_from_components,
+            _connected_components,
+            cluster_changesets,
+        )
+        from mintmory.core.config import DocumentSettings
+
+        docs = [
+            _make_doc("m1", "/root/a/f1.txt", "a/f1.txt", 0.0, None),
+            _make_doc("m2", "/root/a/f2.txt", "a/f2.txt", 60.0, None),
+            _make_doc("m3", "/root/a/f3.txt", "a/f3.txt", 120.0, None),
+        ]
+        s = self._settings_mm35(
+            block_by_folder=False,
+            max_partition=2000,
+            fallback_enabled=True,
+            fallback_max_n=8,
+            use_embeddings=False,
+            weight_content=0.0,
+        )
+        assert isinstance(s, DocumentSettings)
+
+        # Run cluster_changesets with blocking disabled (single global block)
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+
+        # Reproduce what a direct components path on the same sorted docs would give:
+        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
+        dist_mat = _block_distance_matrix(sorted_docs, s)  # type: ignore[arg-type]
+        components = _connected_components(
+            dist_mat, eps=s.cochange_distance_eps, min_size=s.min_cluster_size
+        )
+        kind_value = "incremental" if s.cochange_label_kind else ""
+        ref_sets, _, _ = _changesets_from_components(
+            sorted_docs,  # type: ignore[arg-type]
+            components,
+            kind_value,
+            gap_seconds=float(s.max_cochange_gap_seconds),
+            min_size=s.min_cluster_size,
+            max_cluster_size=s.max_cochange_cluster_size,
+        )
+
+        # Change-set IDs must match exactly
+        ids_from_cluster = sorted(cs.changeset_id for cs in result.changesets)
+        ids_from_reference = sorted(cs.changeset_id for cs in ref_sets)
+        assert ids_from_cluster == ids_from_reference, (
+            f"blocking=False IDs={ids_from_cluster} != reference IDs={ids_from_reference}"
+        )
+
+    def test_blocking_off_hdbscan_path_parity(self) -> None:
+        """blocking=False, N>fallback_max_n, embeddings → matches the MM-34 HDBSCAN oracle.
+
+        Covers the highest-risk parity branch (HDBSCAN, not components): a single
+        global block must reproduce exactly what MM-34 did (same matrix -> HDBSCAN
+        -> label assembly), so changeset_ids match an independently built oracle.
+        """
+        pytest.importorskip("sklearn")
+        from mintmory.core.cochange import (
+            _block_distance_matrix,
+            _changesets_from_components,
+            _changesets_from_labels,
+            _connected_components,
+            cluster_changesets,
+        )
+        from sklearn.cluster import HDBSCAN
+
+        docs = []
+        for i in range(6):
+            docs.append(
+                _make_doc(f"a{i}", f"/root/a/f{i}.txt", f"a/f{i}.txt", float(i * 30), _fake_emb(i))
+            )
+        for i in range(6):
+            docs.append(
+                _make_doc(
+                    f"b{i}",
+                    f"/root/b/f{i}.txt",
+                    f"b/f{i}.txt",
+                    100_000.0 + i * 30,
+                    _fake_emb(50 + i),
+                )
+            )
+        s = self._settings_mm35(
+            block_by_folder=False, fallback_max_n=2, use_embeddings=True, weight_content=0.5
+        )
+        result = cluster_changesets(docs, s, run_kind="incremental")  # type: ignore[arg-type]
+
+        # Oracle: one global block -> identical matrix -> HDBSCAN -> the MM-34 path.
+        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
+        d_mat = _block_distance_matrix(sorted_docs, s)  # type: ignore[arg-type]
+        hdb = HDBSCAN(metric="precomputed", min_cluster_size=s.min_cluster_size).fit(d_mat)
+        labels = np.asarray(hdb.labels_, dtype=np.int32)
+        probs = np.asarray(hdb.probabilities_, dtype=np.float64)
+        if bool(np.all(labels == -1)):  # cluster_changesets would fall back to components
+            comps = _connected_components(
+                d_mat, eps=s.cochange_distance_eps, min_size=s.min_cluster_size
+            )
+            ref_sets, _, _ = _changesets_from_components(
+                sorted_docs,  # type: ignore[arg-type]
+                comps,
+                "incremental",
+                gap_seconds=float(s.max_cochange_gap_seconds),
+                min_size=s.min_cluster_size,
+                max_cluster_size=s.max_cochange_cluster_size,
+            )
+        else:
+            ref_sets, _, _ = _changesets_from_labels(
+                sorted_docs,  # type: ignore[arg-type]
+                labels,
+                probs,
+                run_kind="incremental",
+                gap_seconds=float(s.max_cochange_gap_seconds),
+                min_size=s.min_cluster_size,
+                max_cluster_size=s.max_cochange_cluster_size,
+            )
+        assert sorted(cs.changeset_id for cs in result.changesets) == sorted(
+            cs.changeset_id for cs in ref_sets
+        )
+
+    def test_large_corpus_blocks_bounded(self) -> None:
+        """Blocking keeps every block <= cap, so no dense N×N matrix over all files.
+
+        Covers the 'large corpus stays tractable' spec scenario: a 2000-file,
+        50-folder corpus partitions into small per-folder blocks (max << cap),
+        never a single 2000×2000 matrix.
+        """
+        from mintmory.core.cochange import _build_blocks
+
+        docs = []
+        for folder in range(50):
+            for i in range(40):  # 2000 files total across 50 folders
+                docs.append(
+                    _make_doc(
+                        f"m{folder}_{i}",
+                        f"/root/d{folder}/f{i}.txt",
+                        f"d{folder}/f{i}.txt",
+                        float(folder * 100_000 + i * 30),
+                        None,
+                    )
+                )
+        sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))  # type: ignore[attr-defined]
+        blocks, truncated = _build_blocks(sorted_docs, 86_400, 2000)  # type: ignore[arg-type]
+        assert truncated == 0
+        assert blocks
+        # Each folder (distinct time base) is its own small block — never one big matrix.
+        assert max(len(b) for b in blocks) <= 40

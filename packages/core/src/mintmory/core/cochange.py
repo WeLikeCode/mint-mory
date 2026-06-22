@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -96,6 +98,7 @@ class CoChangeResult:
     changesets: list[ChangeSet]
     dropped_oversized: int  # change-sets dropped because len > max_cochange_cluster_size
     dropped_singletons: int  # gap-split fragments dropped because len < min_cluster_size
+    truncated: int = 0  # MM-35: docs dropped from oversized blocks before clustering
 
 
 # ---------------------------------------------------------------------------
@@ -219,8 +222,6 @@ def _connected_components(
             if dist_matrix[i, j] <= eps:
                 union(i, j)
 
-    from collections import defaultdict
-
     comp: dict[int, list[int]] = defaultdict(list)
     for i in range(n):
         comp[find(i)].append(i)
@@ -312,102 +313,198 @@ def _changesets_from_components(
 
 
 # ---------------------------------------------------------------------------
-# Core clustering
+# MM-35: blocking by (folder, time-bucket)
 # ---------------------------------------------------------------------------
 
 
-def cluster_changesets(
+def _build_blocks(
     docs: list[ChangedDoc],
-    s: DocumentSettings,
-    *,
-    run_kind: str = "incremental",
-) -> CoChangeResult:
-    """Cluster changed documents into change-sets using HDBSCAN or connected-components.
+    bucket_seconds: int,
+    max_block: int,
+) -> tuple[list[list[ChangedDoc]], int]:
+    """Partition changed docs into clustering blocks by (parent_folder, time_bucket).
 
-    MM-34: Returns CoChangeResult (was list[ChangeSet]).
+    Algorithm (design.md §2):
+    1. Sort docs by (mtime, doc_id) for global determinism.
+    2. Key each doc: folder = rel.rsplit("/", 1)[0] if "/" in rel else "".
+       bucket = floor(mtime / bucket_seconds).
+    3. Group by (folder, bucket); iterate keys in sorted order (determinism).
+    4. Truncate blocks longer than max_block to first max_block docs
+       (already in (mtime, doc_id) order); count total truncated docs.
 
-    Algorithm:
-    1. Sort docs by (mtime, doc_id) for determinism.
-    2. Build a precomputed N×N float64 distance matrix.
-    3a. If cochange_fallback_enabled AND n <= cochange_fallback_max_n:
-        skip HDBSCAN, use connected-components at cochange_distance_eps.
-    3b. Else: fit HDBSCAN(metric='precomputed', min_cluster_size).
-        If it returns all-noise (every label == -1) AND fallback enabled:
-        use connected-components on the same matrix.
-    4. Feed raw clusters through _split_on_time_gap (A) and size cap (B).
-    5. Return CoChangeResult.
-
-    Returns CoChangeResult with empty changesets when:
-    - fewer than 2 docs, or
-    - s.cochange_enabled is False.
-
-    Raises CoChangeUnavailable if scikit-learn is not installed AND the HDBSCAN
-    path is taken (the connected-components fallback never requires sklearn).
+    Returns:
+        (blocks, total_truncated_count)
     """
-    if len(docs) < 2 or not s.cochange_enabled:
-        return CoChangeResult(changesets=[], dropped_oversized=0, dropped_singletons=0)
-
-    # 1. Sort for determinism
+    # Sort by (mtime, doc_id) for global determinism
     sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))
-    n = len(sorted_docs)
 
-    # E: cochange_label_kind gates whether change-sets carry a kind tag. When off,
-    # kind is blanked so apply_changesets writes no metadata.changeset_kind.
-    kind_value = run_kind if s.cochange_label_kind else ""
+    groups: dict[tuple[str, int], list[ChangedDoc]] = defaultdict(list)
+    for d in sorted_docs:
+        folder = d.rel.rsplit("/", 1)[0] if "/" in d.rel else ""
+        bucket = int(math.floor(d.mtime / bucket_seconds))
+        groups[(folder, bucket)].append(d)
 
-    # 2. Build N×N distance matrix
+    total_truncated = 0
+    blocks: list[list[ChangedDoc]] = []
+    for key in sorted(groups.keys()):
+        group = groups[key]
+        if len(group) > max_block:
+            total_truncated += len(group) - max_block
+            group = group[:max_block]
+        blocks.append(group)
+
+    return blocks, total_truncated
+
+
+def _block_distance_matrix(
+    block: list[ChangedDoc],
+    s: DocumentSettings,
+) -> NDArray[np.float64]:
+    """Vectorized per-block composite distance matrix (MM-35).
+
+    Numerically identical (within 1e-9) to the scalar _time_distance /
+    _path_distance / _cosine_distance composition for every pair.
+
+    Content term rules (replicated from MM-34 cluster_changesets loop):
+    - use_embeddings=False OR embedding is None for either doc → content DROPPED
+      (w_c_eff=0, NOT neutral 0.5; denominator shrinks)
+    - embedding present but zero-norm → cosine returns 0.5 (neutral), content KEPT
+      (w_c_eff = w_c; this is the _cosine_distance zero-norm behaviour)
+    """
+    k = len(block)
     w_t = s.weight_time
     w_p = s.weight_path
     w_c = s.weight_content
     tau = float(s.tau_seconds)
 
-    dist_matrix: NDArray[np.float64] = np.zeros((n, n), dtype=np.float64)
-    for i in range(n):
-        for j in range(i + 1, n):
-            a = sorted_docs[i]
-            b = sorted_docs[j]
-            t_dist = _time_distance(a, b, tau)
-            p_dist = _path_distance(a, b)
+    # --- Time term (k x k broadcast) ---
+    m = np.array([d.mtime for d in block], dtype=np.float64)
+    time_mat: NDArray[np.float64] = np.minimum(1.0, np.abs(m[:, None] - m[None, :]) / tau)
 
-            has_content = s.use_embeddings and a.embedding is not None and b.embedding is not None
-            if has_content:
-                assert a.embedding is not None  # noqa: S101 — mypy assist
-                assert b.embedding is not None  # noqa: S101 — mypy assist
-                c_dist = _cosine_distance(a.embedding, b.embedding)
-                w_c_eff = w_c
-            else:
-                c_dist = 0.0
-                w_c_eff = 0.0
+    # --- Path term (bounded loop over k rows) ---
+    parts: list[list[str]] = [d.rel.split("/")[:-1] for d in block]
+    depths = np.array([len(p) for p in parts], dtype=np.float64)
+    path_mat: NDArray[np.float64] = np.zeros((k, k), dtype=np.float64)
+    for i in range(k):
+        for j in range(i + 1, k):
+            common = 0
+            for pi, pj in zip(parts[i], parts[j], strict=False):
+                if pi == pj:
+                    common += 1
+                else:
+                    break
+            da = depths[i]
+            db = depths[j]
+            total = da + db
+            val = (total - 2.0 * common) / max(1.0, total)
+            path_mat[i, j] = val
+            path_mat[j, i] = val
 
-            denominator = w_t + w_p + w_c_eff
-            d_val = (
-                (w_t * t_dist + w_p * p_dist + w_c_eff * c_dist) / denominator
-                if denominator != 0.0
-                else 0.0
-            )
-            dist_matrix[i, j] = d_val
-            dist_matrix[j, i] = d_val
+    # --- Content term ---
+    # has_emb[i]: use_embeddings AND embedding is not None (not zero-norm — zero-norm is kept)
+    has_emb = np.array(
+        [s.use_embeddings and d.embedding is not None for d in block],
+        dtype=bool,
+    )
+    # w_c_mask[i,j]: True iff BOTH embeddings present (and use_embeddings)
+    w_c_mask: NDArray[np.bool_] = has_emb[:, None] & has_emb[None, :]
 
+    content_mat: NDArray[np.float64] = np.zeros((k, k), dtype=np.float64)
+
+    if s.use_embeddings and np.any(has_emb):
+        # Cosine distance: replicate _cosine_distance scalar logic exactly per pair.
+        # The scalar operates on float32 arrays: dot and norm are float32 operations
+        # converted to Python float. We must match this precisely to stay within 1e-9.
+        # Key: np.linalg.norm(arr_f32) on an individual array differs from
+        # np.linalg.norm(matrix_f32, axis=1) for the same row — LAPACK SNRM2 vs
+        # a different reduction path. So we cache per-doc norms from the original
+        # embedding arrays, not from a stacked matrix.
+        emb_list: list[NDArray[np.float32] | None] = [d.embedding for d in block]
+        norms_f32: list[float] = [
+            float(np.linalg.norm(e)) if e is not None else 0.0 for e in emb_list
+        ]
+
+        raw_content: NDArray[np.float64] = np.zeros((k, k), dtype=np.float64)
+        for i in range(k):
+            if not has_emb[i]:
+                continue
+            ei = emb_list[i]
+            assert ei is not None  # noqa: S101
+            na = norms_f32[i]
+            for j in range(i + 1, k):
+                if not has_emb[j]:
+                    continue
+                ej = emb_list[j]
+                assert ej is not None  # noqa: S101
+                dot_val = float(np.dot(ei, ej))
+                nb = norms_f32[j]
+                if na == 0.0 or nb == 0.0:
+                    c = 0.5  # zero-norm → neutral (matching _cosine_distance)
+                else:
+                    sim_ij = max(-1.0, min(1.0, dot_val / (na * nb)))
+                    c = (1.0 - sim_ij) / 2.0
+                raw_content[i, j] = c
+                raw_content[j, i] = c
+
+        # Apply content only where BOTH embeddings are present (w_c_mask)
+        content_mat = np.where(w_c_mask, raw_content, 0.0)
+
+    # --- Combine with per-pair effective weights ---
+    w_c_eff_mat: NDArray[np.float64] = np.where(w_c_mask, w_c, 0.0)
+    denom: NDArray[np.float64] = w_t + w_p + w_c_eff_mat
+    numer: NDArray[np.float64] = w_t * time_mat + w_p * path_mat + w_c_eff_mat * content_mat
+    # Guard the divide so an all-zero-weight config (ge=0.0 permits it) yields 0.0
+    # without a RuntimeWarning; denom==0 only when every effective weight is 0.
+    dist: NDArray[np.float64] = np.zeros((k, k), dtype=np.float64)
+    np.divide(numer, denom, out=dist, where=denom != 0.0)
+
+    # Force diagonal to 0.0; matrix is symmetric by construction but enforce it
+    np.fill_diagonal(dist, 0.0)
+
+    return dist
+
+
+# ---------------------------------------------------------------------------
+# Core clustering
+# ---------------------------------------------------------------------------
+
+
+def _cluster_one_block(
+    block: list[ChangedDoc],
+    dist_matrix: NDArray[np.float64],
+    s: DocumentSettings,
+    kind_value: str,
+) -> tuple[list[ChangeSet], int, int]:
+    """Run the MM-34 fallback-or-HDBSCAN decision on a single pre-built block.
+
+    Args:
+        block: The documents in this block (already sorted by (mtime, doc_id)).
+        dist_matrix: The precomputed N×N distance matrix for this block.
+        s: DocumentSettings.
+        kind_value: The kind tag string (already resolved from run_kind + cochange_label_kind).
+
+    Returns:
+        (changesets, dropped_oversized, dropped_singletons)
+
+    Decision logic (MM-34):
+    1. If cochange_fallback_enabled AND len(block) <= cochange_fallback_max_n:
+       → connected-components at cochange_distance_eps
+    2. Else: HDBSCAN(metric='precomputed', min_cluster_size).
+       If all labels == -1 AND fallback enabled → connected-components.
+       Else → _changesets_from_labels.
+    """
+    n = len(block)
     gap = float(s.max_cochange_gap_seconds)
     min_size = s.min_cluster_size
     max_size = s.max_cochange_cluster_size
     eps = float(s.cochange_distance_eps)
 
-    # 3. Choose clustering path
     use_fallback_directly = s.cochange_fallback_enabled and n <= s.cochange_fallback_max_n
-
     if use_fallback_directly:
         components = _connected_components(dist_matrix, eps, min_size)
-        changesets, dropped_oversized, dropped_singletons = _changesets_from_components(
-            sorted_docs, components, kind_value, gap, min_size, max_size
-        )
-        return CoChangeResult(
-            changesets=changesets,
-            dropped_oversized=dropped_oversized,
-            dropped_singletons=dropped_singletons,
-        )
+        return _changesets_from_components(block, components, kind_value, gap, min_size, max_size)
 
-    # HDBSCAN path — lazy import so the fallback never requires sklearn
+    # HDBSCAN path — lazy import so the connected-components fallback never requires sklearn
     try:
         from sklearn.cluster import HDBSCAN
     except ImportError as exc:
@@ -420,20 +517,12 @@ def cluster_changesets(
     labels: NDArray[np.int32] = np.asarray(hdb.labels_, dtype=np.int32)
     probs: NDArray[np.float64] = np.asarray(hdb.probabilities_, dtype=np.float64)
 
-    # If HDBSCAN returns all-noise and fallback is enabled, use components
     if bool(np.all(labels == -1)) and s.cochange_fallback_enabled:
         components = _connected_components(dist_matrix, eps, min_size)
-        changesets, dropped_oversized, dropped_singletons = _changesets_from_components(
-            sorted_docs, components, kind_value, gap, min_size, max_size
-        )
-        return CoChangeResult(
-            changesets=changesets,
-            dropped_oversized=dropped_oversized,
-            dropped_singletons=dropped_singletons,
-        )
+        return _changesets_from_components(block, components, kind_value, gap, min_size, max_size)
 
-    sets, dropped_oversized, dropped_singletons = _changesets_from_labels(
-        sorted_docs,
+    return _changesets_from_labels(
+        block,
         labels,
         probs,
         run_kind=kind_value,
@@ -441,10 +530,82 @@ def cluster_changesets(
         min_size=min_size,
         max_cluster_size=max_size,
     )
+
+
+def cluster_changesets(
+    docs: list[ChangedDoc],
+    s: DocumentSettings,
+    *,
+    run_kind: str = "incremental",
+) -> CoChangeResult:
+    """Cluster changed documents into change-sets using HDBSCAN or connected-components.
+
+    MM-35: Partitions docs into blocks by (parent_folder, time_bucket) before clustering,
+    then runs the MM-34 fallback-or-HDBSCAN decision per block using a vectorized
+    distance matrix (_block_distance_matrix). Returns CoChangeResult with a truncated
+    field counting docs dropped from oversized blocks before clustering.
+
+    Algorithm:
+    1. Return early if fewer than 2 docs or cochange_enabled is False.
+    2. Sort docs by (mtime, doc_id) for determinism.
+    3. If cochange_block_by_folder: partition into (folder, time_bucket) blocks via
+       _build_blocks, capping each block at max_cochange_partition_size.
+       Else: use a single global block, also capped at max_cochange_partition_size.
+    4. For each block with len >= min_cluster_size:
+       a. Build per-block N×N distance matrix with _block_distance_matrix.
+       b. Run _cluster_one_block (MM-34 decision: fallback or HDBSCAN).
+    5. Accumulate changesets, dropped_oversized, dropped_singletons, truncated.
+    6. Return CoChangeResult.
+
+    Returns CoChangeResult with empty changesets when:
+    - fewer than 2 docs, or
+    - s.cochange_enabled is False.
+
+    Raises CoChangeUnavailable if scikit-learn is not installed AND the HDBSCAN
+    path is taken for any block (the connected-components fallback never requires sklearn).
+    """
+    if len(docs) < 2 or not s.cochange_enabled:
+        return CoChangeResult(changesets=[], dropped_oversized=0, dropped_singletons=0, truncated=0)
+
+    # Sort for determinism. _build_blocks also sorts internally;
+    # the duplicate sort is cheap and keeps the blocking=False path consistent.
+    sorted_docs = sorted(docs, key=lambda d: (d.mtime, d.doc_id))
+
+    # E: cochange_label_kind gates whether change-sets carry a kind tag. When off,
+    # kind is blanked so apply_changesets writes no metadata.changeset_kind.
+    kind_value = run_kind if s.cochange_label_kind else ""
+
+    # 2. Build blocks
+    bucket = min(s.cochange_time_bucket_seconds, s.max_cochange_gap_seconds)
+    if s.cochange_block_by_folder:
+        blocks, total_truncated = _build_blocks(
+            sorted_docs, bucket_seconds=bucket, max_block=s.max_cochange_partition_size
+        )
+    else:
+        # Single global block, still capped at max_cochange_partition_size
+        capped = sorted_docs[: s.max_cochange_partition_size]
+        total_truncated = max(0, len(sorted_docs) - len(capped))
+        blocks = [capped]
+
+    # 3. Cluster each block and accumulate
+    all_changesets: list[ChangeSet] = []
+    total_oversized = 0
+    total_singletons = 0
+
+    for block in blocks:
+        if len(block) < s.min_cluster_size:
+            continue
+        block_dist = _block_distance_matrix(block, s)
+        sets, dropped_over, dropped_sing = _cluster_one_block(block, block_dist, s, kind_value)
+        all_changesets.extend(sets)
+        total_oversized += dropped_over
+        total_singletons += dropped_sing
+
     return CoChangeResult(
-        changesets=sets,
-        dropped_oversized=dropped_oversized,
-        dropped_singletons=dropped_singletons,
+        changesets=all_changesets,
+        dropped_oversized=total_oversized,
+        dropped_singletons=total_singletons,
+        truncated=total_truncated,
     )
 
 
@@ -466,8 +627,6 @@ def _changesets_from_labels(
     Returns:
         (changesets, dropped_oversized, dropped_singletons)
     """
-    from collections import defaultdict
-
     clusters: dict[int, list[int]] = defaultdict(list)
     for idx, label in enumerate(labels):
         if int(label) >= 0:  # -1 == noise → skip

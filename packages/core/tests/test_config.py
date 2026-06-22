@@ -412,3 +412,53 @@ class TestDocumentSettingsMM34:
         s = DocumentSettings()
         assert s.max_cochange_gap_seconds == 3600
         assert s.cochange_fallback_enabled is False
+
+
+class TestDocumentSettingsMM35:
+    """MM-35: new DocumentSettings knobs for blocking."""
+
+    def test_new_knob_defaults(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings()
+        assert s.cochange_block_by_folder is True
+        assert s.cochange_time_bucket_seconds == 86_400
+        assert s.max_cochange_partition_size == 2000
+
+    def test_cochange_block_by_folder_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        monkeypatch.setenv("MINTMORY_DOC_COCHANGE_BLOCK_BY_FOLDER", "false")
+        s = DocumentSettings()
+        assert s.cochange_block_by_folder is False
+
+    def test_cochange_time_bucket_seconds_lower_bound(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(cochange_time_bucket_seconds=1)
+        assert s.cochange_time_bucket_seconds == 1
+
+    def test_cochange_time_bucket_seconds_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(cochange_time_bucket_seconds=0)
+
+    def test_max_cochange_partition_size_lower_bound(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        s = DocumentSettings(max_cochange_partition_size=2)
+        assert s.max_cochange_partition_size == 2
+
+    def test_max_cochange_partition_size_below_lower_bound_raises(self) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        with pytest.raises(ValidationError):
+            DocumentSettings(max_cochange_partition_size=1)
+
+    def test_max_cochange_partition_size_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from mintmory.core.config import DocumentSettings
+
+        monkeypatch.setenv("MINTMORY_DOC_MAX_COCHANGE_PARTITION_SIZE", "500")
+        s = DocumentSettings()
+        assert s.max_cochange_partition_size == 500

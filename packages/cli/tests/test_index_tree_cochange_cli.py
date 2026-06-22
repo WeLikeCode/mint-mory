@@ -199,6 +199,10 @@ def test_index_tree_cochange_degrades_without_sklearn(
     # which then raises CoChangeUnavailable when sklearn is absent.
     # Set fallback_max_n=2 (minimum allowed) so 4 docs > 2 forces the HDBSCAN path.
     monkeypatch.setenv("MINTMORY_DOC_COCHANGE_FALLBACK_MAX_N", "2")
+    # MM-35: with blocking enabled (default), 4 docs across 2 folders produce 2 blocks
+    # of 2 each, so n=2 <= fallback_max_n=2 and the HDBSCAN path is never reached.
+    # Disable blocking so all 4 docs form one block (n=4 > 2), forcing HDBSCAN.
+    monkeypatch.setenv("MINTMORY_DOC_COCHANGE_BLOCK_BY_FOLDER", "false")
 
     result = runner.invoke(app, ["index-tree", str(root), "--cochange"])
     assert result.exit_code == 0, result.output
@@ -428,3 +432,20 @@ def test_summary_table_shows_cochange_kind(tmp_path: Path, monkeypatch: pytest.M
     )
     assert result.exit_code == 0, result.output
     assert "cochange_kind" in result.output
+
+
+def test_index_tree_cochange_truncation_surfaced(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MM-35: truncated_from_blocks appears in table when blocks are capped."""
+    root = tmp_path / "corpus"
+    _make_tree(root)
+
+    # Cap to 2 docs per block (global, no folder blocking) — 4 docs total,
+    # so 2 are truncated. The CLI should show 'truncated_from_blocks' in the table.
+    monkeypatch.setenv("MINTMORY_DOC_MAX_COCHANGE_PARTITION_SIZE", "2")
+    monkeypatch.setenv("MINTMORY_DOC_COCHANGE_BLOCK_BY_FOLDER", "false")
+
+    result = runner.invoke(app, ["index-tree", str(root), "--cochange"])
+    assert result.exit_code == 0, result.output
+    assert "truncated_from_blocks" in result.output

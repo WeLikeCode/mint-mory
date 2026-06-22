@@ -891,6 +891,7 @@ def index_tree(
     n_co_changed_files = 0
     cochange_result_dropped_oversized = 0
     cochange_result_dropped_singletons = 0
+    cochange_result_truncated = 0
     if run_cochange and len(changed_docs) >= 2:
         from mintmory.core.cochange import apply_changesets
 
@@ -900,6 +901,14 @@ def index_tree(
             n_co_changed_files = sum(len(cs.member_ids) for cs in cochange_result.changesets)
             cochange_result_dropped_oversized = cochange_result.dropped_oversized
             cochange_result_dropped_singletons = cochange_result.dropped_singletons
+            cochange_result_truncated = cochange_result.truncated
+            if cochange_result.truncated > 0:
+                _max_p = doc_s.max_cochange_partition_size
+                console.print(
+                    f"[yellow]co-change: {cochange_result.truncated} file(s) dropped"
+                    f" from oversized blocks"
+                    f" (max_cochange_partition_size={_max_p})[/yellow]"
+                )
         except CoChangeUnavailable:
             console.print(
                 "[dim]co-change skipped: install the 'cochange' extra "
@@ -937,6 +946,8 @@ def index_tree(
             table.add_row("dropped_oversized", str(cochange_result_dropped_oversized))
         if cochange_result_dropped_singletons > 0:
             table.add_row("dropped_singletons", str(cochange_result_dropped_singletons))
+        if cochange_result_truncated > 0:
+            table.add_row("truncated_from_blocks", str(cochange_result_truncated))
     if budget_hit:
         table.add_row("budget", "[yellow]reached — remaining files metadata-only[/yellow]")
     console.print(table)

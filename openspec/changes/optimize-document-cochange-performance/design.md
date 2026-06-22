@@ -69,13 +69,18 @@ def _block_distance_matrix(block: list[ChangedDoc], s: DocumentSettings) -> NDAr
 - **Time term.** `m = np.array([d.mtime for d in block])`; pairwise
   `time = np.minimum(1.0, np.abs(m[:, None] - m[None, :]) / tau)`. One broadcast,
   no loop.
-- **Content term.** Stack embeddings into `E` (k x dim), L2-normalise rows
-  (zero-norm rows -> neutral handled below), `sim = E_norm @ E_norm.T`,
-  `content = (1.0 - clip(sim, -1, 1)) / 2`. Rows with a missing/zero embedding are
-  masked to the neutral 0.5 used by MM-33's `_cosine_distance`; if
-  `use_embeddings` is false or any embedding is missing for a pair, that pair's
-  content weight is dropped from the denominator (same rule as MM-33, computed as a
-  per-pair effective-weight mask, vectorized).
+- **Content term.** IMPLEMENTATION NOTE (parity-driven): a stacked
+  `E_norm @ E_norm.T` matmul drifts from MM-33's scalar `_cosine_distance` by more
+  than the 1e-9 parity bound, because `np.linalg.norm(matrix, axis=1)` (a different
+  LAPACK reduction) does not bit-match `float(np.linalg.norm(row_f32))` per row. To
+  keep the parity GATE exact, the shipped content term is computed with a bounded
+  per-pair loop reusing the SAME `np.dot` + per-array `np.linalg.norm` the scalar
+  oracle uses (cached per-doc norms). The vectorization win therefore comes from
+  blocking (C1) + the partition cap, NOT from matmul of the content term; the
+  residual per-block content cost stays O(k^2) Python but is bounded by
+  `max_cochange_partition_size`. Rows with a missing embedding (None) drop the
+  content weight from the denominator; a present-but-zero-norm embedding keeps
+  content at the neutral 0.5 (matching MM-33 exactly). These two cases are distinct.
 - **Path term.** Pre-split each `rel` into parent-dir parts once; compute pairwise
   common-prefix length and depths with a small vectorized routine (or a tight loop
   over the `<= max_block` rows — bounded and cheap). Same formula as MM-33's
@@ -121,8 +126,13 @@ for block in blocks:
   span) most blocks are tiny, so this is effectively O(N) and **sub-second** vs
   175 s. Peak matrix RAM falls from one 68 MB matrix to the largest single block's
   `k_max^2 * 8` bytes (e.g. a 2000-cap block = ~32 MB worst case, typically far
-  less). Vectorization (C2) additionally removes ~4.2M Python-call overheads inside
-  whatever blocks remain.
+  less). The time term IS vectorized (numpy broadcast); the content/path terms keep
+  bounded per-pair loops for exact parity (see §3), so within a single large block
+  the per-pair Python overhead remains — bounded by `max_cochange_partition_size`.
+  The dominant real-world win is blocking (C1): it shrinks `k_i` so the residual
+  per-pair cost is small. (Note: the effective bucket width is
+  `min(cochange_time_bucket_seconds, max_cochange_gap_seconds)`, so lowering the gap
+  guard also shrinks blocking buckets.)
 
 ## 6. Edge cases
 

@@ -317,6 +317,10 @@ class DocumentSettings(BaseSettings):
     cochange_fallback_enabled: bool = True
     cochange_fallback_max_n: int = Field(default=8, ge=2)
     cochange_distance_eps: float = Field(default=0.35, ge=0.0, le=1.0)
+    # MM-35 — blocking + partition-size ceiling
+    cochange_block_by_folder: bool = True
+    cochange_time_bucket_seconds: int = Field(default=86_400, ge=1)
+    max_cochange_partition_size: int = Field(default=2000, ge=2)
 
     @property
     def cochange_exclude_suffixes(self) -> frozenset[str]:
