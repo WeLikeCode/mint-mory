@@ -1045,3 +1045,126 @@ async def test_vision_run_llm_provider_with_stubbed_captioner(
     # After vision_run, the image must drop from the default image_jobs list (no-drift).
     after = await mcp_client.call_tool("image_jobs", {})
     assert after.data == [], f"expected empty image_jobs after vision_run, got {after.data}"
+
+
+# ---------------------------------------------------------------------------
+# MM-38: verbosity parameter — memory_search and memory_get
+# ---------------------------------------------------------------------------
+
+
+async def test_memory_search_full_verbosity_default(mcp_client: Client[Any]) -> None:
+    """Default (no verbosity) returns full shape — regression guard."""
+    await mcp_client.call_tool(
+        "memory_add",
+        {"content": "OAuth2 PKCE is the recommended flow for SPAs.", "category": "skill"},
+    )
+    res = await mcp_client.call_tool("memory_search", {"query": "oauth pkce"})
+    data = res.data
+    assert data["session_id"]
+    assert data["total_found"] >= 0
+    # Full-only key must be present in every hit
+    for mem in data["memories"]:
+        assert "usefulness_score" in mem, "full verbosity must include usefulness_score"
+        assert "content" in mem, "full verbosity must include content"
+        assert "metadata" in mem, "full verbosity must include metadata"
+
+
+async def test_memory_search_full_verbosity_explicit(mcp_client: Client[Any]) -> None:
+    """verbosity='full' explicit returns the same full shape."""
+    await mcp_client.call_tool(
+        "memory_add",
+        {"content": "Kubernetes uses etcd for state.", "category": "fact"},
+    )
+    res = await mcp_client.call_tool("memory_search", {"query": "kubernetes", "verbosity": "full"})
+    data = res.data
+    for mem in data["memories"]:
+        assert "usefulness_score" in mem
+        assert "content" in mem
+
+
+async def test_memory_search_concise_verbosity(mcp_client: Client[Any]) -> None:
+    """verbosity='concise' returns the lean shape with correct keys."""
+    await mcp_client.call_tool(
+        "memory_add",
+        {"content": "Docker Compose orchestrates multi-container apps.", "category": "skill"},
+    )
+    res = await mcp_client.call_tool("memory_search", {"query": "docker", "verbosity": "concise"})
+    data = res.data
+    assert "session_id" in data
+    assert "total_found" in data
+    assert "search_around_ids" in data
+    assert "notes_on_results" in data
+    for mem in data["memories"]:
+        assert set(mem.keys()) == {"id", "category", "snippet", "is_note"}, (
+            f"unexpected keys in concise memory: {set(mem.keys())}"
+        )
+        # full-only keys must be absent
+        assert "usefulness_score" not in mem
+        assert "metadata" not in mem
+        assert "content" not in mem
+
+
+async def test_memory_search_concise_smaller_than_full(mcp_client: Client[Any]) -> None:
+    """Concise serialized JSON must be materially smaller than full for a realistic record."""
+    import json
+
+    long_content = (
+        "GraphQL is a query language for APIs and a runtime for fulfilling those queries "
+        "with your existing data. " * 20
+    )
+    await mcp_client.call_tool("memory_add", {"content": long_content, "category": "skill"})
+    full_res = await mcp_client.call_tool(
+        "memory_search", {"query": "graphql", "verbosity": "full"}
+    )
+    concise_res = await mcp_client.call_tool(
+        "memory_search", {"query": "graphql", "verbosity": "concise"}
+    )
+    full_size = len(json.dumps(full_res.data))
+    concise_size = len(json.dumps(concise_res.data))
+    assert concise_size < full_size, (
+        f"concise ({concise_size} bytes) must be smaller than full ({full_size} bytes)"
+    )
+
+
+async def test_memory_get_full_verbosity_default(mcp_client: Client[Any]) -> None:
+    """Default memory_get returns the full 30-field shape — regression guard."""
+    added = await mcp_client.call_tool(
+        "memory_add", {"content": "Postgres uses MVCC for concurrency.", "category": "fact"}
+    )
+    memory_id = added.data["id"]
+
+    got = await mcp_client.call_tool("memory_get", {"memory_id": memory_id})
+    data = got.data
+    assert data is not None
+    # Full-only keys must be present
+    assert "usefulness_score" in data
+    assert "staleness_score" in data
+    assert "metadata" in data
+    assert "entity_ids" in data
+    assert "reinforcement_count" in data
+
+
+async def test_memory_get_concise_verbosity(mcp_client: Client[Any]) -> None:
+    """verbosity='concise' returns exactly {id, category, content}."""
+    added = await mcp_client.call_tool(
+        "memory_add", {"content": "Redis supports pub/sub messaging.", "category": "fact"}
+    )
+    memory_id = added.data["id"]
+
+    got = await mcp_client.call_tool("memory_get", {"memory_id": memory_id, "verbosity": "concise"})
+    data = got.data
+    assert data is not None
+    assert set(data.keys()) == {"id", "category", "content"}
+    assert data["id"] == memory_id
+    assert data["content"] == "Redis supports pub/sub messaging."
+    # Full-only keys must be absent
+    assert "usefulness_score" not in data
+    assert "metadata" not in data
+
+
+async def test_memory_get_missing_returns_none_in_concise(mcp_client: Client[Any]) -> None:
+    """Missing id must return None even with verbosity='concise'."""
+    got = await mcp_client.call_tool(
+        "memory_get", {"memory_id": "does-not-exist", "verbosity": "concise"}
+    )
+    assert got.data is None

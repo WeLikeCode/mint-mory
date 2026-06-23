@@ -400,3 +400,93 @@ async def test_history_timeline_group_param(
     """history_timeline with group=True returns rows without error."""
     res = await seg_history_client.call_tool("history_timeline", {"since": "30d", "group": True})
     assert isinstance(res.data, list)
+
+
+# ---------------------------------------------------------------------------
+# MM-38: verbosity parameter — history_timeline and history_search
+# ---------------------------------------------------------------------------
+
+
+async def test_history_timeline_full_verbosity_default(history_client: Client[Any]) -> None:
+    """Default (no verbosity) returns the 15-field shape — regression guard."""
+    res = await history_client.call_tool("history_timeline", {"since": "30d"})
+    data = res.data
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    row = data[0]
+    # Full-only keys must be present
+    assert "branch" in row, "full verbosity must include branch"
+    assert "ts_start" in row, "full verbosity must include ts_start"
+    assert "summary" in row, "full verbosity must include summary"
+    assert "segment_count" in row, "full verbosity must include segment_count"
+    assert "source_path" in row, "full verbosity must include source_path"
+
+
+async def test_history_timeline_full_verbosity_explicit(history_client: Client[Any]) -> None:
+    """verbosity='full' explicit returns the same 15-field shape."""
+    res = await history_client.call_tool("history_timeline", {"since": "30d", "verbosity": "full"})
+    data = res.data
+    assert len(data) >= 1
+    assert "branch" in data[0]
+    assert "summary" in data[0]
+
+
+async def test_history_timeline_concise_verbosity(history_client: Client[Any]) -> None:
+    """verbosity='concise' returns compact {date, repo, kind, title, snippet} rows."""
+    res = await history_client.call_tool(
+        "history_timeline", {"since": "30d", "verbosity": "concise"}
+    )
+    data = res.data
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    expected_keys = {"date", "repo", "kind", "title", "snippet"}
+    for row in data:
+        assert set(row.keys()) == expected_keys, (
+            f"unexpected keys in concise row: {set(row.keys())}"
+        )
+        # Full-only keys must be absent
+        assert "branch" not in row
+        assert "ts_start" not in row
+        assert "summary" not in row
+        assert "segment_count" not in row
+
+
+async def test_history_timeline_concise_smaller_than_full(history_client: Client[Any]) -> None:
+    """Concise JSON must be materially smaller than full for a realistic record."""
+    import json
+
+    full_res = await history_client.call_tool(
+        "history_timeline", {"since": "30d", "verbosity": "full"}
+    )
+    concise_res = await history_client.call_tool(
+        "history_timeline", {"since": "30d", "verbosity": "concise"}
+    )
+    full_size = len(json.dumps(full_res.data))
+    concise_size = len(json.dumps(concise_res.data))
+    assert concise_size < full_size, (
+        f"concise ({concise_size} bytes) must be smaller than full ({full_size} bytes)"
+    )
+
+
+async def test_history_search_full_verbosity_default(history_client: Client[Any]) -> None:
+    """Default history_search returns the 15-field shape — regression guard."""
+    res = await history_client.call_tool("history_search", {"query_text": "OAuth2"})
+    data = res.data
+    assert isinstance(data, list)
+    for row in data:
+        assert "branch" in row
+        assert "summary" in row
+
+
+async def test_history_search_concise_verbosity(history_client: Client[Any]) -> None:
+    """verbosity='concise' returns compact rows for history_search."""
+    res = await history_client.call_tool(
+        "history_search", {"query_text": "OAuth2", "verbosity": "concise"}
+    )
+    data = res.data
+    assert isinstance(data, list)
+    expected_keys = {"date", "repo", "kind", "title", "snippet"}
+    for row in data:
+        assert set(row.keys()) == expected_keys
+        assert "branch" not in row
+        assert "summary" not in row

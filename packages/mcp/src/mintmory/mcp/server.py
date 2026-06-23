@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
 try:
@@ -55,6 +55,7 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
 )
+from mintmory.mcp.concise import concise_memory_get, concise_search_response
 
 # ---------------------------------------------------------------------------
 # Server initialisation
@@ -64,24 +65,23 @@ mcp: FastMCP[Any] = FastMCP(
     name="mintmory",
     version="0.1.0",
     instructions=(
-        "MintMory: typed memory system for LLM agents. "
-        "Uses a Palantir-Ontology-inspired model: 8 memory categories (fact, skill, "
-        "preference, identity, context, episodic, temporal, relationship) and 12 typed "
-        "ConceptLink relationships (incl. annotates). "
-        "Use memory_search with search_around to traverse the memory graph. "
-        "Call session_feedback after each query session to update usefulness scores. "
-        "Call memory_dream periodically to consolidate and link concepts. "
-        "Use memory_note for explicit user 'remember this' requests; it marks a note "
-        "that is exempt from auto-archival and wins contradictions over inferred memories. "
-        "For L3 concept summaries you can supply the text yourself: call summary_jobs to get "
-        "the concepts (and their memories) that need summarising, write each summary, and send "
-        "it back with summary_put — no separate LLM backend required. "
-        "For indexed images you can supply the description yourself: call image_jobs to get the "
-        "images needing a description, read each (inline base64 or via its path), write one "
-        "combined description, and send it back with image_caption_put — no vision backend needed. "
-        "If a server-side vision model is configured (MINTMORY_VISION_PROVIDER=llm), call "
-        "vision_run to auto-caption pending indexed images without the manual image_jobs loop; "
-        "with the default provider=agent it no-ops."
+        "MintMory: typed memory system for LLM agents (8 categories: fact, skill, "
+        "preference, identity, context, episodic, temporal, relationship; "
+        "12 ConceptLink types including annotates). "
+        'BROWSING: use memory_search with verbosity="concise" for id+snippet results '
+        'when scanning many memories; switch to verbosity="full" (default) only when '
+        "you need complete body/metadata. "
+        "GRAPH: use search_around to traverse the memory graph via typed relationships. "
+        "FEEDBACK: call session_feedback after each query session to update usefulness scores. "
+        "CONSOLIDATION: call memory_dream periodically to link concepts and resolve "
+        "contradictions. "
+        "NOTES: use memory_note for explicit user 'remember this' requests — exempt from "
+        "auto-archival and win contradictions over inferred memories. "
+        "SUMMARIES: call summary_jobs to get concepts needing synthesis, write each summary, "
+        "send it back with summary_put — no separate LLM backend required. "
+        "IMAGES: call image_jobs to get images needing a description, write a combined "
+        "description, send it back with image_caption_put — no vision backend needed. "
+        "If MINTMORY_VISION_PROVIDER=llm is configured, call vision_run to auto-caption instead."
     ),
 )
 
@@ -142,13 +142,22 @@ def memory_add(
 
 
 @mcp.tool()
-def memory_get(memory_id: str) -> dict[str, Any] | None:
-    """Retrieve a single memory by its ID. Returns None if not found."""
+def memory_get(
+    memory_id: str,
+    verbosity: Literal["full", "concise"] = "full",
+) -> dict[str, Any] | None:
+    """Retrieve a single memory by its ID. Returns None if not found.
+
+    Pass verbosity="concise" for a compact {id, category, content} projection
+    when you only need the body; use the default "full" for all fields.
+    """
     store = _get_store()
     record = store.get_memory(memory_id)
     if record is None:
         return None
     result: dict[str, Any] = record.model_dump(mode="json")
+    if verbosity == "concise":
+        return concise_memory_get(result)
     return result
 
 
@@ -161,6 +170,7 @@ def memory_search(
     search_around_link_types: list[str] | None = None,
     search_around_depth: int = 1,
     exclude_stale: bool = True,
+    verbosity: Literal["full", "concise"] = "full",
 ) -> dict[str, Any]:
     """
     Search memories using hybrid FTS5 + vector similarity.
@@ -181,6 +191,10 @@ def memory_search(
             ['contradicts', 'relates_to']. Empty = all types.
         search_around_depth: How many hops to traverse (1–3).
         exclude_stale: Whether to exclude stale memories.
+        verbosity: "full" (default) returns the complete SearchResponse with
+            full MemoryRecord objects; "concise" returns a compact projection
+            {id, category, snippet, is_note} per hit — use it for browsing/
+            scanning; call memory_get with verbosity="full" when you need the body.
 
     Returns:
         SearchResponse dict with session_id, memories, total_found,
@@ -209,6 +223,8 @@ def memory_search(
     )
     response = store.search(request)
     result: dict[str, Any] = response.model_dump(mode="json")
+    if verbosity == "concise":
+        return concise_search_response(result)
     return result
 
 
@@ -220,12 +236,9 @@ def memory_dream(intensity: str = "light") -> dict[str, Any]:
     Light: anomaly detection + concept linking + summary generation.
     Full: light + contradiction resolution + archival + rehabilitation.
 
-    The summarizer + contradiction resolver are built from the configured LLM tier
-    (MINTMORY_LLM_*; e.g. Ollama or a Portkey/OpenAI-compatible gateway). When
-    MINTMORY_LLM_PROVIDER=none (the default), the summary-generation and
-    contradiction-resolution steps are skipped (counts stay 0) and only the
-    structural steps run. Linking + summary policy follow MINTMORY_LINK_* /
-    MINTMORY_SUMMARY_*.
+    LLM-backed steps follow the configured tier; see docs/agent-history-mcp.md
+    (LLM/config section). With MINTMORY_LLM_PROVIDER=none (default) only the
+    structural steps run (summaries and contradiction resolution are skipped).
 
     Returns a DreamReport with counts of changes made.
     """

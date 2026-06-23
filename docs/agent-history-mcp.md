@@ -128,3 +128,46 @@ mintmory history scrub                                    # audit for any residu
 - Never point the DB selector (`--db`, or `MINTMORY_DB` for Tier-1 / `MINTMORY_HISTORY_DB`
   for Tier-2) at `hermes.db`/`memories.db` — the tooling refuses, but the env is
   yours to set, so keep the history DB a distinct file.
+
+---
+
+## `verbosity="concise"` — lightweight browsing
+
+All four token-heavy read tools accept an optional `verbosity` parameter:
+
+| Tool | `verbosity="full"` (default) | `verbosity="concise"` |
+|---|---|---|
+| `memory_search` | Full `SearchResponse` (~25 fields/hit) | `{id, category, snippet, is_note}` per hit; `notes_on_results` → ids only |
+| `memory_get` | All 30 fields | `{id, category, content}` |
+| `history_timeline` | 15-field row | `{date, repo, kind, title, snippet}` |
+| `history_search` | 15-field row | `{date, repo, kind, title, snippet}` |
+
+Use `verbosity="concise"` for browse/scan passes; switch to `verbosity="full"` when
+you need the body, metadata, scoring fields, or source_path back-links.
+
+Default is always `"full"` — existing clients are unaffected.
+
+---
+
+## LLM tier configuration for `memory_dream`
+
+`memory_dream` runs structural steps (anomaly detection, concept linking) with any
+configuration, but the summariser and contradiction-resolver are backed by the
+configured LLM tier:
+
+| Env var | Purpose | Example |
+|---|---|---|
+| `MINTMORY_LLM_PROVIDER` | `none` (default, skips LLM steps), `openai` (OpenAI-compatible) | `openai` |
+| `MINTMORY_LLM_BASE_URL` | Base URL of the provider / gateway | `http://localhost:8789/v1` |
+| `MINTMORY_LLM_API_KEY` | API key for the provider | `pk-hermes-...` |
+| `MINTMORY_LLM_MODEL` | Model name to use | `MiniMax-M2.7` |
+| `MINTMORY_LINK_*` | Concept-linking policy | see source |
+| `MINTMORY_SUMMARY_*` | Summary generation policy | see source |
+
+With `MINTMORY_LLM_PROVIDER=none` (the default), the summary-generation and
+contradiction-resolution steps are skipped (`new_summaries=0`,
+`contradictions_resolved=0`) and only structural steps run. No LLM backend is
+required for the structural steps.
+
+A Portkey gateway (self-hosted, `localhost:8789`) with a `pk-<name>-<org>` virtual
+key is the recommended way to proxy cloud models (MiniMax-M2.5 / M2.7) to MintMory.

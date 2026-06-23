@@ -20,7 +20,7 @@ Transport: stdio (default) or sse (--transport sse --port <N>).
 from __future__ import annotations
 
 import os
-from typing import Any
+from typing import Any, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
 try:
@@ -30,6 +30,7 @@ except ImportError as e:
 
 from mintmory.core.history import query
 from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, _assert_not_working_db
+from mintmory.mcp.concise import concise_history_row
 
 # ---------------------------------------------------------------------------
 # Server initialisation
@@ -38,13 +39,16 @@ from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, _assert_not_working
 mcp: FastMCP[Any] = FastMCP(
     "mintmory-history",
     instructions=(
-        "This server is READ-ONLY history of past coding sessions across "
-        "Claude Code / Codex / Kiro. "
-        "Use 'history_timeline' for 'what changed / was fixed in the last N days/weeks/months' "
-        "queries — returns newest-first dated session summaries with source_path back-links. "
-        "Use 'history_search' for topic recall across all indexed sessions. "
-        "Use 'history_stats' to see counts of sessions/segments by source and kind, plus the "
-        "earliest/latest session dates. "
+        "READ-ONLY history of past coding sessions (Claude Code / Codex / Kiro). "
+        "TIMELINE: use history_timeline for "
+        "'what changed/was fixed in the last N days/weeks/months' "
+        "— returns newest-first session summaries. "
+        'BROWSING: pass verbosity="concise" for compact '
+        "{date, repo, kind, title, snippet} rows "
+        'when scanning many sessions; use the default verbosity="full" '
+        "for source_path back-links and all 15 fields. "
+        "SEARCH: use history_search for topic recall across all indexed sessions. "
+        "STATS: use history_stats to see session/segment counts and date range. "
         "No tool here writes, adds, archives, dreams, or otherwise mutates any store."
     ),
 )
@@ -69,11 +73,12 @@ def history_timeline(
     kind: str | None = None,
     limit: int = 50,
     group: bool = False,
+    verbosity: Literal["full", "concise"] = "full",
 ) -> list[dict[str, Any]]:
     """Dated changelog of agent sessions in a time window (the 'what changed N ago' query).
 
     Returns newest-first session summaries from the agent-history index.
-    Each result is a dict with: date, ts_start, agent, collection, repo, branch,
+    Each full result is a dict with: date, ts_start, agent, collection, repo, branch,
     kind, title, summary, session_id, source_path, segment_index, segment_count,
     turn_lo, turn_hi, outcome.
 
@@ -87,6 +92,9 @@ def history_timeline(
         limit: Max rows to return (default 50).
         group: When True, group segments by session (each session's segments
                in ascending segment_index order, groups newest-first).
+        verbosity: "full" (default) returns all 15 fields including source_path and
+            branch; "concise" returns a compact {date, repo, kind, title, snippet}
+            projection for lightweight browsing/scanning.
     """
     # If both from_date and to_date are None but since has its default value,
     # pass since through as-is.  If the caller explicitly passes from_date or
@@ -95,7 +103,7 @@ def history_timeline(
     if from_date is not None or to_date is not None:
         effective_since = None
 
-    return query.timeline(
+    rows = query.timeline(
         _db_path(),
         since=effective_since,
         from_iso=from_date,
@@ -105,6 +113,9 @@ def history_timeline(
         limit=limit,
         group_by_session=group,
     )
+    if verbosity == "concise":
+        return [concise_history_row(r) for r in rows]
+    return rows
 
 
 @mcp.tool()
@@ -113,6 +124,7 @@ def history_search(
     repo: str | None = None,
     since: str | None = None,
     limit: int = 10,
+    verbosity: Literal["full", "concise"] = "full",
 ) -> list[dict[str, Any]]:
     """Hybrid search across indexed agent session summaries.
 
@@ -125,11 +137,17 @@ def history_search(
         repo: Optional repo-name filter (exact match on metadata.repo).
         since: Optional recency window like '90d', '8w', '3m' (no from/to here).
         limit: Max results to return (default 10).
+        verbosity: "full" (default) returns the 15-field row shape (same as
+            history_timeline); "concise" returns {date, repo, kind, title, snippet}
+            for lightweight scanning.
 
     Returns:
         List of row dicts in search-rank order (same shape as history_timeline).
     """
-    return query.search(_db_path(), query_text, repo=repo, since=since, limit=limit)
+    rows = query.search(_db_path(), query_text, repo=repo, since=since, limit=limit)
+    if verbosity == "concise":
+        return [concise_history_row(r) for r in rows]
+    return rows
 
 
 @mcp.tool()
