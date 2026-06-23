@@ -1,0 +1,15 @@
+{
+  "session_id": "cron_test123_20240315",
+  "model": "test-model-1.0",
+  "base_url": "http://localhost:11434/v1",
+  "platform": "ollama",
+  "session_start": "2024-03-15T10:10:00.000000",
+  "last_updated": "2024-03-15T10:10:30.000000",
+  "system_prompt": "Automated cron task.",
+  "tools": [],
+  "message_count": 2,
+  "messages": [
+    {"role": "user", "content": "Run scheduled task."},
+    {"role": "assistant", "content": "Task complete."}
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "session_id": "20240315_100000_aabbccdd",
+  "model": "test-model-1.0",
+  "base_url": "http://localhost:11434/v1",
+  "platform": "ollama",
+  "session_start": "2024-03-15T10:00:00.000000",
+  "last_updated": "2024-03-15T10:05:30.000000",
+  "system_prompt": "You are a helpful assistant.",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "bash",
+        "description": "Run a bash command",
+        "parameters": {"type": "object", "properties": {"command": {"type": "string"}}}
+      }
+    }
+  ],
+  "message_count": 5,
+  "messages": [
+    {
+      "role": "user",
+      "content": "What files are in the current directory?"
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_001",
+          "call_id": "call_001",
+          "response_item_id": "resp_001",
+          "type": "function",
+          "function": {"name": "bash", "arguments": "{\"command\": \"ls -la\"}"}
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "content": "{\"output\": \"total 8\\ndrwxr-xr-x 2 user user 4096 Mar 15 10:00 .\\n\", \"exit_code\": 0}",
+      "tool_call_id": "call_001"
+    },
+    {
+      "role": "assistant",
+      "content": "The directory contains the listed files."
+    },
+    {
+      "role": "user",
+      "content": {"key": "structured content example", "value": 42}
+    }
+  ]
+}

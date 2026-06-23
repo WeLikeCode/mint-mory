@@ -1,7 +1,7 @@
 # Agent History — a searchable changelog of your agentic work
 
 MintMory can index the chat history of your coding agents — **Claude Code,
-Codex, and Kiro** — into one searchable, time-aware changelog, so you (or an
+Codex, Kiro, and Hermes** — into one searchable, time-aware changelog, so you (or an
 agent) can answer questions like *"what did I fix or add in `mintkey` about two
 months ago?"* in seconds instead of grepping gigabytes of transcripts.
 
@@ -21,9 +21,10 @@ transcripts.
 ## How it works (30-second model)
 
 ```
-~/.claude/projects/**.jsonl ─┐
-~/.codex/sessions/**.jsonl  ─┤  adapters → redact secrets → distill →  ~/.mintmory/
-Kiro globalStorage sessions ─┘  (one dated summary per session)         agent-history.db
+~/.claude/projects/**.jsonl   ─┐
+~/.codex/sessions/**.jsonl    ─┤  adapters → redact secrets → distill →  ~/.mintmory/
+Kiro globalStorage sessions   ─┤  (one dated summary per session)         agent-history.db
+~/.hermes/sessions/session_*  ─┘
 ```
 
 - **One summary per session.** Each session becomes a single dated changelog
@@ -34,7 +35,7 @@ Kiro globalStorage sessions ─┘  (one dated summary per session)         agen
 - **Secrets are redacted at ingest** (API keys, JWTs, broker keys, private keys,
   `Authorization` headers → `[REDACTED:…]`). A `scrub` audit re-checks the store.
 - **Differentiation:** every chat record is tagged `record_type=session_summary`,
-  `source=AGENT`, and `collection ∈ {claude-code, codex, kiro}`, and lives in a
+  `source=AGENT`, and `collection ∈ {claude-code, codex, kiro, hermes}`, and lives in a
   separate DB — so it's trivially distinct from your authored docs/notes.
 
 ---
@@ -68,7 +69,7 @@ mintmory history sync
 
 | Command | What it does |
 |---|---|
-| `mintmory history backfill [--source claude_code\|codex\|kiro] [--limit N] [--db PATH]` | Index all sessions (idempotent — safe to re-run). |
+| `mintmory history backfill [--source claude_code\|codex\|kiro\|hermes] [--limit N] [--db PATH]` | Index all sessions (idempotent — safe to re-run). |
 | `mintmory history sync [--source …] [--db PATH]` | Incremental refresh: skips unchanged session files. |
 | `mintmory history timeline [--since 2m \| --from ISO --to ISO] [--repo R] [--kind K] [--limit N]` | Dated changelog window, newest-first. |
 | `mintmory history search QUERY [--repo R] [--since 90d] [--limit N]` | Hybrid (keyword+vector) search over session summaries. |
@@ -117,7 +118,7 @@ since='2m' and repo='mintkey' to find what I fixed there two months ago."*
 - **"Find that session about the Kong JWT bug"** → `mintmory history search "kong jwt" --since 6m`
 - **"A specific date range"** → `mintmory history timeline --from 2026-04-01 --to 2026-04-30`
 - **"Re-read the original transcript"** → copy the `source_path` from a result and open it.
-- **"Index only one tool"** → `mintmory history backfill --source codex`
+- **"Index only one tool"** → `mintmory history backfill --source codex` (or `--source hermes` for Hermes sessions)
 - **"What's even in here?"** → the `history_stats` MCP tool, or a quick SQL count
   (see *Inspect the store directly* under Debugging).
 

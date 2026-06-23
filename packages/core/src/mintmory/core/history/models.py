@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-AGENTS: tuple[str, ...] = ("claude_code", "codex", "kiro")
+AGENTS: tuple[str, ...] = ("claude_code", "codex", "kiro", "hermes")
 KINDS: tuple[str, ...] = (
     "fix",
     "feature",

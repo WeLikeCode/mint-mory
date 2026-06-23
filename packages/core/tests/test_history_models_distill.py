@@ -27,7 +27,7 @@ from mintmory.core.history.models import (
 
 
 def test_agents_tuple() -> None:
-    assert set(AGENTS) == {"claude_code", "codex", "kiro"}
+    assert set(AGENTS) == {"claude_code", "codex", "kiro", "hermes"}
 
 
 def test_kinds_tuple() -> None:

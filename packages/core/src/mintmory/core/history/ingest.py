@@ -50,6 +50,7 @@ _COLLECTION_FOR_AGENT: dict[str, str] = {
     "claude_code": "claude-code",
     "codex": "codex",
     "kiro": "kiro",
+    "hermes": "hermes",
 }
 
 
@@ -123,6 +124,10 @@ def _load_adapter(name: str) -> object:
             from mintmory.core.history.adapters import kiro  # noqa: PLC0415
 
             _ADAPTERS[name] = kiro.iter_sessions
+        elif name == "hermes":
+            from mintmory.core.history.adapters import hermes  # noqa: PLC0415
+
+            _ADAPTERS[name] = hermes.iter_sessions
         else:
             raise ValueError(f"Unknown adapter: {name!r}")
     return _ADAPTERS[name]
@@ -727,7 +732,7 @@ def _open_history_db(db_path: str) -> StorageAdapter:
 # Source names
 # ---------------------------------------------------------------------------
 
-_ALL_SOURCES = ("claude_code", "codex", "kiro")
+_ALL_SOURCES = ("claude_code", "codex", "kiro", "hermes")
 
 
 # ---------------------------------------------------------------------------

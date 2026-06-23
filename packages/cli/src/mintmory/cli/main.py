@@ -1344,7 +1344,7 @@ def _parse_since(since: str) -> datetime:
 @history_app.command("backfill")
 def history_backfill(
     source: list[str] = typer.Option(
-        [], "--source", help="Adapter(s) to run: claude_code, codex, kiro (repeatable)"
+        [], "--source", help="Adapter(s) to run: claude_code, codex, kiro, hermes (repeatable)"
     ),
     db: str = typer.Option("", "--db", help="History DB path (default: agent-history.db)"),
     limit: int = typer.Option(0, "--limit", help="Cap sessions per source (0 = unlimited)"),
@@ -1425,7 +1425,7 @@ def history_backfill(
 @history_app.command("sync")
 def history_sync(
     source: list[str] = typer.Option(
-        [], "--source", help="Adapter(s): claude_code, codex, kiro (repeatable)"
+        [], "--source", help="Adapter(s): claude_code, codex, kiro, hermes (repeatable)"
     ),
     db: str = typer.Option("", "--db", help="History DB path"),
     max_llm_calls: int = typer.Option(
