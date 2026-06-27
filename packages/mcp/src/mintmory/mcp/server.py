@@ -41,6 +41,7 @@ except ImportError as e:
 
 from mintmory.core import notes as notes_mod
 from mintmory.core import session as session_mod
+from mintmory.core.cochange import changed_with, documents_timeline
 from mintmory.core.config import LLMProvider, load_settings
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.storage import StorageAdapter
@@ -243,6 +244,32 @@ def mintmory_session_closeout(session_id: str, useful_ids: str = "", stale_ids: 
         "This updates usefulness/staleness scores so MintMory self-improves.\n"
         "If you found no relevant memories, submit with empty lists — still call it.\n"
         "A session can only receive feedback once (returns conflict error if repeated)."
+    )
+
+
+@mcp.prompt()
+def mintmory_what_cochanged_with(path: str) -> str:
+    """Find documents that co-changed with a file, and how to read the result."""
+    return (
+        f"To find documents that co-changed with {path!r}:\n\n"
+        f"1. Call docs_changed_with(path={path!r})\n\n"
+        "2. Read each peer result:\n"
+        "   • `strength` (0.0–1.0): proximity score — higher = stronger co-change signal.\n"
+        "   • `observed_at`: ISO timestamp of when the co-change was observed.\n"
+        "   • `kind`: changeset kind — `cold_full_index` means co-location (same folder,\n"
+        "     same indexing run), `incremental` means a later re-index caught both files.\n"
+        '     `kind` may be empty ("") for legacy rows.\n\n'
+        "HONESTY CAVEAT: this is OBSERVED co-change — files that were indexed in the\n"
+        "same time window with high folder + content proximity. It is NOT a version-\n"
+        "controlled commit. `cold_full_index` peers may simply be co-located in the\n"
+        "same directory, not actually co-edited.\n\n"
+        f"3. If the result is empty, {path!r} may not be indexed or may not belong\n"
+        "   to any change-set. Run:\n"
+        "     mintmory index-tree <root> --cochange\n"
+        "   to (re-)build co-change data for the corpus.\n\n"
+        "4. For document recency (which files are newest), call docs_timeline with\n"
+        "   an optional `since` window (e.g. since='30d') or `from_date`/`to_date`.\n\n"
+        "This prompt is read-only: it suggests no write or store-altering operations."
     )
 
 
@@ -636,6 +663,61 @@ def notes_list(
     except ValueError as exc:
         return {"error": "bad_request", "message": str(exc)}
     return [m.model_dump(mode="json") for m in records]
+
+
+# ---------------------------------------------------------------------------
+# Co-change / document recency tools (MM-41)
+# ---------------------------------------------------------------------------
+
+_DOCS_TIMELINE_MAX = 200  # hard cap so a single MCP call cannot pull the whole corpus
+
+
+@mcp.tool()
+def docs_changed_with(path: str) -> list[dict[str, Any]]:
+    """Documents observed to co-change with <path> (same index-tree change-set).
+
+    Returns [{path, strength, observed_at, kind}] — each peer in the same observed
+    change-set as <path>. Empty if <path> is not indexed or not part of a change-set.
+
+    OBSERVED co-change means the files were indexed in the same time window with
+    high folder/content proximity — NOT a version-controlled commit. `kind` may be
+    empty ("") for legacy rows that predate changeset_kind labelling.
+
+    To populate this data: run `mintmory index-tree <root> --cochange` first.
+    Read-only. Only source='document' records are ever returned.
+    """
+    return changed_with(_get_store(), path)
+
+
+@mcp.tool()
+def docs_timeline(
+    since: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    collection: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]] | dict[str, str]:
+    """Indexed documents newest-first by file modified-time (valid_from).
+
+    Returns [{date, collection, path, title, valid_from}]. Use `since='30d'` for a
+    rolling window, or `from_date`/`to_date` (ISO 8601) for a fixed range.
+    Optional `collection` filter. `limit` is capped at 200 for token safety.
+
+    A malformed `since`/date value returns {"error": "bad_request", "detail": ...}
+    instead of raising. Read-only. Only source='document' records appear.
+    """
+    capped = max(1, min(limit, _DOCS_TIMELINE_MAX))
+    try:
+        return documents_timeline(
+            _get_store(),
+            since=since,
+            from_iso=from_date,
+            to_iso=to_date,
+            collection=collection,
+            limit=capped,
+        )
+    except ValueError as exc:  # bad `since`/date grammar
+        return {"error": "bad_request", "detail": str(exc)}
 
 
 # ---------------------------------------------------------------------------

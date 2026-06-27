@@ -65,6 +65,8 @@ async def test_all_tools_registered(mcp_client: Client[Any]) -> None:
         "image_jobs",
         "image_caption_put",
         "vision_run",
+        "docs_changed_with",
+        "docs_timeline",
     }
 
 

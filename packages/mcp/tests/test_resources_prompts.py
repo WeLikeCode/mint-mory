@@ -249,6 +249,7 @@ async def test_prompts_listed_with_mintmory_prefix(mcp_client: Client[Any]) -> N
         "mintmory_recall_before_task",
         "mintmory_onboard",
         "mintmory_session_closeout",
+        "mintmory_what_cochanged_with",
     ):
         assert expected in names, f"Prompt {expected!r} not listed"
 
@@ -391,10 +392,10 @@ async def test_main_server_resource_count(mcp_client: Client[Any]) -> None:
 
 
 async def test_main_server_prompt_count(mcp_client: Client[Any]) -> None:
-    """Main server has exactly 3 new prompts."""
+    """Main server has exactly 4 mintmory_ prompts (3 from MM-40 + 1 from MM-41)."""
     prompts = await mcp_client.list_prompts()
     mintmory_prompts = [p for p in prompts if p.name.startswith("mintmory_")]
-    assert len(mintmory_prompts) == 3
+    assert len(mintmory_prompts) == 4
 
 
 async def test_history_server_resource_count(history_client: Client[Any]) -> None:

@@ -117,6 +117,21 @@ The main `mintmory-mcp` server (for working memory) exposes:
 - `mintmory_onboard(db_path?, llm_enabled?)` — the MintMory adoption policy as a prompt.
 - `mintmory_recall_before_task(intent, link_types?)` — search-first → act → session_feedback discipline.
 - `mintmory_session_closeout(session_id, useful_ids?, stale_ids?)` — the session feedback close-out call.
+- `mintmory_what_cochanged_with(path)` — guidance to call `docs_changed_with` for the given path,
+  interpret `strength`/`observed_at`/`kind`, with the observed-co-change (not-a-commit) honesty caveat,
+  and an index-tree hint when the result is empty. Read-only; no write suggestions.
+
+**Tools (MM-41, read-only, working-store scope):**
+- `docs_changed_with(path)` → documents observed to co-change with `path` in the same `index-tree`
+  change-set. Returns `[{path, strength, observed_at, kind}]`; empty if not indexed or not in a
+  change-set. `kind` may be `""` for legacy rows. OBSERVED co-change (time + folder + content
+  proximity) — **not** a version-controlled commit. Read-only; only `source='document'` records.
+  > **Scope**: reads the working store (`MINTMORY_DB`). Documents indexed into a separate `--db`
+  > are not visible here. Populate with `mintmory index-tree <root> --cochange`.
+- `docs_timeline(since?, from_date?, to_date?, collection?, limit=50)` → indexed documents newest-first
+  by file mtime. Returns `[{date, collection, path, title, valid_from}]`. `limit` is capped at 200
+  for token safety. A malformed date/since returns `{"error":"bad_request","detail":...}`. Read-only;
+  only `source='document'` records appear.
 
 ---
 
