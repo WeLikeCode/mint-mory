@@ -19,6 +19,7 @@ Transport: stdio (default) or sse (--transport sse --port <N>).
 
 from __future__ import annotations
 
+import json as _json
 import os
 from typing import Any, Literal
 
@@ -57,6 +58,59 @@ mcp: FastMCP[Any] = FastMCP(
 def _db_path() -> str:
     """Return the history DB path from MINTMORY_HISTORY_DB or the default."""
     return os.environ.get("MINTMORY_HISTORY_DB", os.path.expanduser(DEFAULT_HISTORY_DB))
+
+
+# ---------------------------------------------------------------------------
+# Shared aggregation helper (used by both history_stats tool and
+# mintmory://history/sources resource — MM-40)
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_stats(db_path: str) -> dict[str, Any]:
+    """Aggregate indexed session-summary rows into stats dict.
+
+    Returns: total_sessions, total_segments, by_collection, by_kind,
+             earliest, latest. No per-session content is included.
+    """
+    store = query._open_history(db_path)
+    conn = store.connect()
+
+    rows = conn.execute(
+        "SELECT metadata, valid_from FROM memories "
+        "WHERE is_archived = 0 "
+        "  AND json_extract(metadata, '$.record_type') = 'session_summary' "
+        "ORDER BY valid_from ASC"
+    ).fetchall()
+
+    by_collection: dict[str, int] = {}
+    by_kind: dict[str, int] = {}
+    earliest: str | None = None
+    latest: str | None = None
+    session_ids: set[str] = set()
+
+    for row in rows:
+        meta: dict[str, Any] = _json.loads(row["metadata"] or "{}")
+        coll = meta.get("collection", "unknown")
+        knd = meta.get("kind", "unknown")
+        by_collection[coll] = by_collection.get(coll, 0) + 1
+        by_kind[knd] = by_kind.get(knd, 0) + 1
+        vf = (row["valid_from"] or "")[:10] or None
+        if vf:
+            if earliest is None:
+                earliest = vf
+            latest = vf
+        sid = meta.get("session_id", "")
+        if sid:
+            session_ids.add(sid)
+
+    return {
+        "total_sessions": len(session_ids),
+        "total_segments": len(rows),
+        "by_collection": by_collection,
+        "by_kind": by_kind,
+        "earliest": earliest,
+        "latest": latest,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -162,48 +216,64 @@ def history_stats() -> dict[str, Any]:
       earliest: ISO date of the oldest segment (or null)
       latest: ISO date of the newest segment (or null)
     """
-    import json as _json
+    return _aggregate_stats(_db_path())
 
-    # Reuse the shared opener (Hermes guard + parent-dir creation) — single source of truth.
-    store = query._open_history(_db_path())
-    conn = store.connect()
 
-    rows = conn.execute(
-        "SELECT metadata, valid_from FROM memories "
-        "WHERE is_archived = 0 "
-        "  AND json_extract(metadata, '$.record_type') = 'session_summary' "
-        "ORDER BY valid_from ASC"
-    ).fetchall()
+# ---------------------------------------------------------------------------
+# Resources — read-on-demand structured data (MM-40)
+# ---------------------------------------------------------------------------
 
-    by_collection: dict[str, int] = {}
-    by_kind: dict[str, int] = {}
-    earliest: str | None = None
-    latest: str | None = None
-    session_ids: set[str] = set()
 
-    for row in rows:
-        meta: dict[str, Any] = _json.loads(row["metadata"] or "{}")
-        coll = meta.get("collection", "unknown")
-        knd = meta.get("kind", "unknown")
-        by_collection[coll] = by_collection.get(coll, 0) + 1
-        by_kind[knd] = by_kind.get(knd, 0) + 1
-        vf = (row["valid_from"] or "")[:10] or None
-        if vf:
-            if earliest is None:
-                earliest = vf
-            latest = vf
-        sid = meta.get("session_id", "")
-        if sid:
-            session_ids.add(sid)
-
+@mcp.resource("mintmory://history/sources")
+def mintmory_history_sources() -> dict[str, Any]:
+    """Indexed collections with per-collection counts and earliest/latest dates.
+    No per-session content. Derived from the same aggregation as history_stats."""
+    stats = _aggregate_stats(_db_path())
+    # Return only the orientation fields — no per-session content
     return {
-        "total_sessions": len(session_ids),
-        "total_segments": len(rows),
-        "by_collection": by_collection,
-        "by_kind": by_kind,
-        "earliest": earliest,
-        "latest": latest,
+        "by_collection": stats["by_collection"],
+        "total_sessions": stats["total_sessions"],
+        "total_segments": stats["total_segments"],
+        "earliest": stats["earliest"],
+        "latest": stats["latest"],
     }
+
+
+# ---------------------------------------------------------------------------
+# Prompts — read-only guidance for history tools (MM-40)
+# ---------------------------------------------------------------------------
+
+
+@mcp.prompt()
+def mintmory_changelog(repo: str = "", since: str = "90d", kind: str = "") -> str:
+    """Guidance to query the agent-history changelog for a time window.
+
+    References only READ tools — this server has no write capability.
+
+    Args:
+        repo: Optional repo name to filter (e.g. 'mintkey'). Empty = all repos.
+        since: Relative window like '90d', '8w', '3m', '2y' (default '90d').
+        kind: Optional kind filter (fix/feature/refactor/…). Empty = all kinds.
+    """
+    repo_clause = f", repo={repo!r}" if repo.strip() else ""
+    kind_clause = f", kind={kind!r}" if kind.strip() else ""
+    return (
+        "## Agent-history changelog\n\n"
+        "To see what changed, call history_timeline (a READ-only tool):\n\n"
+        f"    history_timeline(\n"
+        f"        since={since!r}{repo_clause}{kind_clause},\n"
+        f"        limit=50,\n"
+        f"    )\n\n"
+        "Results are returned newest-first. Each row has: date, repo, kind, title,\n"
+        "summary, session_id, and source_path back-links.\n\n"
+        "Tips:\n"
+        f"  • Use since='{since}' for the last {since} (e.g. '30d'=30 days, '2m'=2 months).\n"
+        "  • Pass from_date/to_date (ISO strings) instead of since for absolute ranges.\n"
+        "  • Use history_search(query_text=...) for topic-based recall across all time.\n"
+        "  • Use history_stats() to see per-collection counts and the date range.\n\n"
+        "This server is READ-ONLY: no add, archive, dream, or other mutating tools\n"
+        "are available here."
+    )
 
 
 # ---------------------------------------------------------------------------

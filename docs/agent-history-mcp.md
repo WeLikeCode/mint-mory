@@ -97,6 +97,27 @@ Typical agent use: *"call history_timeline with since='2m' and repo='mintkey' to
 see what was fixed there ~2 months ago"*, or `history_search("kong jwt")` for topic
 recall. Results are dated session summaries with `source_path` back-links.
 
+## Resources & Prompts (MM-40)
+
+The history server also exposes:
+
+**Resource:**
+- `mintmory://history/sources` — per-collection session counts + earliest/latest dates. Read with your MCP client to get an orientation view without fetching session content.
+
+**Prompt:**
+- `mintmory_changelog(repo?, since?, kind?)` — guidance to call `history_timeline` for the requested window. Read-only; references no write tools.
+
+The main `mintmory-mcp` server (for working memory) exposes:
+
+**Resources:**
+- `mintmory://schema` — all 8 memory categories, 12 link types, and 4 sources with one-line descriptions, plus the `MemoryRecord` field list.
+- `mintmory://capabilities` — active configuration summary (embedding provider, LLM provider + enabled flag + model, vision provider, dreaming steps). Never includes API keys.
+
+**Prompts:**
+- `mintmory_onboard(db_path?, llm_enabled?)` — the MintMory adoption policy as a prompt.
+- `mintmory_recall_before_task(intent, link_types?)` — search-first → act → session_feedback discipline.
+- `mintmory_session_closeout(session_id, useful_ids?, stale_ids?)` — the session feedback close-out call.
+
 ---
 
 ## Keeping it current

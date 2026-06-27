@@ -41,7 +41,7 @@ except ImportError as e:
 
 from mintmory.core import notes as notes_mod
 from mintmory.core import session as session_mod
-from mintmory.core.config import load_settings
+from mintmory.core.config import LLMProvider, load_settings
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.storage import StorageAdapter
 from mintmory.core.types import (
@@ -55,6 +55,7 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
 )
+from mintmory.mcp._schema import build_schema
 from mintmory.mcp.concise import concise_memory_get, concise_search_response
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,153 @@ def _get_store() -> StorageAdapter:
         _store = StorageAdapter(db_path)
         _store.initialise()
     return _store
+
+
+# ---------------------------------------------------------------------------
+# Resources — read-on-demand structured data (MM-40)
+# ---------------------------------------------------------------------------
+
+
+@mcp.resource("mintmory://schema")
+def mintmory_schema() -> dict[str, Any]:
+    """Memory taxonomy: all MemoryCategory / ConceptLinkType / MemorySource values
+    with one-line descriptions, plus the MemoryRecord field list. Zero PII."""
+    return build_schema()
+
+
+@mcp.resource("mintmory://capabilities")
+def mintmory_capabilities() -> dict[str, Any]:
+    """Active configuration summary (providers, flags). Never includes api_key or
+    absolute DB paths. Returns a safe minimal dict on settings-load failure."""
+    try:
+        settings = load_settings()
+        llm_enabled = settings.llm.provider is not LLMProvider.NONE
+        return {
+            "embedding_provider": settings.embed.provider.value,
+            "llm_provider": settings.llm.provider.value,
+            "llm_enabled": llm_enabled,
+            "llm_model": settings.llm.model,
+            "vision_provider": settings.vision.provider.value,
+            "dreaming_llm_steps": llm_enabled,
+        }
+    except Exception:  # noqa: BLE001
+        return {"error": "settings unavailable"}
+
+
+# ---------------------------------------------------------------------------
+# Prompts — pre-authored agent-policy templates (MM-40)
+# ---------------------------------------------------------------------------
+
+
+@mcp.prompt()
+def mintmory_recall_before_task(intent: str, link_types: str = "") -> str:
+    """Guidance to search memory before acting on a task, then close the loop.
+
+    Args:
+        intent: What you are about to work on (used as the search query).
+        link_types: Optional comma-separated ConceptLinkType values for graph
+            traversal, e.g. "relates_to,contradicts". Leave empty for no graph hop.
+    """
+    lt_clause = ""
+    if link_types.strip():
+        lt_clause = f", search_around_link_types={link_types.strip().split(',')!r}"
+    return (
+        f"Before acting on: {intent!r}\n\n"
+        "1. RECALL FIRST — call memory_search:\n"
+        f'   memory_search(query="{intent}"{lt_clause})\n'
+        "   KEEP the returned session_id — you will need it in step 3.\n\n"
+        "2. ACT — use the retrieved memories to inform your work.\n\n"
+        "3. CLOSE THE LOOP — after finishing, call session_feedback:\n"
+        "   session_feedback(\n"
+        "       session_id=<session_id from step 1>,\n"
+        "       useful_ids=[<ids of memories that helped>],\n"
+        "       stale_ids=[<ids of memories that were wrong or outdated>],\n"
+        "       confidence_rating=1..5,\n"
+        "       reasoning='<one sentence explanation>',\n"
+        "   )\n"
+        "   This self-assessment lets MintMory improve without human intervention.\n\n"
+        "Source policy: hermes-onboarding.md §STEP 5 (recall→feedback discipline)."
+    )
+
+
+@mcp.prompt()
+def mintmory_onboard(db_path: str = "", llm_enabled: bool = False) -> str:
+    """MintMory onboarding policy (Part 1). Renders the adoption checklist as a prompt.
+
+    Args:
+        db_path: Optional path to the MintMory database (shown in the YAML snippet).
+        llm_enabled: When True, includes LLM-tier configuration guidance.
+    """
+    db_line = f"MINTMORY_DB: {db_path}" if db_path else "MINTMORY_DB: ~/.mintmory/memories.db"
+    llm_section = ""
+    if llm_enabled:
+        llm_section = (
+            "\n      MINTMORY_LLM_PROVIDER: openai\n"
+            "      MINTMORY_LLM_BASE_URL: http://localhost:8789/v1\n"
+            "      MINTMORY_LLM_MODEL: MiniMax-M2.7"
+        )
+    return (
+        "## MintMory Onboarding — adopt this memory policy\n\n"
+        "MintMory is a local, typed, graph-linked memory system. Taxonomy reference:\n"
+        "  mintmory://schema  (read with your MCP client to see all 8 categories +\n"
+        "                      12 link types with descriptions)\n\n"
+        "### Register the MCP server\n\n"
+        "Add this block to your MCP configuration (command: uv run mintmory-mcp):\n\n"
+        "    mintmory:\n"
+        "      command: uv\n"
+        "      args: [run, --project, /path/to/MintMory, mintmory-mcp]\n"
+        "      enabled: true\n"
+        "      env:\n"
+        f"        {db_line}\n"
+        "        MINTMORY_EMBED_PROVIDER: hashing"
+        f"{llm_section}\n\n"
+        "### Memory policy — apply every task\n\n"
+        "  • RECALL FIRST: memory_search(query=<intent>) before acting.\n"
+        "    Pass search_around_link_types=['relates_to'] for related items.\n"
+        "    KEEP the returned session_id.\n\n"
+        "  • WRITE durable knowledge: memory_add(content, category) where category\n"
+        "    is one of: identity | preference | skill | context | fact |\n"
+        "    episodic | temporal | relationship. One idea per memory.\n\n"
+        "  • CLOSE THE LOOP: session_feedback(session_id, useful_ids=[...],\n"
+        "    stale_ids=[...], confidence_rating=1..5). MintMory self-improves.\n\n"
+        "  • CONSOLIDATE: memory_dream(intensity='full') when idle, to build\n"
+        "    links + summaries and resolve contradictions.\n\n"
+        "  • NOTES: use memory_note only when the user EXPLICITLY asks you to\n"
+        "    remember something ('remember that...', 'note that...').\n\n"
+        "  • BULK LOAD: mintmory ingest <paths...> --category <cat>\n"
+        "    (chunks + dedups automatically; never script add-per-file).\n\n"
+        "### Health check\n\n"
+        "  mintmory doctor   # exit 0 = healthy\n\n"
+        "Source policy: hermes-onboarding.md Part 1."
+    )
+
+
+@mcp.prompt()
+def mintmory_session_closeout(session_id: str, useful_ids: str = "", stale_ids: str = "") -> str:
+    """Guidance to submit session feedback and close the memory feedback loop.
+
+    Args:
+        session_id: The QuerySession id returned by memory_search.
+        useful_ids: Comma-separated memory ids the agent found helpful.
+        stale_ids: Comma-separated memory ids the agent found stale or incorrect.
+    """
+    useful_list = [i.strip() for i in useful_ids.split(",") if i.strip()]
+    stale_list = [i.strip() for i in stale_ids.split(",") if i.strip()]
+    return (
+        "## Close the memory feedback loop\n\n"
+        f"Session id: {session_id}\n\n"
+        "Call session_feedback to record your passive self-assessment:\n\n"
+        "    session_feedback(\n"
+        f"        session_id={session_id!r},\n"
+        f"        useful_ids={useful_list!r},\n"
+        f"        stale_ids={stale_list!r},\n"
+        "        confidence_rating=1..5,   # your overall confidence\n"
+        "        reasoning='<one sentence>',\n"
+        "    )\n\n"
+        "This updates usefulness/staleness scores so MintMory self-improves.\n"
+        "If you found no relevant memories, submit with empty lists — still call it.\n"
+        "A session can only receive feedback once (returns conflict error if repeated)."
+    )
 
 
 # ---------------------------------------------------------------------------
