@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import typer
@@ -34,20 +34,20 @@ from rich.console import Console
 from rich.table import Table
 
 if TYPE_CHECKING:
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.ports import StorageBackend
+    from mintmory.core.storage import SqliteBackend
 
 app = typer.Typer(name="mintmory", help="MintMory — typed memory for LLM agents")
 console = Console()
 
 
-def _get_store() -> StorageAdapter:
+def _get_store() -> StorageBackend:
     from mintmory.core.config import load_settings
     from mintmory.core.embedder import embedder_from_settings
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.storage_factory import build_storage
 
-    db_path = os.environ.get("MINTMORY_DB", str(Path.home() / ".mintmory" / "memories.db"))
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    store = StorageAdapter(db_path, embedder=embedder_from_settings(load_settings().embed))
+    settings = load_settings()
+    store = build_storage(settings.storage, embedder=embedder_from_settings(settings.embed))
     store.initialise()
     return store
 
@@ -311,7 +311,6 @@ def ingest(
     settings = load_settings()
     conv = settings.convert
     store = _get_store()
-    conn = store.connect()
     added = skipped = converted = failed = 0
     for f in files:
         try:
@@ -337,12 +336,7 @@ def ingest(
             converted += 1
         n_added = 0
         for i, chunk in enumerate(chunks):
-            if (
-                skip_duplicates
-                and conn.execute(
-                    "SELECT 1 FROM memories WHERE content = ? LIMIT 1", (chunk,)
-                ).fetchone()
-            ):
+            if skip_duplicates and store.memory_exists_with_content(chunk):
                 skipped += 1
                 continue
             store.add_memory(
@@ -414,7 +408,7 @@ def doctor() -> None:
     table.add_row(
         "vector search",
         "[green]available[/green] (sqlite-vec)"
-        if store._vector_search_available()
+        if store.vector_search_available()
         else "[yellow]FTS-only[/yellow] (sqlite-vec not loaded)",
     )
 
@@ -897,7 +891,9 @@ def index_tree(
 
         try:
             cochange_result = cluster_changesets(changed_docs, doc_s, run_kind=run_kind)
-            n_changesets = apply_changesets(store, cochange_result.changesets)
+            from mintmory.core.storage import SqliteBackend as _SqliteBackend
+
+            n_changesets = apply_changesets(cast(_SqliteBackend, store), cochange_result.changesets)
             n_co_changed_files = sum(len(cs.member_ids) for cs in cochange_result.changesets)
             cochange_result_dropped_oversized = cochange_result.dropped_oversized
             cochange_result_dropped_singletons = cochange_result.dropped_singletons
@@ -1302,15 +1298,15 @@ history_app = typer.Typer(name="history", help="Agent-history index commands")
 app.add_typer(history_app)
 
 
-def _get_history_store(db_path: str) -> StorageAdapter:
+def _get_history_store(db_path: str) -> SqliteBackend:
     """Open the dedicated history DB (not the working store)."""
     from mintmory.core.history.ingest import _assert_not_working_db
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.storage import SqliteBackend
 
     _assert_not_working_db(db_path)
     expanded = os.path.expanduser(db_path)
     os.makedirs(os.path.dirname(os.path.abspath(expanded)), exist_ok=True)
-    store = StorageAdapter(expanded)
+    store = SqliteBackend(expanded)
     store.initialise()
     return store
 
@@ -1675,6 +1671,7 @@ def docs_timeline(
     (recorded as valid_from). Filters source='document' only.
     """
     from mintmory.core.cochange import documents_timeline
+    from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
     if db:
         os.environ["MINTMORY_DB"] = db
@@ -1682,7 +1679,7 @@ def docs_timeline(
     store = _get_store()
     try:
         rows = documents_timeline(
-            store,
+            cast(_SqliteBackend, store),
             since=since,
             from_iso=from_iso,
             to_iso=to_iso,
@@ -1715,12 +1712,13 @@ def docs_changed_with(
     processed these files; it is NOT an atomic git change-set.
     """
     from mintmory.core.cochange import changed_with
+    from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
     if db:
         os.environ["MINTMORY_DB"] = db
 
     store = _get_store()
-    peers = changed_with(store, path)
+    peers = changed_with(cast(_SqliteBackend, store), path)
 
     console.print(
         "[dim]observed co-change (time+folder+content) — not a version-controlled commit[/dim]"

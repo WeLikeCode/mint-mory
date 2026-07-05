@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from mintmory.core.history.distill import distill_segment_deterministic
 from mintmory.core.history.models import NormalizedTurn, Segment, SessionSummary
 from mintmory.core.history.redact import redact
-from mintmory.core.storage import StorageAdapter
+from mintmory.core.storage import SqliteBackend
 from mintmory.core.types import MemoryCategory, MemorySource
 
 if TYPE_CHECKING:
@@ -194,7 +194,7 @@ def _segment_content_hash(
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def _find_by_segment_id(adapter_db: StorageAdapter, segment_id: str) -> str | None:
+def _find_by_segment_id(adapter_db: SqliteBackend, segment_id: str) -> str | None:
     """Query the DB for a memory whose metadata.segment_id matches. Returns id or None."""
     conn = adapter_db.connect()
     row = conn.execute(
@@ -206,7 +206,7 @@ def _find_by_segment_id(adapter_db: StorageAdapter, segment_id: str) -> str | No
     return str(row["id"])
 
 
-def _get_stored_content_hash(adapter_db: StorageAdapter, mem_id: str) -> str | None:
+def _get_stored_content_hash(adapter_db: SqliteBackend, mem_id: str) -> str | None:
     """Return the content_hash stored in a memory's metadata, or None."""
     conn = adapter_db.connect()
     row = conn.execute("SELECT metadata FROM memories WHERE id = ?", (mem_id,)).fetchone()
@@ -274,7 +274,7 @@ class _PreparedSession:
     counts: SegWriteResult  # llm_calls / cache_hits / fallbacks pre-counted
 
 
-def _preload_segment_cache(store: StorageAdapter) -> dict[str, tuple[str, str]]:
+def _preload_segment_cache(store: SqliteBackend) -> dict[str, tuple[str, str]]:
     """Map segment_id -> (memory_id, content_hash) for all session_summary rows.
 
     Read ONCE on the main thread so the parallel distill phase needs no DB access.
@@ -441,7 +441,7 @@ def distill_session(
 
 
 def commit_distilled(
-    store: StorageAdapter, ps: _PreparedSession
+    store: SqliteBackend, ps: _PreparedSession
 ) -> tuple[SegWriteResult, list[str]]:
     """SERIAL store writes for one prepared session (run on the main thread only).
 
@@ -478,7 +478,7 @@ def commit_distilled(
 
 
 def write_session_segments(
-    store: StorageAdapter,
+    store: SqliteBackend,
     session_summary: SessionSummary,
     segments: list[Segment],
     full_turns: list[NormalizedTurn],
@@ -512,7 +512,7 @@ def write_session_segments(
     return result
 
 
-def _sweep_orphans(store: StorageAdapter, session_id: str, current_count: int) -> None:
+def _sweep_orphans(store: SqliteBackend, session_id: str, current_count: int) -> None:
     """Archive memory rows for session_id where segment_index >= current_count."""
     conn = store.connect()
     orphan_rows = conn.execute(
@@ -532,7 +532,7 @@ def _sweep_orphans(store: StorageAdapter, session_id: str, current_count: int) -
 # ---------------------------------------------------------------------------
 
 
-def write_session(adapter_db: StorageAdapter, summary: SessionSummary) -> str | None:
+def write_session(adapter_db: SqliteBackend, summary: SessionSummary) -> str | None:
     """
     Redact title+summary_text; build a MemoryRecord and write it.
 
@@ -605,7 +605,7 @@ def write_session(adapter_db: StorageAdapter, summary: SessionSummary) -> str | 
         return record.id
 
 
-def _find_by_session_id(adapter_db: StorageAdapter, session_id: str) -> str | None:
+def _find_by_session_id(adapter_db: SqliteBackend, session_id: str) -> str | None:
     """Query the DB for a memory whose metadata.session_id matches. Returns id or None."""
     conn = adapter_db.connect()
     row = conn.execute(
@@ -674,7 +674,7 @@ def _file_size(path: str) -> int:
         return 0
 
 
-def _manifest_unchanged(adapter_db: StorageAdapter, path: str, collection: str) -> bool:  # noqa: ARG001
+def _manifest_unchanged(adapter_db: SqliteBackend, path: str, collection: str) -> bool:  # noqa: ARG001
     """
     Return True if the manifest entry for path indicates the file is unchanged
     (same size, mtime, and content_hash).
@@ -692,7 +692,7 @@ def _manifest_unchanged(adapter_db: StorageAdapter, path: str, collection: str) 
 
 
 def _manifest_update(
-    adapter_db: StorageAdapter,
+    adapter_db: SqliteBackend,
     path: str,
     collection: str,
     memory_ids: list[str] | None = None,
@@ -715,12 +715,12 @@ def _manifest_update(
 # ---------------------------------------------------------------------------
 
 
-def _open_history_db(db_path: str) -> StorageAdapter:
+def _open_history_db(db_path: str) -> SqliteBackend:
     """Expand, create parent dirs, initialise schema, set 0o600 permissions."""
     expanded = os.path.expanduser(db_path)
     abs_path = os.path.abspath(expanded)
     os.makedirs(os.path.dirname(abs_path), exist_ok=True)
-    store = StorageAdapter(abs_path)
+    store = SqliteBackend(abs_path)
     store.initialise()
     # Secure permissions (best-effort; some filesystems don't support chmod)
     with contextlib.suppress(OSError):
@@ -741,7 +741,7 @@ _ALL_SOURCES = ("claude_code", "codex", "kiro", "hermes")
 
 
 def _should_redistill(
-    store: StorageAdapter,
+    store: SqliteBackend,
     session_id: str,
     target_distiller_version: int,
     seg_sig: str,
@@ -827,7 +827,7 @@ def backfill(
     Full ingest of all sessions from the specified adapter sources.
 
     _assert_not_working_db ensures we never write to the working store.
-    Opens/initialises the dedicated StorageAdapter.
+    Opens/initialises the dedicated SqliteBackend.
     For each source adapter: iter_sessions -> segment -> distill -> write_session_segments.
     Records index_manifest rows to skip unchanged files on re-run.
     limit > 0 caps sessions per source (for smoke-testing).

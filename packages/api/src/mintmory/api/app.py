@@ -11,10 +11,8 @@ Run: uvicorn mintmory.api.app:app --port 8080
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -34,7 +32,8 @@ from mintmory.core import session as session_module
 from mintmory.core.config import load_settings
 from mintmory.core.dreaming import DreamingEngine
 from mintmory.core.llm import build_dreaming_engine
-from mintmory.core.storage import StorageAdapter
+from mintmory.core.ports import StorageBackend
+from mintmory.core.storage_factory import build_storage
 from mintmory.core.telemetry import init_telemetry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
@@ -60,15 +59,16 @@ from mintmory.core.types import (
 # App lifecycle
 # ---------------------------------------------------------------------------
 
-_store: StorageAdapter | None = None
+_store: StorageBackend | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _store
-    db_path = os.environ.get("MINTMORY_DB", str(Path.home() / ".mintmory" / "memories.db"))
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    _store = StorageAdapter(db_path)
+    # build_storage() resolves path from StorageSettings / MINTMORY_DB / default,
+    # creates the parent directory, and returns an uninitialised SqliteBackend.
+    # NO embedder — API-added memories get NULL embeddings (asymmetry vs CLI).
+    _store = build_storage()
     _store.initialise()
     init_telemetry(load_settings().otel)
     yield
@@ -95,7 +95,7 @@ app.add_middleware(
 )
 
 
-def get_store() -> StorageAdapter:
+def get_store() -> StorageBackend:
     if _store is None:
         raise RuntimeError("Storage not initialised — lifespan not run")
     return _store
@@ -115,10 +115,8 @@ async def healthz() -> dict[str, str]:
 @app.get("/readyz", tags=["Health"])
 async def readyz() -> dict[str, str]:
     """Readiness probe — verifies the DB is reachable via a cheap SELECT 1."""
-    try:
-        get_store().connect().execute("SELECT 1").fetchone()
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail="store not ready") from exc
+    if not get_store().ping():
+        raise HTTPException(status_code=503, detail="store not ready")
     return {"status": "ready"}
 
 

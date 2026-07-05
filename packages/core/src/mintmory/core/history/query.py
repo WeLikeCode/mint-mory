@@ -24,7 +24,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from mintmory.core.history.ingest import _assert_not_working_db
-from mintmory.core.storage import StorageAdapter
+from mintmory.core.storage import SqliteBackend
 from mintmory.core.types import MemoryFilter, SearchRequest
 
 DEFAULT_WINDOW_DAYS = 90
@@ -94,8 +94,8 @@ def resolve_window(
 # ---------------------------------------------------------------------------
 
 
-def _open_history(db_path: str) -> StorageAdapter:
-    """Expand db_path, enforce the Hermes guard, open + return a StorageAdapter.
+def _open_history(db_path: str) -> SqliteBackend:
+    """Expand db_path, enforce the Hermes guard, open + return a SqliteBackend.
 
     Callers treat the returned adapter as read-only; this function never writes.
     Raises HermesGuardError if db_path resolves to the working store.
@@ -107,7 +107,7 @@ def _open_history(db_path: str) -> StorageAdapter:
     parent = os.path.dirname(os.path.abspath(expanded))
     if parent:
         os.makedirs(parent, exist_ok=True)
-    store = StorageAdapter(expanded)
+    store = SqliteBackend(expanded)
     store.initialise()
     return store
 
@@ -263,7 +263,7 @@ def search(
     limit: int = 10,
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Hybrid search (StorageAdapter.search) over session summaries only.
+    """Hybrid search (SqliteBackend.search) over session summaries only.
 
     Optionally constrained to ``repo`` and/or ``valid_from >= (now - since)``.
     Returns the same row-dict shape as timeline(), in search-rank order.

@@ -55,7 +55,7 @@ from mintmory.core.types import (
 )
 
 if TYPE_CHECKING:
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.ports import StorageBackend
 
 # Anomaly-detection thresholds (FEATURES.md §9, Step 1).
 HIGH_STALENESS_MIN: float = 6.0
@@ -101,11 +101,11 @@ class _SummarySelection:
 
 
 class DreamingEngine:
-    """Offline, idempotent memory consolidation over a ``StorageAdapter``."""
+    """Offline, idempotent memory consolidation over a ``StorageBackend``."""
 
     def __init__(
         self,
-        adapter: StorageAdapter,
+        adapter: StorageBackend,
         summarizer: Summarizer | None = None,
         conflict_resolver: ConflictResolver | None = None,
         link_settings: LinkSettings | None = None,
@@ -246,33 +246,14 @@ class DreamingEngine:
         * ``contradictions`` — ``flagged_for_review = 1``. Notes CAN appear here
           (contested notes surface for human review via §5d / §6b).
         """
-        conn = self.adapter.connect()
-
-        high_rows = conn.execute(
-            "SELECT id FROM memories "
-            "WHERE staleness_score >= ? AND usefulness_score >= ? "
-            "AND is_archived = 0 "
-            "AND is_note = 0 "  # §6a: notes are exempt from staleness anomaly reports
-            "ORDER BY id",
-            (HIGH_STALENESS_MIN, HIGH_USEFULNESS_MIN),
-        ).fetchall()
-        high_staleness_useful = [row["id"] for row in high_rows]
+        high_staleness_useful = self.adapter.get_anomaly_high_staleness_useful_ids(
+            HIGH_STALENESS_MIN, HIGH_USEFULNESS_MIN
+        )
 
         cutoff = (_utcnow() - timedelta(days=NEVER_ACCESSED_DAYS)).isoformat()
-        never_rows = conn.execute(
-            "SELECT id FROM memories "
-            "WHERE retrieval_count = 0 AND created_at < ? "
-            "AND is_active = 1 AND is_archived = 0 "
-            "AND is_note = 0 "  # §6a: notes are exempt from never-accessed anomaly reports
-            "ORDER BY id",
-            (cutoff,),
-        ).fetchall()
-        never_accessed = [row["id"] for row in never_rows]
+        never_accessed = self.adapter.get_anomaly_never_accessed_ids(cutoff)
 
-        flagged_rows = conn.execute(
-            "SELECT id FROM memories WHERE flagged_for_review = 1 ORDER BY id"
-        ).fetchall()
-        contradictions = [row["id"] for row in flagged_rows]
+        contradictions = self.adapter.get_anomaly_flagged_ids()
 
         return AnomalyReport(
             high_staleness_useful=high_staleness_useful,
@@ -311,17 +292,14 @@ class DreamingEngine:
         """
         ls = self.link_settings
         stoplist = ls.stoplist
-        conn = self.adapter.connect()
-        rows = conn.execute(
-            "SELECT id, entity_ids FROM memories WHERE is_active = 1 AND is_archived = 0"
-        ).fetchall()
+        memory_ids = self.adapter.list_active_memory_ids(ordered=False)
 
         # Per-memory surviving entity sets (after the stoplist drop), and the
         # DF (document frequency) of each entity over active memories.
         mem_entities: dict[str, set[str]] = {}
         entity_df: dict[str, int] = defaultdict(int)
-        for row in rows:
-            mem_record = self.adapter.get_memory(row["id"])
+        for mid in memory_ids:
+            mem_record = self.adapter.get_memory(mid)
             if mem_record is None:
                 continue
             kept = {e for e in mem_record.entity_ids if e not in stoplist}
@@ -366,14 +344,7 @@ class DreamingEngine:
 
         # Existing relates_to pairs (order-insensitive) — pre-check so the count
         # reflects only genuinely-new links even though add_link is INSERT OR IGNORE.
-        existing_pairs: set[frozenset[str]] = set()
-        for link_row in conn.execute(
-            "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?",
-            (ConceptLinkType.RELATES_TO.value,),
-        ).fetchall():
-            existing_pairs.add(
-                frozenset({link_row["source_memory_id"], link_row["target_memory_id"]})
-            )
+        existing_pairs: set[frozenset[str]] = self.adapter.get_existing_relates_to_pairs()
 
         # Build the candidate list applying the min-shared and Jaccard gates,
         # computing each candidate's strength and a representative entity.
@@ -525,16 +496,12 @@ class DreamingEngine:
         """
         ss = self.summary_settings
         stoplist = self.link_settings.stoplist
-        conn = self.adapter.connect()
-        rows = conn.execute(
-            "SELECT id, content, entity_ids FROM memories "
-            "WHERE is_active = 1 AND is_archived = 0 ORDER BY id"
-        ).fetchall()
+        memory_ids = self.adapter.list_active_memory_ids(ordered=True)
 
         entity_to_contents: dict[str, list[str]] = defaultdict(list)
         entity_to_ids: dict[str, list[str]] = defaultdict(list)
-        for row in rows:
-            mem_record = self.adapter.get_memory(row["id"])
+        for mid in memory_ids:
+            mem_record = self.adapter.get_memory(mid)
             if mem_record is None:
                 continue
             for entity in mem_record.entity_ids:
@@ -694,13 +661,10 @@ class DreamingEngine:
         """
         if concept in self.link_settings.stoplist:
             return 0
-        conn = self.adapter.connect()
-        rows = conn.execute(
-            "SELECT id FROM memories WHERE is_active = 1 AND is_archived = 0 ORDER BY id"
-        ).fetchall()
+        memory_ids = self.adapter.list_active_memory_ids(ordered=True)
         count = 0
-        for row in rows:
-            mem = self.adapter.get_memory(row["id"])
+        for mid in memory_ids:
+            mem = self.adapter.get_memory(mid)
             if mem is None:
                 continue
             count += sum(1 for e in mem.entity_ids if e == concept)
@@ -935,20 +899,12 @@ class DreamingEngine:
 
         Idempotent: already-archived memories are skipped.
         """
-        conn = self.adapter.connect()
         cutoff = (_utcnow() - timedelta(days=ARCHIVE_INACTIVE_DAYS)).isoformat()
-        rows = conn.execute(
-            "SELECT id FROM memories "
-            "WHERE is_stale = 1 AND staleness_score >= ? AND is_archived = 0 "
-            "AND is_note = 0 "  # §6a: notes are exempt from staleness-based archival
-            "AND (last_accessed_at IS NULL OR last_accessed_at < ?) "
-            "ORDER BY id",
-            (scoring.ARCHIVE_THRESHOLD, cutoff),
-        ).fetchall()
+        stale_ids = self.adapter.get_stale_archivable_ids(scoring.ARCHIVE_THRESHOLD, cutoff)
 
         archived = 0
-        for row in rows:
-            self.adapter.archive_memory(row["id"])
+        for mid in stale_ids:
+            self.adapter.archive_memory(mid)
             archived += 1
         return archived
 
@@ -970,22 +926,14 @@ class DreamingEngine:
 
         Idempotent: already-healthy (``is_stale = 0``) memories are skipped.
         """
-        conn = self.adapter.connect()
         cutoff = (_utcnow() - timedelta(days=REHAB_RECENT_DAYS)).isoformat()
-        rows = conn.execute(
-            "SELECT id, staleness_score FROM memories "
-            "WHERE is_stale = 1 AND usefulness_score > staleness_score "
-            "AND is_archived = 0 "
-            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ? "
-            "ORDER BY id",
-            (cutoff,),
-        ).fetchall()
+        rehab_rows = self.adapter.get_rehabilitable_rows(cutoff)
 
         rehabilitated = 0
-        for row in rows:
-            new_staleness = max(0.0, float(row["staleness_score"]) - scoring.REHAB_DELTA)
+        for mid, staleness_score in rehab_rows:
+            new_staleness = max(0.0, staleness_score - scoring.REHAB_DELTA)
             self.adapter.update_memory(
-                row["id"],
+                mid,
                 is_stale=False,
                 staleness_score=new_staleness,
             )

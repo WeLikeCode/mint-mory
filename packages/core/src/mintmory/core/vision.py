@@ -40,7 +40,7 @@ from mintmory.core.types import (
 
 if TYPE_CHECKING:
     from mintmory.core.config import VisionSettings
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.ports import StorageBackend
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +363,7 @@ def _downscale_bytes(
 
 
 def image_jobs(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     *,
     include_all: bool = False,
     include_bytes: bool = False,
@@ -399,22 +399,13 @@ def image_jobs(
     max_download_bytes: int | None = s.max_download_bytes
     downscale_max_px: int = s.downscale_max_px
 
-    conn = adapter.connect()
     # Fetch all active, non-archived memories whose metadata has an 'ext' key
-    # that falls in IMAGE_SUFFIXES.  We load candidates and filter in Python —
-    # SQLite's json_extract can do this but the suffix set is small enough that
-    # Python post-filtering is straightforward and avoids a long IN(…) literal.
-    rows = conn.execute(
-        "SELECT * FROM memories "
-        "WHERE is_archived = 0 "
-        "AND json_extract(metadata, '$.kind') IS NULL "
-        "AND json_extract(metadata, '$.ext') IS NOT NULL "
-        "ORDER BY json_extract(metadata, '$.rel'), id"
-    ).fetchall()
+    # that falls in IMAGE_SUFFIXES.  SQL encapsulated in list_image_file_records();
+    # Python post-filtering (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays here.
+    all_records: list[MemoryRecord] = adapter.list_image_file_records()
 
     candidates: list[MemoryRecord] = []
-    for row in rows:
-        rec = adapter._row_to_memory(row)
+    for rec in all_records:
         ext: str = rec.metadata.get("ext", "")
         if ext not in IMAGE_SUFFIXES:
             continue
@@ -525,7 +516,7 @@ def image_jobs(
 
 
 def image_caption_put(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     file_id_or_path: str,
     description: str,
     *,
@@ -631,7 +622,7 @@ def image_caption_put(
 
 
 def caption_pending_images(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     *,
     captioner: Captioner,
     limit: int = 0,

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,13 @@ def _csv_set(value: str) -> frozenset[str]:
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+class StorageBackendEnum(str, Enum):
+    """Which storage backend to use. Only ``sqlite`` is implemented in Phase 0."""
+
+    SQLITE = "sqlite"
+    POSTGRES = "postgres"  # reserved — arrives in Phase 2
+
+
 class EmbeddingProvider(str, Enum):
     HASHING = "hashing"  # default — pure-Python, in-process, numpy-only
     LOCAL = "local"  # sentence-transformers (optional [local] extra)
@@ -360,6 +367,54 @@ class SegmentSettings(BaseSettings):
     distill_max_tokens: int = Field(default=2048, ge=16, le=8192)
 
 
+# ---------------------------------------------------------------------------
+# Storage backend (MINTMORY_STORAGE_*) — Phase 0 port + factory.
+# SQLite is the only backend in Phase 0; Postgres is reserved for Phase 2.
+# ---------------------------------------------------------------------------
+class StorageSettings(BaseSettings):
+    """Storage-backend selection and connection settings.
+
+    Env prefix ``MINTMORY_STORAGE_``. SQLite is the default and only backend in
+    Phase 0. Postgres ``dsn``/``pool_min``/``pool_max`` are declared here so the
+    schema is stable for Phase 2 addition.
+
+    ``db_path`` — empty string (default) means the factory falls back to the
+    legacy ``MINTMORY_DB`` env var, then ``~/.mintmory/memories.db``, preserving
+    today's resolution order exactly.
+
+    ``busy_timeout_ms`` — accepts either ``MINTMORY_STORAGE_BUSY_TIMEOUT_MS``
+    (new primary) or ``MINTMORY_SQLITE_BUSY_TIMEOUT_MS`` (legacy alias) via
+    ``AliasChoices`` so both names work.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_STORAGE_", extra="ignore")
+
+    backend: StorageBackendEnum = StorageBackendEnum.SQLITE
+    db_path: str = Field(default="")  # empty => build_storage() uses MINTMORY_DB fallback
+    busy_timeout_ms: int = Field(
+        default=5000,
+        validation_alias=AliasChoices(
+            "MINTMORY_STORAGE_BUSY_TIMEOUT_MS",  # primary (with prefix)
+            "MINTMORY_SQLITE_BUSY_TIMEOUT_MS",  # legacy alias (backwards compat)
+        ),
+    )
+
+    @field_validator("busy_timeout_ms", mode="before")
+    @classmethod
+    def _coerce_busy_timeout(cls, v: object) -> int:
+        """Match the legacy _busy_timeout_ms() tolerance: clamp negatives to 0,
+        fall back to 5000 on non-int (mirrors storage.py:110-118)."""
+        try:
+            return max(0, int(str(v)))
+        except (ValueError, TypeError):
+            return 5000
+
+    # Postgres (Phase 2 — reserved, not implemented yet)
+    dsn: str | None = None
+    pool_min: int = Field(default=1, ge=1)
+    pool_max: int = Field(default=10, ge=1)
+
+
 class Settings(BaseSettings):
     """Aggregate of every settings group. Each group still reads its own env vars."""
 
@@ -378,6 +433,8 @@ class Settings(BaseSettings):
     seg: SegmentSettings = Field(default_factory=SegmentSettings)  # history segmentation (Phase 2)
     # document recency + co-change (MM-33)
     doc: DocumentSettings = Field(default_factory=DocumentSettings)
+    # storage backend (Phase 0 port)
+    storage: StorageSettings = Field(default_factory=StorageSettings)
 
 
 def load_settings() -> Settings:

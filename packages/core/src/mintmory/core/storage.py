@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import scoring, telemetry
 from mintmory.core.entities import extract_entities
+from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
     ConceptLink,
@@ -169,12 +170,17 @@ def _trigram_match_expr(query: str) -> str:
     return " OR ".join(terms)
 
 
-class StorageAdapter:
+class SqliteBackend:
     """
-    SQLite adapter wrapping all MintMory persistence operations.
+    SQLite backend wrapping all MintMory persistence operations.
+
+    Implements ``StorageBackend`` structurally (no inheritance required).
+    ``connect()`` and ``transaction()`` are intentionally NOT on the port —
+    they are SQLite-only surfaces used by cochange, history, and the CLI
+    ``history scrub`` command (all SQLite-by-design).
 
     Usage:
-        store = StorageAdapter("/path/to/mintmory.db")
+        store = SqliteBackend("/path/to/mintmory.db")
         store.initialise()            # idempotent, creates schema if needed
         store.add_memory(content="...", category="fact")
         results = store.search(SearchRequest(query="parking"))
@@ -188,6 +194,7 @@ class StorageAdapter:
         note_bonus: float | None = None,
         auto_include_cap: int | None = None,
         vector_rrf_weight: float | None = None,
+        busy_timeout_ms: int | None = None,
     ) -> None:
         self.db_path = str(db_path)
         self.embedder = embedder
@@ -204,6 +211,9 @@ class StorageAdapter:
         # SearchSettings on first use" — keeps the constructor fast and avoids a
         # circular import at module load time.
         self._vector_rrf_weight: float | None = vector_rrf_weight
+        # busy_timeout_ms: explicit override (from factory/settings). None means
+        # "read from MINTMORY_SQLITE_BUSY_TIMEOUT_MS env var" (legacy path).
+        self._busy_timeout_ms_override: int | None = busy_timeout_ms
 
     # ------------------------------------------------------------------
     # Connection management
@@ -218,7 +228,12 @@ class StorageAdapter:
             # Concurrent-writer safety (multi-agent): wait for a lock instead of
             # immediately raising "database is locked". WAL already lets readers
             # run during a write; this makes competing writers queue.
-            self._conn.execute(f"PRAGMA busy_timeout = {_busy_timeout_ms()}")
+            timeout = (
+                self._busy_timeout_ms_override
+                if self._busy_timeout_ms_override is not None
+                else _busy_timeout_ms()
+            )
+            self._conn.execute(f"PRAGMA busy_timeout = {timeout}")
             self._load_vec_extension(self._conn)
         return self._conn
 
@@ -410,8 +425,12 @@ class StorageAdapter:
         vec = np.asarray(vectors[0], dtype=np.float32)
         return vec.tobytes()
 
-    def _vector_search_available(self) -> bool:
+    def vector_search_available(self) -> bool:
+        """Return True iff an embedder is configured AND the sqlite-vec extension loaded."""
         return self.embedder is not None and self._vec_loaded
+
+    # Back-compat shim (one-release); callers should use vector_search_available().
+    _vector_search_available = vector_search_available
 
     # ------------------------------------------------------------------
     # MemoryRecord CRUD
@@ -609,14 +628,26 @@ class StorageAdapter:
     # ------------------------------------------------------------------
     # Index manifest — per-path state for recurrent tree indexing
     # ------------------------------------------------------------------
-    def manifest_get(self, path: str) -> sqlite3.Row | None:
+    def manifest_get(self, path: str) -> ManifestEntry | None:
         """Return the manifest row for ``path`` (absolute), or None."""
         row: sqlite3.Row | None = (
             self.connect()
             .execute("SELECT * FROM index_manifest WHERE path = ?", (path,))
             .fetchone()
         )
-        return row
+        if row is None:
+            return None
+        return ManifestEntry(
+            path=row["path"],
+            collection=row["collection"],
+            size=row["size"],
+            mtime=row["mtime"],
+            content_hash=row["content_hash"],
+            index_mode=row["index_mode"],
+            memory_ids=row["memory_ids"],
+            online_only=row["online_only"],
+            last_seen=row["last_seen"],
+        )
 
     def manifest_upsert(
         self,
@@ -797,7 +828,7 @@ class StorageAdapter:
         embeddings) are skipped. Isolated behind this method so an ANN backend can
         replace the scan later without touching search()/fusion (see ADR-0006).
         """
-        if not self._vector_search_available():
+        if not self.vector_search_available():
             return {}
         blob: bytes | None
         if query_embedding is not None:
@@ -1037,7 +1068,7 @@ class StorageAdapter:
             return None
         return self._row_to_memory(row)
 
-    def _anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.
 
         Reuses the hybrid score sources (FTS5 + trigram + vector) and min-max
@@ -1526,3 +1557,227 @@ class StorageAdapter:
             (min_staleness, min_usefulness),
         ).fetchall()
         return [self._row_to_memory(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Port — absorbed dreaming.py raw-SQL sites (verbatim SQL relocation)
+    # ------------------------------------------------------------------
+
+    def ping(self) -> bool:
+        """Cheap DB reachability check (SELECT 1). Returns True on success, never raises."""
+        try:
+            self.connect().execute("SELECT 1").fetchone()
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def get_anomaly_high_staleness_useful_ids(
+        self, min_staleness: float, min_usefulness: float
+    ) -> list[str]:
+        """IDs of high-staleness + still-useful memories (anomaly step 1a).
+
+        Verbatim SQL relocated from dreaming.detect_anomalies().
+        """
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT id FROM memories "
+            "WHERE staleness_score >= ? AND usefulness_score >= ? "
+            "AND is_archived = 0 "
+            "AND is_note = 0 "
+            "ORDER BY id",
+            (min_staleness, min_usefulness),
+        ).fetchall()
+        return [row["id"] for row in rows]
+
+    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+        """IDs of never-retrieved memories created before cutoff (anomaly step 1b).
+
+        Verbatim SQL relocated from dreaming.detect_anomalies().
+        """
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT id FROM memories "
+            "WHERE retrieval_count = 0 AND created_at < ? "
+            "AND is_active = 1 AND is_archived = 0 "
+            "AND is_note = 0 "
+            "ORDER BY id",
+            (cutoff_iso,),
+        ).fetchall()
+        return [row["id"] for row in rows]
+
+    def get_anomaly_flagged_ids(self) -> list[str]:
+        """IDs of flagged_for_review memories (anomaly step 1c).
+
+        Verbatim SQL relocated from dreaming.detect_anomalies().
+        """
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT id FROM memories WHERE flagged_for_review = 1 ORDER BY id"
+        ).fetchall()
+        return [row["id"] for row in rows]
+
+    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+        """IDs of all active, non-archived memories.
+
+        Verbatim SQL relocated from dreaming.create_concept_links(),
+        _select_summary_concepts(), and _active_count_for_concept().
+        ``ordered=True`` appends ``ORDER BY id`` for deterministic iteration.
+        """
+        conn = self.connect()
+        sql = "SELECT id FROM memories WHERE is_active = 1 AND is_archived = 0"
+        if ordered:
+            sql += " ORDER BY id"
+        rows = conn.execute(sql).fetchall()
+        return [row["id"] for row in rows]
+
+    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+        """IDs of memories eligible for staleness archival (dreaming step 5).
+
+        Verbatim SQL relocated from dreaming.archive_stale().
+        """
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT id FROM memories "
+            "WHERE is_stale = 1 AND staleness_score >= ? AND is_archived = 0 "
+            "AND is_note = 0 "
+            "AND (last_accessed_at IS NULL OR last_accessed_at < ?) "
+            "ORDER BY id",
+            (min_staleness, cutoff_iso),
+        ).fetchall()
+        return [row["id"] for row in rows]
+
+    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+        """(id, staleness_score) pairs eligible for rehabilitation (dreaming step 6).
+
+        Verbatim SQL relocated from dreaming.rehabilitate().
+        """
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT id, staleness_score FROM memories "
+            "WHERE is_stale = 1 AND usefulness_score > staleness_score "
+            "AND is_archived = 0 "
+            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ? "
+            "ORDER BY id",
+            (cutoff_iso,),
+        ).fetchall()
+        return [(row["id"], float(row["staleness_score"])) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Port — absorbed session.py raw-SQL sites (verbatim SQL, same boundaries)
+    # ------------------------------------------------------------------
+
+    def update_session_feedback(
+        self,
+        session_id: str,
+        confidence_rating: int | None,
+        reasoning: str | None,
+        useful_ids: list[str],
+        stale_ids: list[str],
+    ) -> None:
+        """Update query_sessions + query_results in one transaction.
+
+        Phase-0 boundary preserved verbatim from session.apply_feedback():
+        the per-memory apply_feedback() calls each run in their OWN transactions
+        (upstream, before this call); this method handles only the session-level
+        UPDATE + per-result flag UPDATE, in ONE transaction — matching the single
+        ``with adapter.transaction()`` block in the original code.
+        Making this entire conclude atomic is deferred to Phase 2.
+        """
+        useful_set = set(useful_ids)
+        stale_set = set(stale_ids)
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE query_sessions SET confidence_rating = ?, reasoning = ?, "
+                "useful_ids = ?, stale_ids = ?, concluded = 1 WHERE id = ?",
+                (
+                    confidence_rating,
+                    reasoning,
+                    json.dumps(useful_ids),
+                    json.dumps(stale_ids),
+                    session_id,
+                ),
+            )
+            for memory_id in useful_set | stale_set:
+                conn.execute(
+                    "UPDATE query_results SET was_useful = ?, was_stale = ? "
+                    "WHERE session_id = ? AND memory_id = ?",
+                    (
+                        1 if memory_id in useful_set else 0,
+                        1 if memory_id in stale_set else 0,
+                        session_id,
+                        memory_id,
+                    ),
+                )
+
+    def mark_session_concluded(self, session_id: str) -> None:
+        """Mark a session concluded with no feedback (idempotent, no-feedback path).
+
+        Verbatim SQL relocated from session.conclude_session().
+        """
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE query_sessions SET concluded = 1 WHERE id = ?",
+                (session_id,),
+            )
+
+    # ------------------------------------------------------------------
+    # Port — absorbed vision.py raw-SQL site (verbatim SQL relocation)
+    # ------------------------------------------------------------------
+
+    def list_image_file_records(self) -> list[MemoryRecord]:
+        """Return all active, non-archived memories with 'ext' metadata but no 'kind' tag.
+
+        Verbatim SQL relocated from vision.image_jobs(). Python post-filtering
+        (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays in vision.py.
+        """
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT * FROM memories "
+            "WHERE is_archived = 0 "
+            "AND json_extract(metadata, '$.kind') IS NULL "
+            "AND json_extract(metadata, '$.ext') IS NOT NULL "
+            "ORDER BY json_extract(metadata, '$.rel'), id"
+        ).fetchall()
+        return [self._row_to_memory(row) for row in rows]
+
+    # ------------------------------------------------------------------
+    # Port — absorbed cli/main.py ingest dedup (task 2.1a)
+    # ------------------------------------------------------------------
+
+    def memory_exists_with_content(self, content: str) -> bool:
+        """Return True if any memory with the exact content already exists.
+
+        Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
+        Used by the ingest command for dedup checks; portable across backends.
+        """
+        conn = self.connect()
+        return (
+            conn.execute("SELECT 1 FROM memories WHERE content = ? LIMIT 1", (content,)).fetchone()
+            is not None
+        )
+
+    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+        """Return the set of existing RELATES_TO concept-link pairs (order-insensitive).
+
+        Used by create_concept_links() to pre-check which pairs already exist
+        so the new-link count is accurate even when add_link is INSERT OR IGNORE.
+
+        Verbatim SQL:
+            SELECT source_memory_id, target_memory_id
+            FROM concept_links WHERE link_type = ?
+        """
+        from mintmory.core.types import ConceptLinkType
+
+        conn = self.connect()
+        rows = conn.execute(
+            "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?",
+            (ConceptLinkType.RELATES_TO.value,),
+        ).fetchall()
+        return {frozenset({r["source_memory_id"], r["target_memory_id"]}) for r in rows}
+
+
+# ---------------------------------------------------------------------------
+# Back-compat alias — keep for one release so code pinned to the old name
+# still imports without modification (e.g., existing test fixtures, scripts).
+# History modules and cochange continue to use SqliteBackend explicitly.
+# ---------------------------------------------------------------------------
+StorageAdapter = SqliteBackend

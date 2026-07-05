@@ -37,7 +37,7 @@ from mintmory.core.prompts import CONTRADICTION_DETECTION_PROMPT, SUMMARY_PROMPT
 from mintmory.core.types import BatchResolutionAction, ConflictCheckResult, MemoryRecord
 
 if TYPE_CHECKING:
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.ports import StorageBackend
 
 # Tolerant JSON-extraction helpers (moved from scripts/local_llm.py).
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -239,7 +239,7 @@ def build_summarizer(settings: LLMSettings) -> Summarizer | None:
 
 def build_conflict_resolver(
     settings: LLMSettings,
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
 ) -> ConflictResolver | None:
     """Build a conflict-resolver callable, or ``None`` when ``provider=none``.
 
@@ -345,7 +345,7 @@ def build_history_distiller(
 
 
 def build_dreaming_engine(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     llm_settings: LLMSettings | None = None,
     link_settings: LinkSettings | None = None,
     summary_settings: SummarySettings | None = None,

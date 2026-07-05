@@ -15,20 +15,26 @@ code lands here. Each phase becomes its own OpenSpec change when scheduled.
 - [x] 1.5 Decompose into an ordered, independently-shippable phased epic.
 - [x] 1.6 Record the human decisions required before Phase 2 (§8 of design.md).
 
-## 2. Phase 0 — Extract the port (PURE REFACTOR) — future change `refactor-storage-port`
+## 2. Phase 0 — Extract the port (PURE REFACTOR) — ✅ SHIPPED as MM-46
 
-- [ ] 2.1 Absorb API-reachable raw-SQL/private leaks (dreaming, session, notes, vision,
+- [x] 2.1 Absorb API-reachable raw-SQL/private leaks (dreaming, session, notes, vision,
   `/readyz`) into named public methods — verbatim SQL relocation, **preserving today's
-  transaction boundaries** (do NOT make session-conclude atomic here — deferred to Phase 2).
-- [ ] 2.1a Resolve the CLI `ingest` primary-store raw `connect()` (`cli/main.py:314`): either add a
-  portable `memory_exists_with_content()` port method (preferred) or pin `ingest` to `SqliteBackend`.
-- [ ] 2.2 `manifest_get` → `ManifestEntry` (mapping-compatible); drop `sqlite3.Row` from signatures.
-- [ ] 2.3 Define `StorageBackend` Protocol; rename `StorageAdapter` → `SqliteBackend` + alias;
-  keep `connect()`/`transaction()` on `SqliteBackend` only.
-- [ ] 2.4 `StorageSettings` (fold in `MINTMORY_DB` + `MINTMORY_SQLITE_BUSY_TIMEOUT_MS`) + `build_storage()`.
-- [ ] 2.5 Swap portable call sites to the factory; pin the 3 history sites to `SqliteBackend`.
-- [ ] 2.6 Exit: all existing tests pass with mechanical edits only; mypy/ruff clean; grep proves
-  no module outside storage/history/cochange/CLI touches `.connect()`/`_`-members; behaviour byte-identical.
+  transaction boundaries** (session-conclude NOT made atomic — reviewers confirmed).
+- [x] 2.1a Resolve the CLI `ingest` primary-store raw `connect()`: added the portable
+  `memory_exists_with_content()` port method (preferred option).
+- [x] 2.2 `manifest_get` → `ManifestEntry` (TypedDict, mapping-compatible); dropped `sqlite3.Row`.
+- [x] 2.3 Defined `StorageBackend` Protocol (`core/ports.py`); renamed `StorageAdapter` →
+  `SqliteBackend` + alias; `connect()`/`transaction()` kept on `SqliteBackend` only.
+- [x] 2.4 `StorageSettings` (folds in `MINTMORY_DB` + `MINTMORY_SQLITE_BUSY_TIMEOUT_MS` alias, with a
+  validator replicating the legacy malformed/negative tolerance) + `build_storage()` factory.
+- [x] 2.5 Swapped portable call sites (api/mcp no-embedder, cli with-embedder) to the factory;
+  pinned history + cochange to `SqliteBackend` explicitly.
+- [x] 2.6 Exit met: all existing tests pass unmodified; mypy/ruff clean; grep proves no module
+  outside storage/history/cochange/CLI touches `.connect()`/`_`-members; 1405 passed, 95.95% cov.
+
+  *Implemented via workflow (Sonnet impl → 3 adversarial Opus reviewers, all pass, 0 must-fix →
+  3 should-fix applied). Known Phase 2 follow-up: cochange MCP/CLI tools reach the primary store via
+  `cast(SqliteBackend, ...)` — safe now (always SQLite), needs a runtime guard when postgres lands.*
 
 ## 3. Phase 1 — Backend conformance harness — future change `add-storage-conformance-suite`
 

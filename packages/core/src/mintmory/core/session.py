@@ -24,7 +24,6 @@ this module performs no network or model I/O and the tests stay deterministic.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -33,7 +32,7 @@ from mintmory.core.prompts import FEEDBACK_PROMPT
 from mintmory.core.types import MemoryRecord, QueryResult, QuerySession
 
 if TYPE_CHECKING:
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.ports import StorageBackend
 
 
 def _utcnow() -> datetime:
@@ -41,14 +40,14 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-def create_session(adapter: StorageAdapter, query_text: str) -> QuerySession:
+def create_session(adapter: StorageBackend, query_text: str) -> QuerySession:
     """Open a new QuerySession, persist it, and return the stored record."""
     session = QuerySession(query_text=query_text)
     return adapter.create_session(session)
 
 
 def record_results(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     session_id: str,
     results: list[QueryResult],
 ) -> None:
@@ -63,7 +62,7 @@ def record_results(
 
 
 def apply_feedback(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     session_id: str,
     useful_ids: list[str],
     stale_ids: list[str],
@@ -100,50 +99,29 @@ def apply_feedback(
     for memory_id in stale_ids:
         adapter.apply_feedback(memory_id, useful=False, stale=True)
 
-    useful_set = set(useful_ids)
-    stale_set = set(stale_ids)
-
-    with adapter.transaction() as conn:
-        conn.execute(
-            "UPDATE query_sessions SET confidence_rating = ?, reasoning = ?, "
-            "useful_ids = ?, stale_ids = ?, concluded = 1 WHERE id = ?",
-            (
-                confidence_rating,
-                reasoning,
-                json.dumps(useful_ids),
-                json.dumps(stale_ids),
-                session_id,
-            ),
-        )
-        for memory_id in useful_set | stale_set:
-            conn.execute(
-                "UPDATE query_results SET was_useful = ?, was_stale = ? "
-                "WHERE session_id = ? AND memory_id = ?",
-                (
-                    1 if memory_id in useful_set else 0,
-                    1 if memory_id in stale_set else 0,
-                    session_id,
-                    memory_id,
-                ),
-            )
+    # Phase-0: session-level UPDATE stays in its own separate transaction,
+    # mirroring the original boundary (deferred to Phase 2 for atomicity).
+    adapter.update_session_feedback(
+        session_id,
+        confidence_rating,
+        reasoning,
+        useful_ids,
+        stale_ids,
+    )
 
     refreshed = adapter.get_session(session_id)
     assert refreshed is not None  # just updated, row exists
     return refreshed
 
 
-def conclude_session(adapter: StorageAdapter, session_id: str) -> None:
+def conclude_session(adapter: StorageBackend, session_id: str) -> None:
     """Mark a session concluded with no feedback (idempotent).
 
     Used for TTL-abandoned sessions: the agent never submitted feedback, so no
     scores change — the row is simply flipped to ``concluded = 1``. Calling
     this on an already-concluded or missing session is a no-op.
     """
-    with adapter.transaction() as conn:
-        conn.execute(
-            "UPDATE query_sessions SET concluded = 1 WHERE id = ?",
-            (session_id,),
-        )
+    adapter.mark_session_concluded(session_id)
 
 
 def build_feedback_prompt(memories: Iterable[MemoryRecord], answer: str) -> str:

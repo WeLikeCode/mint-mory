@@ -48,7 +48,7 @@ from numpy.typing import NDArray
 
 if TYPE_CHECKING:
     from mintmory.core.config import DocumentSettings
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.storage import SqliteBackend
 
 
 # ---------------------------------------------------------------------------
@@ -680,7 +680,7 @@ def _changesets_from_labels(
 
 
 def apply_changesets(
-    store: StorageAdapter,
+    store: SqliteBackend,
     sets: list[ChangeSet],
     method: str = "hdbscan",
 ) -> int:
@@ -760,7 +760,7 @@ def apply_changesets(
 # ---------------------------------------------------------------------------
 
 
-def changed_with(store: StorageAdapter, path: str) -> list[dict[str, Any]]:
+def changed_with(store: SqliteBackend, path: str) -> list[dict[str, Any]]:
     """Return peer documents that co-changed with the document at ``path``.
 
     Each result has: {path, strength, observed_at, kind}.
@@ -827,7 +827,7 @@ def changed_with(store: StorageAdapter, path: str) -> list[dict[str, Any]]:
 
 
 def documents_timeline(
-    store: StorageAdapter,
+    store: SqliteBackend,
     *,
     since: str | None = None,
     from_iso: str | None = None,

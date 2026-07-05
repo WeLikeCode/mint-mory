@@ -35,7 +35,7 @@ from mintmory.core.types import (
 
 if TYPE_CHECKING:
     from mintmory.core.config import NoteSettings
-    from mintmory.core.storage import StorageAdapter
+    from mintmory.core.ports import StorageBackend
 
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ if TYPE_CHECKING:
 
 
 def _resolve_anchor(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     note_id: str,
     about: str,
     settings: NoteSettings,
@@ -75,7 +75,7 @@ def _resolve_anchor(
     # ------------------------------------------------------------------
     # Step 1: side-effect-free candidate lookup (no QuerySession, no bumps).
     # ------------------------------------------------------------------
-    candidates: list[tuple[float, MemoryRecord]] = adapter._anchor_candidates(about, limit=5)
+    candidates: list[tuple[float, MemoryRecord]] = adapter.anchor_candidates(about, limit=5)
 
     # Exclude the just-created note and other notes / archived rows.
     candidates = [
@@ -123,7 +123,7 @@ def _resolve_anchor(
 
 
 def create_note(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     content: str,
     about: str | None = None,
     when: datetime | None = None,
@@ -222,7 +222,7 @@ def create_note(
 
 
 def notes_list(
-    adapter: StorageAdapter,
+    adapter: StorageBackend,
     about: str | None = None,
     upcoming: bool = False,
     overdue: bool = False,

@@ -30,8 +30,7 @@ Every tool returns a JSON-safe dict (or list of dicts) produced via
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
 try:
@@ -44,7 +43,9 @@ from mintmory.core import session as session_mod
 from mintmory.core.cochange import changed_with, documents_timeline
 from mintmory.core.config import LLMProvider, load_settings
 from mintmory.core.llm import build_dreaming_engine
-from mintmory.core.storage import StorageAdapter
+from mintmory.core.ports import StorageBackend
+from mintmory.core.storage import SqliteBackend
+from mintmory.core.storage_factory import build_storage
 from mintmory.core.types import (
     CaptionRunReport,
     ConceptLinkType,
@@ -87,15 +88,14 @@ mcp: FastMCP[Any] = FastMCP(
     ),
 )
 
-_store: StorageAdapter | None = None
+_store: StorageBackend | None = None
 
 
-def _get_store() -> StorageAdapter:
+def _get_store() -> StorageBackend:
     global _store
     if _store is None:
-        db_path = os.environ.get("MINTMORY_DB", str(Path.home() / ".mintmory" / "memories.db"))
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        _store = StorageAdapter(db_path)
+        # build_storage() resolves path / creates parent dir / no embedder (MCP local)
+        _store = build_storage()
         _store.initialise()
     return _store
 
@@ -686,7 +686,7 @@ def docs_changed_with(path: str) -> list[dict[str, Any]]:
     To populate this data: run `mintmory index-tree <root> --cochange` first.
     Read-only. Only source='document' records are ever returned.
     """
-    return changed_with(_get_store(), path)
+    return changed_with(cast(SqliteBackend, _get_store()), path)
 
 
 @mcp.tool()
@@ -709,7 +709,7 @@ def docs_timeline(
     capped = max(1, min(limit, _DOCS_TIMELINE_MAX))
     try:
         return documents_timeline(
-            _get_store(),
+            cast(SqliteBackend, _get_store()),
             since=since,
             from_iso=from_date,
             to_iso=to_date,
