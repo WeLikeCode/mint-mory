@@ -1,0 +1,25 @@
+# Simple tier override — the smallest reachable deployment.
+#
+#   helm install mm deploy/helm/mintmory -f deploy/helm/mintmory/values-simple.yaml
+#
+# Deployment + Service + PVC + health probes. No ingress, no auth, OTel off.
+# Reach it with: kubectl port-forward svc/mm-mintmory 8080:8080
+#
+# These are already the chart defaults; this file exists as an explicit, thin
+# example of the simple tier.
+
+persistence:
+  enabled: true
+  size: 1Gi
+
+# Modest, non-restrictive footprint.
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+
+otel:
+  enabled: false
+
+ingress:
+  enabled: false

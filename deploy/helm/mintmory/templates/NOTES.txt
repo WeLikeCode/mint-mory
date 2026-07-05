@@ -1,0 +1,39 @@
+MintMory ({{ include "mintmory.fullname" . }}) is deploying.
+
+Topology (SQLite single-writer — fixed, not tunable):
+  * 1 replica, Recreate rollout, 1 uvicorn worker
+  * ReadWriteOnce PVC mounted at /data (use BLOCK storage, not NFS)
+
+Reach the API:
+{{- if .Values.ingress.enabled }}
+  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}{{ .Values.ingress.path | default "/" }}
+  {{- if .Values.ingress.basicAuth.enabled }}
+  (protected by HTTP basic auth via ingress-nginx)
+  {{- end }}
+{{- else }}
+  This release has no Ingress. Port-forward the Service:
+
+    kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "mintmory.fullname" . }} 8080:{{ .Values.service.port }}
+    curl -sf http://localhost:8080/healthz
+{{- end }}
+
+Health:
+  liveness  GET {{ .Values.probes.liveness }}
+  readiness GET {{ .Values.probes.readiness }}
+
+Observability:
+{{- if .Values.otel.enabled }}
+  OpenTelemetry export ON -> {{ .Values.otel.endpoint }}
+{{- else }}
+  OpenTelemetry export OFF (set otel.enabled=true + otel.endpoint to enable).
+{{- end }}
+
+Backups:
+  Automated in-cluster backups are NOT shipped as a CronJob: a ReadWriteOnce PVC
+  cannot be co-mounted by both the app pod and a CronJob pod. Back up manually:
+
+    kubectl exec --namespace {{ .Release.Namespace }} deploy/{{ include "mintmory.fullname" . }} -- \
+      python -c "import sqlite3; s=sqlite3.connect('/data/memories.db'); d=sqlite3.connect('/tmp/backup.db'); s.backup(d); d.close(); s.close()"
+    kubectl cp {{ .Release.Namespace }}/<pod>:/tmp/backup.db ./backup.db
+
+  See the chart README for details.

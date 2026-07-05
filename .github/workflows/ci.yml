@@ -39,3 +39,53 @@ jobs:
 
       - name: Pytest (coverage gate ≥ 80%)
         run: uv run pytest -q
+
+  deploy-validate:
+    name: helm lint · template · dry-run · docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      # Install kubeconform for OFFLINE manifest schema validation. NOTE: modern
+      # kubectl (>=1.28) `apply --dry-run=client` still needs a reachable API
+      # server (OpenAPI download + REST discovery), so it cannot validate on a
+      # cluster-less runner. kubeconform is the standard cluster-free equivalent
+      # and validates each rendered resource against the k8s JSON schemas.
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          sudo install /tmp/kubeconform /usr/local/bin/kubeconform
+
+      - name: Helm lint
+        run: helm lint deploy/helm/mintmory
+
+      - name: Helm template (simple/default tier)
+        run: helm template t deploy/helm/mintmory > /tmp/render-simple.yaml
+
+      - name: Helm template (advanced tier)
+        run: |
+          helm template t deploy/helm/mintmory \
+            -f deploy/helm/mintmory/values-advanced.yaml > /tmp/render-advanced.yaml
+
+      - name: Validate rendered manifests (simple)
+        run: |
+          helm template t deploy/helm/mintmory \
+            | kubeconform -strict -summary -kubernetes-version 1.29.0 -
+
+      - name: Validate rendered manifests (advanced)
+        run: |
+          helm template t deploy/helm/mintmory \
+            -f deploy/helm/mintmory/values-advanced.yaml \
+            | kubeconform -strict -summary -kubernetes-version 1.29.0 -
+
+      # Build-smoke only — the light image. No registry push; the full/torch
+      # variant is documented in the chart README but not built in CI (size/time).
+      - name: Docker build (light variant)
+        run: docker build --build-arg VARIANT=light -t mintmory:ci .

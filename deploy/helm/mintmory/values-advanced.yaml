@@ -1,0 +1,66 @@
+# Advanced tier override — network-exposed, authenticated, observed.
+#
+#   helm install mm deploy/helm/mintmory -f deploy/helm/mintmory/values-advanced.yaml
+#
+# Adds: Ingress (ingress-nginx) with HTTP basic auth backed by a chart-generated
+# htpasswd Secret, OpenTelemetry export to a bring-your-own OTLP collector, API
+# keys in a Secret, and CPU/memory requests+limits. Still single-replica /
+# Recreate / RWO — the SQLite guardrails are not overridable.
+#
+# ⚠️  EXAMPLE ONLY — this file ships PLACEHOLDER credentials
+# (basicAuth.password "change-me", secrets *_API_KEY "replace-me"). Do NOT
+# `helm install -f` this as-is: it stands up an internet-facing ingress with a
+# guessable password. Replace every credential (or use existingSecret) first.
+
+image:
+  repository: mintmory
+  tag: ""
+  pullPolicy: IfNotPresent
+
+persistence:
+  enabled: true
+  size: 5Gi
+  # Pin a block-storage class in real clusters, e.g.:
+  # storageClassName: gp3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+# Non-secret settings.
+config:
+  MINTMORY_SQLITE_BUSY_TIMEOUT_MS: "5000"
+  MINTMORY_EMBED_PROVIDER: "hashing"
+  MINTMORY_LLM_PROVIDER: "portkey"
+  MINTMORY_LLM_BASE_URL: "http://portkey-gateway:8789/v1"
+  MINTMORY_LLM_MODEL: "MiniMax-M2.5"
+
+# Secret API keys (populate with real values or via `--set-string` / a values file
+# kept out of git). Rendered into an Opaque Secret.
+secrets:
+  MINTMORY_LLM_API_KEY: "replace-me"
+
+otel:
+  enabled: true
+  endpoint: "http://otel-collector:4318"
+  serviceName: "mintmory-api"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: mintmory.example.com
+  path: /
+  pathType: Prefix
+  tls:
+    - secretName: mintmory-tls
+      hosts:
+        - mintmory.example.com
+  basicAuth:
+    enabled: true
+    username: admin
+    password: "change-me"
+    realm: "MintMory"

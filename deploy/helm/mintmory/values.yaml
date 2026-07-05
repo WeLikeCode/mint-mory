@@ -1,0 +1,127 @@
+# Default values for the mintmory chart == the "simple" tier.
+#
+# MintMory's store is a single SQLite file, so the topology is fixed:
+#   * exactly ONE replica (values.schema.json enforces replicaCount <= 1),
+#   * Recreate rollout (never RollingUpdate — two writers corrupt the WAL),
+#   * a ReadWriteOnce PVC on BLOCK storage (not NFS — SQLite WAL uses mmap).
+# See README.md for the full rationale.
+
+# Number of pods. MUST be 1 (schema maximum: 1). Present only so the constraint
+# is explicit and greppable; do not raise it.
+replicaCount: 1
+
+image:
+  repository: mintmory
+  # Empty tag -> Chart.appVersion is used.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Extra pod/container knobs.
+nameOverride: ""
+fullnameOverride: ""
+podAnnotations: {}
+podLabels: {}
+
+# Persistent volume for /data (the SQLite .db/.db-wal/.db-shm triple).
+persistence:
+  enabled: true
+  size: 1Gi
+  # ReadWriteOnce is required (single writer). Do not change to RWX.
+  accessMode: ReadWriteOnce
+  # Leave empty to use the cluster default StorageClass. Use a BLOCK-storage
+  # class (e.g. ebs/pd/local-path), NOT an NFS-backed one.
+  storageClassName: ""
+  # Optionally bind an existing PVC instead of creating one.
+  existingClaim: ""
+
+# Container resource requests/limits. Unset in the simple tier.
+resources: {}
+# Example (advanced):
+#   requests: { cpu: 100m, memory: 256Mi }
+#   limits:   { cpu: "1",  memory: 512Mi }
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# Non-secret MINTMORY_* settings passed through a ConfigMap. Each key is rendered
+# only when set here, so an empty map yields an (essentially) empty ConfigMap and
+# the pod still runs (MintMory defaults to a fully offline config).
+# Examples:
+#   MINTMORY_SQLITE_BUSY_TIMEOUT_MS: "5000"
+#   MINTMORY_EMBED_PROVIDER: "hashing"
+#   MINTMORY_LLM_PROVIDER: "portkey"
+#   MINTMORY_LLM_BASE_URL: "http://gateway:8789/v1"
+#   MINTMORY_LLM_MODEL: "MiniMax-M2.5"
+config: {}
+
+# Secret API keys -> a Secret rendered ONLY if at least one is non-empty.
+# Keys map 1:1 to the env vars the app reads.
+secrets: {}
+# Example (advanced):
+#   MINTMORY_LLM_API_KEY: "..."
+#   MINTMORY_EMBED_API_KEY: "..."
+#   MINTMORY_VISION_API_KEY: "..."
+
+# OpenTelemetry export (bring-your-own OTLP collector). Off by default.
+otel:
+  enabled: false
+  # OTLP/HTTP endpoint, e.g. "http://otel-collector:4318".
+  endpoint: ""
+  serviceName: "mintmory-api"
+
+# Ingress (advanced tier). Off by default -> reach the API via the Service or
+# `kubectl port-forward`.
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  host: mintmory.local
+  path: /
+  pathType: Prefix
+  # TLS: list of { secretName, hosts: [] }.
+  tls: []
+  # Basic auth via ingress-nginx annotations (the app itself has no auth).
+  basicAuth:
+    enabled: false
+    username: ""
+    password: ""
+    # Reference a pre-made htpasswd Secret (key "auth") instead of generating one.
+    existingSecret: ""
+    realm: "MintMory"
+
+# Liveness/readiness probe paths (MM-42 endpoints). Rarely changed.
+probes:
+  liveness: /healthz
+  readiness: /readyz
+
+# Pod-level security context. The image already runs as uid 10001; these make it
+# explicit and enforced by the API server.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+
+# Container-level security context.
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Automated in-cluster backup is intentionally NOT shipped as a CronJob: a
+# ReadWriteOnce PVC cannot be co-mounted by both the running app pod and a
+# CronJob pod, so any such CronJob would deadlock on the volume (Pending forever).
+# See README.md "Backups" for the supported manual `kubectl exec ... sqlite3
+# .backup` procedure.
+backup:
+  enabled: false
