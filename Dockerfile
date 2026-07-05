@@ -32,14 +32,18 @@ RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-# Copy only what uv needs to resolve + install the workspace, frozen to uv.lock.
-COPY pyproject.toml uv.lock ./
+# Copy what uv needs to resolve + install the workspace. NOTE: uv.lock is
+# gitignored in this repo (not committed), so it is NOT in the build context on a
+# fresh checkout — we resolve at build time (no --frozen), consistent with how the
+# CI `gates` job syncs. To pin images to an exact lock, commit uv.lock and add it
+# back to the COPY with `uv sync --frozen`.
+COPY pyproject.toml ./
 COPY packages ./packages
 
 RUN if [ "$VARIANT" = "full" ]; then \
-        uv sync --frozen --no-dev --extra otel --extra local ; \
+        uv sync --no-dev --extra otel --extra local ; \
     else \
-        uv sync --frozen --no-dev --extra otel ; \
+        uv sync --no-dev --extra otel ; \
     fi
 
 # Non-root runtime user; writable data volume for the SQLite store (+ WAL/SHM).
