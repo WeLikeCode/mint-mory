@@ -23,9 +23,10 @@ jobs:
 
       - name: Sync dependencies
         # --extra cochange installs scikit-learn so the document co-change HDBSCAN
-        # path is exercised by mypy + pytest (the fallback/degradation paths are
-        # still covered without it via monkeypatched tests).
-        run: uv sync --extra cochange
+        # path is exercised; --extra otel installs the OpenTelemetry SDK so the
+        # telemetry activation + OTLP metric-exporter path (MM-42) is actually
+        # tested (fallback/no-op paths are still covered via monkeypatched tests).
+        run: uv sync --extra cochange --extra otel
 
       - name: Ruff (lint)
         run: uv run ruff check .

@@ -35,6 +35,7 @@ from mintmory.core.config import load_settings
 from mintmory.core.dreaming import DreamingEngine
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.storage import StorageAdapter
+from mintmory.core.telemetry import init_telemetry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
     CaptionRunReport,
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     _store = StorageAdapter(db_path)
     _store.initialise()
+    init_telemetry(load_settings().otel)
     yield
     if _store:
         _store.close()
@@ -97,6 +99,27 @@ def get_store() -> StorageAdapter:
     if _store is None:
         raise RuntimeError("Storage not initialised — lifespan not run")
     return _store
+
+
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+
+
+@app.get("/healthz", tags=["Health"])
+async def healthz() -> dict[str, str]:
+    """Liveness probe — no DB touch."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz", tags=["Health"])
+async def readyz() -> dict[str, str]:
+    """Readiness probe — verifies the DB is reachable via a cheap SELECT 1."""
+    try:
+        get_store().connect().execute("SELECT 1").fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="store not ready") from exc
+    return {"status": "ready"}
 
 
 # ---------------------------------------------------------------------------

@@ -96,7 +96,13 @@ def init_telemetry(settings: OTelSettings | None = None) -> bool:
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(span_exporter))
     trace.set_tracer_provider(provider)
-    reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+    if settings.exporter == "otlp":
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+
+        metric_exporter: Any = OTLPMetricExporter()
+    else:
+        metric_exporter = ConsoleMetricExporter()
+    reader = PeriodicExportingMetricReader(metric_exporter)
     metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
 
     _tracer = trace.get_tracer("mintmory")
