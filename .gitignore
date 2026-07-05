@@ -14,7 +14,8 @@ htmlcov/
 .ruff_cache/
 
 # uv
-uv.lock
+# uv.lock IS committed (MM-44): the Dockerfile/CI build with `uv sync --frozen`
+# for reproducible, supply-chain-pinned images. Do not re-ignore it.
 .uv/
 
 # SQLite databases (dev only — test DBs should not be committed)

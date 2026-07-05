@@ -8,12 +8,12 @@
 # Recreate / RWO — the SQLite guardrails are not overridable.
 #
 # ⚠️  EXAMPLE ONLY — this file ships PLACEHOLDER credentials
-# (basicAuth.password "change-me", secrets *_API_KEY "replace-me"). Do NOT
+# (auth.basic.password "change-me", secrets *_API_KEY "replace-me"). Do NOT
 # `helm install -f` this as-is: it stands up an internet-facing ingress with a
 # guessable password. Replace every credential (or use existingSecret) first.
 
 image:
-  repository: mintmory
+  repository: ghcr.io/welikecode/mint-mory
   tag: ""
   pullPolicy: IfNotPresent
 
@@ -59,8 +59,12 @@ ingress:
     - secretName: mintmory-tls
       hosts:
         - mintmory.example.com
-  basicAuth:
-    enabled: true
+
+# HTTP basic auth at the ingress (chart-generated htpasswd Secret).
+# ⚠️  EXAMPLE ONLY — "change-me" is a placeholder; replace it before installing.
+auth:
+  mode: basic
+  basic:
     username: admin
     password: "change-me"
     realm: "MintMory"

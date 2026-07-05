@@ -1,0 +1,98 @@
+{{- if eq .Values.auth.mode "oauth2proxy" }}
+{{- $name := include "mintmory.oauth2ProxyName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "mintmory.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mintmory.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        {{- include "mintmory.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: oauth2-proxy
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 2000
+        runAsGroup: 2000
+        fsGroup: 2000
+      containers:
+        - name: oauth2-proxy
+          image: {{ .Values.auth.oauth2proxy.image | quote }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 2000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          args:
+            - --provider={{ .Values.auth.oauth2proxy.provider | default "oidc" }}
+            - --oidc-issuer-url={{ .Values.auth.oauth2proxy.oidcIssuerUrl }}
+            - --client-id={{ .Values.auth.oauth2proxy.clientId }}
+            {{- range .Values.auth.oauth2proxy.emailDomains }}
+            - --email-domain={{ . }}
+            {{- end }}
+            - --http-address=0.0.0.0:4180
+            - --reverse-proxy=true
+            - --upstream=static://200
+            - --cookie-secure=true
+            {{- range $flag, $val := .Values.auth.oauth2proxy.extraArgs }}
+            - {{ $flag }}={{ $val }}
+            {{- end }}
+          env:
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: cookie-secret
+          ports:
+            - name: http
+              containerPort: 4180
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

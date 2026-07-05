@@ -11,7 +11,8 @@
 replicaCount: 1
 
 image:
-  repository: mintmory
+  # Published by CI to GHCR (MM-44). Override for a private mirror / local build.
+  repository: ghcr.io/welikecode/mint-mory
   # Empty tag -> Chart.appVersion is used.
   tag: ""
   pullPolicy: IfNotPresent
@@ -83,14 +84,37 @@ ingress:
   pathType: Prefix
   # TLS: list of { secretName, hosts: [] }.
   tls: []
-  # Basic auth via ingress-nginx annotations (the app itself has no auth).
-  basicAuth:
-    enabled: false
+
+# Ingress authentication mode (the app itself has no auth — the gate is entirely
+# at the ingress edge). Mutually exclusive: pick ONE mode.
+#   none        -> no auth (default; reach via port-forward or a trusted network).
+#   basic       -> HTTP basic auth via ingress-nginx + an htpasswd Secret.
+#   oauth2proxy -> OIDC SSO via a bring-your-own provider, fronted by oauth2-proxy.
+auth:
+  mode: none
+  # mode=basic: ingress-nginx basic auth backed by a chart-generated (or existing)
+  # htpasswd Secret.
+  basic:
     username: ""
     password: ""
     # Reference a pre-made htpasswd Secret (key "auth") instead of generating one.
     existingSecret: ""
     realm: "MintMory"
+  # mode=oauth2proxy: deploy oauth2-proxy for a bring-your-own OIDC provider and
+  # route ingress auth through it (nginx external-auth annotations + an /oauth2
+  # path). Requires an OIDC issuer + client (issuer/clientId/clientSecret).
+  oauth2proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    provider: oidc
+    # e.g. https://accounts.google.com
+    oidcIssuerUrl: ""
+    clientId: ""
+    clientSecret: ""
+    # 32-byte base64 cookie secret; chart-generates one if left empty.
+    cookieSecret: ""
+    emailDomains: ["*"]
+    # Extra oauth2-proxy CLI flags, e.g. { "--scope": "openid email profile" }.
+    extraArgs: {}
 
 # Liveness/readiness probe paths (MM-42 endpoints). Rarely changed.
 probes:

@@ -11,10 +11,13 @@ metadata:
     {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
-    {{- if .Values.ingress.basicAuth.enabled }}
+    {{- if eq .Values.auth.mode "basic" }}
     nginx.ingress.kubernetes.io/auth-type: basic
     nginx.ingress.kubernetes.io/auth-secret: {{ include "mintmory.basicAuthSecretName" . }}
-    nginx.ingress.kubernetes.io/auth-realm: {{ .Values.ingress.basicAuth.realm | default "MintMory" | quote }}
+    nginx.ingress.kubernetes.io/auth-realm: {{ .Values.auth.basic.realm | default "MintMory" | quote }}
+    {{- else if eq .Values.auth.mode "oauth2proxy" }}
+    nginx.ingress.kubernetes.io/auth-url: "http://{{ include "mintmory.oauth2ProxyName" . }}.{{ .Release.Namespace }}.svc.cluster.local:4180/oauth2/auth"
+    nginx.ingress.kubernetes.io/auth-signin: "https://$host/oauth2/start?rd=$escaped_request_uri"
     {{- end }}
 spec:
   {{- if .Values.ingress.className }}
@@ -28,6 +31,16 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
+          {{- if eq .Values.auth.mode "oauth2proxy" }}
+          # oauth2-proxy login/callback endpoints on the same host (sign-in flow).
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "mintmory.oauth2ProxyName" . }}
+                port:
+                  number: 4180
+          {{- end }}
           - path: {{ .Values.ingress.path | default "/" }}
             pathType: {{ .Values.ingress.pathType | default "Prefix" }}
             backend:

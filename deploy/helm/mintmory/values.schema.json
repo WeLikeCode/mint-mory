@@ -77,15 +77,39 @@
         "host": { "type": "string" },
         "path": { "type": "string" },
         "pathType": { "type": "string" },
-        "tls": { "type": "array" },
-        "basicAuth": {
+        "tls": { "type": "array" }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "description": "Ingress auth mode. Mutually exclusive.",
+          "type": "string",
+          "enum": ["none", "basic", "oauth2proxy"]
+        },
+        "basic": {
           "type": "object",
           "properties": {
-            "enabled": { "type": "boolean" },
             "username": { "type": "string" },
             "password": { "type": "string" },
             "existingSecret": { "type": "string" },
             "realm": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "oauth2proxy": {
+          "type": "object",
+          "properties": {
+            "image": { "type": "string" },
+            "provider": { "type": "string" },
+            "oidcIssuerUrl": { "type": "string" },
+            "clientId": { "type": "string" },
+            "clientSecret": { "type": "string" },
+            "cookieSecret": { "type": "string" },
+            "emailDomains": { "type": "array" },
+            "extraArgs": { "type": "object" }
           },
           "additionalProperties": false
         }

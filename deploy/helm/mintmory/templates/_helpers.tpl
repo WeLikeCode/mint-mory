@@ -63,11 +63,18 @@ Name of the PVC (existingClaim wins).
 Name of the basic-auth Secret (existingSecret wins).
 */}}
 {{- define "mintmory.basicAuthSecretName" -}}
-{{- if .Values.ingress.basicAuth.existingSecret -}}
-{{- .Values.ingress.basicAuth.existingSecret -}}
+{{- if .Values.auth.basic.existingSecret -}}
+{{- .Values.auth.basic.existingSecret -}}
 {{- else -}}
 {{- printf "%s-basic-auth" (include "mintmory.fullname" .) -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+Name of the oauth2-proxy workload/Service/Secret.
+*/}}
+{{- define "mintmory.oauth2ProxyName" -}}
+{{- printf "%s-oauth2-proxy" (include "mintmory.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*

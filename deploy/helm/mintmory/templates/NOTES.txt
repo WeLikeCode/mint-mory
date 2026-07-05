@@ -7,8 +7,13 @@ Topology (SQLite single-writer — fixed, not tunable):
 Reach the API:
 {{- if .Values.ingress.enabled }}
   http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}{{ .Values.ingress.path | default "/" }}
-  {{- if .Values.ingress.basicAuth.enabled }}
+  {{- if eq .Values.auth.mode "basic" }}
   (protected by HTTP basic auth via ingress-nginx)
+  {{- else if eq .Values.auth.mode "oauth2proxy" }}
+  (protected by OIDC SSO — oauth2-proxy fronts the ingress; bring your own OIDC
+   provider via auth.oauth2proxy.oidcIssuerUrl/clientId/clientSecret)
+  {{- else }}
+  (auth.mode=none — no authentication; expose only on a trusted network)
   {{- end }}
 {{- else }}
   This release has no Ingress. Port-forward the Service:

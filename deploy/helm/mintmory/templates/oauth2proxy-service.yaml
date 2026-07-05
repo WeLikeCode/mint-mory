@@ -1,0 +1,19 @@
+{{- if eq .Values.auth.mode "oauth2proxy" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mintmory.oauth2ProxyName" . }}
+  labels:
+    {{- include "mintmory.labels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 4180
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "mintmory.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: oauth2-proxy
+{{- end }}

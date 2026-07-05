@@ -26,7 +26,9 @@ jobs:
         # path is exercised; --extra otel installs the OpenTelemetry SDK so the
         # telemetry activation + OTLP metric-exporter path (MM-42) is actually
         # tested (fallback/no-op paths are still covered via monkeypatched tests).
-        run: uv sync --extra cochange --extra otel
+        # --frozen installs strictly from the committed uv.lock (MM-44) and fails
+        # loudly if the lock drifted from pyproject.toml (regen with `uv lock`).
+        run: uv sync --frozen --extra cochange --extra otel
 
       - name: Ruff (lint)
         run: uv run ruff check .
@@ -89,3 +91,48 @@ jobs:
       # variant is documented in the chart README but not built in CI (size/time).
       - name: Docker build (light variant)
         run: docker build --build-arg VARIANT=light -t mintmory:ci .
+
+  publish-image:
+    name: Publish light image to GHCR
+    runs-on: ubuntu-latest
+    # Only publish an image that passed lint/types/tests AND helm/kubeconform/build.
+    needs: [gates, deploy-validate]
+    # Publish on pushes (default-branch commits + release tags), never on PRs
+    # (a PR validates the build but must not push, incl. from forks).
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=ref,event=tag
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # LIGHT variant only. The full/torch image (~2 GB) is build-on-demand
+      # (`docker build --build-arg VARIANT=full`), never auto-published.
+      - name: Build and push (light variant)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          build-args: VARIANT=light
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

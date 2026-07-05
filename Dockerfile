@@ -20,6 +20,8 @@
 # mintmory-core workspace member, not on mintmory-api. `uv sync --frozen --extra
 # otel` therefore syncs the whole uv workspace (which installs mintmory-api plus
 # its transitive deps) with the requested extra. `--no-dev` drops pytest/ruff/mypy.
+# `--frozen` installs strictly from the committed uv.lock and fails if the lock has
+# drifted from pyproject.toml — a supply-chain guard for reproducible builds.
 FROM python:3.12-slim AS base
 
 ARG VARIANT=light
@@ -32,18 +34,18 @@ RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-# Copy what uv needs to resolve + install the workspace. NOTE: uv.lock is
-# gitignored in this repo (not committed), so it is NOT in the build context on a
-# fresh checkout — we resolve at build time (no --frozen), consistent with how the
-# CI `gates` job syncs. To pin images to an exact lock, commit uv.lock and add it
-# back to the COPY with `uv sync --frozen`.
-COPY pyproject.toml ./
+# Copy what uv needs to resolve + install the workspace. uv.lock is committed to
+# the repo (MM-44), so it is in the build context on every checkout — we install
+# from it with `--frozen` for reproducible, pinned images, consistent with how the
+# CI `gates` job syncs. `--frozen` fails the build if the lock drifts from
+# pyproject.toml (regenerate with `uv lock` and commit).
+COPY pyproject.toml uv.lock ./
 COPY packages ./packages
 
 RUN if [ "$VARIANT" = "full" ]; then \
-        uv sync --no-dev --extra otel --extra local ; \
+        uv sync --frozen --no-dev --extra otel --extra local ; \
     else \
-        uv sync --no-dev --extra otel ; \
+        uv sync --frozen --no-dev --extra otel ; \
     fi
 
 # Non-root runtime user; writable data volume for the SQLite store (+ WAL/SHM).
