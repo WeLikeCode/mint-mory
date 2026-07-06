@@ -11,10 +11,12 @@ Run: uvicorn mintmory.api.app:app --port 8080
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Annotated
 
+import anyio
+import anyio.to_thread
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from mintmory.api.schemas import (
@@ -61,16 +63,42 @@ from mintmory.core.types import (
 
 _store: StorageBackend | None = None
 
+# ---------------------------------------------------------------------------
+# Thread-offload helper (design §6.3 Phase 2 requirement)
+# ---------------------------------------------------------------------------
+
+
+async def _db[T](call: Callable[[], T]) -> T:
+    """Run a blocking storage call in anyio's default worker-thread pool.
+
+    Required for Postgres mode: psycopg3's synchronous pool blocks the event loop,
+    serialising concurrent requests and risking liveness-probe stalls on slow queries.
+    Running the call in a thread allows other requests (including /healthz) to be
+    served concurrently.  SQLite is also acceptable inline, but wrapping it here is
+    harmless and keeps the code path uniform.
+    """
+    return await anyio.to_thread.run_sync(call)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global _store
+    settings = load_settings()
     # build_storage() resolves path from StorageSettings / MINTMORY_DB / default,
-    # creates the parent directory, and returns an uninitialised SqliteBackend.
+    # creates the parent directory, and returns an uninitialised backend.
     # NO embedder — API-added memories get NULL embeddings (asymmetry vs CLI).
-    _store = build_storage()
+    _store = build_storage(settings.storage)
     _store.initialise()
-    init_telemetry(load_settings().otel)
+    init_telemetry(settings.otel)
+
+    # Startup guard (design §6.3): cap anyio's default thread-limiter to at most
+    # pool_max so we never queue more DB threads than the pool can serve.
+    # This prevents thread starvation when pool_max < anyio's default (40).
+    pool_max = settings.storage.pool_max
+    limiter = anyio.to_thread.current_default_thread_limiter()
+    if limiter.total_tokens > pool_max:
+        limiter.total_tokens = pool_max
+
     yield
     if _store:
         _store.close()
@@ -115,7 +143,8 @@ async def healthz() -> dict[str, str]:
 @app.get("/readyz", tags=["Health"])
 async def readyz() -> dict[str, str]:
     """Readiness probe — verifies the DB is reachable via a cheap SELECT 1."""
-    if not get_store().ping():
+    ok = await _db(lambda: get_store().ping())
+    if not ok:
         raise HTTPException(status_code=503, detail="store not ready")
     return {"status": "ready"}
 
@@ -128,12 +157,13 @@ async def readyz() -> dict[str, str]:
 @app.post("/memories", response_model=MemoryRecord, status_code=201, tags=["Memories"])
 async def add_memory(body: MemoryCreate) -> MemoryRecord:
     """Add a new memory. See POST /memories in openapi/mintmory.yaml."""
-    return get_store().add_memory(**body.model_dump())
+    data = body.model_dump()
+    return await _db(lambda: get_store().add_memory(**data))
 
 
 @app.get("/memories/{memory_id}", response_model=MemoryRecord, tags=["Memories"])
 async def get_memory(memory_id: str) -> MemoryRecord:
-    result = get_store().get_memory(memory_id)
+    result = await _db(lambda: get_store().get_memory(memory_id))
     if result is None:
         raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
     return result
@@ -143,18 +173,20 @@ async def get_memory(memory_id: str) -> MemoryRecord:
 async def update_memory(memory_id: str, body: MemoryUpdate) -> MemoryRecord:
     """Partial update. Only fields present in the body are changed."""
     store = get_store()
-    if store.get_memory(memory_id) is None:
+    existing = await _db(lambda: store.get_memory(memory_id))
+    if existing is None:
         raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
     updates = body.model_dump(exclude_unset=True)
-    return store.update_memory(memory_id, **updates)
+    return await _db(lambda: store.update_memory(memory_id, **updates))
 
 
 @app.delete("/memories/{memory_id}", status_code=204, tags=["Memories"])
 async def archive_memory(memory_id: str) -> None:
     store = get_store()
-    if store.get_memory(memory_id) is None:
+    existing = await _db(lambda: store.get_memory(memory_id))
+    if existing is None:
         raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
-    store.archive_memory(memory_id)
+    await _db(lambda: store.archive_memory(memory_id))
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +196,7 @@ async def archive_memory(memory_id: str) -> None:
 
 @app.post("/memories/search", response_model=SearchResponse, tags=["Search"])
 async def search_memories(request: SearchRequest) -> SearchResponse:
-    return get_store().search(request)
+    return await _db(lambda: get_store().search(request))
 
 
 # ---------------------------------------------------------------------------
@@ -179,9 +211,10 @@ async def get_links(
     min_strength: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
 ) -> list[ConceptLink]:
     store = get_store()
-    if store.get_memory(memory_id) is None:
+    existing = await _db(lambda: store.get_memory(memory_id))
+    if existing is None:
         raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
-    links = store.get_links(memory_id, link_type=link_type)
+    links = await _db(lambda: store.get_links(memory_id, link_type=link_type))
     return [link for link in links if link.strength >= min_strength]
 
 
@@ -199,9 +232,9 @@ async def create_link(memory_id: str, body: ConceptLinkCreate) -> ConceptLink:
     persisted; the forward link is returned.
     """
     store = get_store()
-    if store.get_memory(memory_id) is None:
+    if await _db(lambda: store.get_memory(memory_id)) is None:
         raise HTTPException(status_code=404, detail=f"Memory '{memory_id}' not found")
-    if store.get_memory(body.target_memory_id) is None:
+    if await _db(lambda: store.get_memory(body.target_memory_id)) is None:
         raise HTTPException(status_code=404, detail=f"Memory '{body.target_memory_id}' not found")
     if body.target_memory_id == memory_id:
         raise HTTPException(
@@ -217,20 +250,19 @@ async def create_link(memory_id: str, body: ConceptLinkCreate) -> ConceptLink:
         confidence=body.confidence,
         source=LinkSource.USER,
     )
-    created = store.add_link(link)
+    created = await _db(lambda: store.add_link(link))
 
     if body.link_type in SYMMETRIC_LINK_TYPES:
-        store.add_link(
-            ConceptLink(
-                source_memory_id=body.target_memory_id,
-                target_memory_id=memory_id,
-                link_type=body.link_type,
-                entity=body.entity,
-                strength=body.strength,
-                confidence=body.confidence,
-                source=LinkSource.USER,
-            )
+        reverse_link = ConceptLink(
+            source_memory_id=body.target_memory_id,
+            target_memory_id=memory_id,
+            link_type=body.link_type,
+            entity=body.entity,
+            strength=body.strength,
+            confidence=body.confidence,
+            source=LinkSource.USER,
         )
+        await _db(lambda: store.add_link(reverse_link))
 
     return created
 
@@ -243,15 +275,20 @@ async def create_link(memory_id: str, body: ConceptLinkCreate) -> ConceptLink:
 @app.post("/notes", response_model=NoteResult, status_code=201, tags=["Notes"])
 async def create_note(body: NoteCreate) -> NoteResult:
     """Create a user-authored note (``is_note=true``). See core.notes.create_note."""
-    from mintmory.core import notes as notes_mod
+    from mintmory.core import notes as notes_mod  # noqa: PLC0415
 
-    return notes_mod.create_note(
-        get_store(),
-        content=body.content,
-        about=body.about,
-        when=body.when,
-        until=body.until,
-        category=body.category,
+    store = get_store()
+    content, about, when, until, category = (
+        body.content,
+        body.about,
+        body.when,
+        body.until,
+        body.category,
+    )
+    return await _db(
+        lambda: notes_mod.create_note(
+            store, content=content, about=about, when=when, until=until, category=category
+        )
     )
 
 
@@ -263,11 +300,14 @@ async def list_notes(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> list[MemoryRecord]:
     """List user-authored notes. ``upcoming``/``overdue`` are mutually exclusive (422 if both)."""
-    from mintmory.core import notes as notes_mod
+    from mintmory.core import notes as notes_mod  # noqa: PLC0415
 
+    store = get_store()
     try:
-        return notes_mod.notes_list(
-            get_store(), about=about, upcoming=upcoming, overdue=overdue, limit=limit
+        return await _db(
+            lambda: notes_mod.notes_list(
+                store, about=about, upcoming=upcoming, overdue=overdue, limit=limit
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -280,7 +320,7 @@ async def list_notes(
 
 @app.get("/stats", response_model=MemoryStats, tags=["Stats"])
 async def get_stats() -> MemoryStats:
-    return get_store().get_stats()
+    return await _db(lambda: get_store().get_stats())
 
 
 # ---------------------------------------------------------------------------
@@ -290,10 +330,16 @@ async def get_stats() -> MemoryStats:
 
 @app.post("/dream", response_model=DreamReport, tags=["Dream"])
 async def run_dream(body: DreamRequest) -> DreamReport:
-    engine = DreamingEngine(get_store())
-    if body.intensity is DreamIntensity.FULL:
-        return engine.run_full()
-    return engine.run_light()
+    store = get_store()
+    intensity = body.intensity
+
+    def _do_dream() -> DreamReport:
+        engine = DreamingEngine(store)
+        if intensity is DreamIntensity.FULL:
+            return engine.run_full()
+        return engine.run_light()
+
+    return await _db(_do_dream)
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +349,7 @@ async def run_dream(body: DreamRequest) -> DreamReport:
 
 @app.get("/sessions/{session_id}", response_model=QuerySession, tags=["Sessions"])
 async def get_session(session_id: str) -> QuerySession:
-    result = get_store().get_session(session_id)
+    result = await _db(lambda: get_store().get_session(session_id))
     if result is None:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return result
@@ -317,16 +363,21 @@ async def session_feedback(session_id: str, body: SessionFeedback) -> QuerySessi
     concluded).
     """
     store = get_store()
-    if store.get_session(session_id) is None:
+    existing = await _db(lambda: store.get_session(session_id))
+    if existing is None:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    useful_ids, stale_ids = body.useful_ids, body.stale_ids
+    confidence_rating, reasoning = body.confidence_rating, body.reasoning
     try:
-        return session_module.apply_feedback(
-            store,
-            session_id,
-            useful_ids=body.useful_ids,
-            stale_ids=body.stale_ids,
-            confidence_rating=body.confidence_rating,
-            reasoning=body.reasoning,
+        return await _db(
+            lambda: session_module.apply_feedback(
+                store,
+                session_id,
+                useful_ids=useful_ids,
+                stale_ids=stale_ids,
+                confidence_rating=confidence_rating,
+                reasoning=reasoning,
+            )
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -341,7 +392,7 @@ async def session_feedback(session_id: str, body: SessionFeedback) -> QuerySessi
 async def list_summaries(
     include_stale: Annotated[bool, Query()] = False,
 ) -> list[MemorySummary]:
-    summaries: list[MemorySummary] = get_store().list_summaries()
+    summaries: list[MemorySummary] = await _db(lambda: get_store().list_summaries())
     if include_stale:
         return summaries
     return [summary for summary in summaries if summary.is_current]
@@ -358,21 +409,24 @@ async def list_summary_jobs(
     ``limit=0`` means no cap.
     """
     settings = load_settings()
-    engine = build_dreaming_engine(
-        get_store(),
-        settings.llm,
-        link_settings=settings.link,
-        summary_settings=settings.summary,
-    )
-    jobs = engine.collect_summary_jobs(include_all=include_all)
-    if limit > 0:
-        jobs = jobs[:limit]
-    return jobs
+    store = get_store()
+
+    def _collect() -> list[SummaryJob]:
+        engine = build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+        )
+        jobs = engine.collect_summary_jobs(include_all=include_all)
+        return jobs[:limit] if limit > 0 else jobs
+
+    return await _db(_collect)
 
 
 @app.get("/summaries/{concept}", response_model=MemorySummary, tags=["Summaries"])
 async def get_summary(concept: str) -> MemorySummary:
-    result = get_store().get_summary(concept)
+    result = await _db(lambda: get_store().get_summary(concept))
     if result is None:
         raise HTTPException(status_code=404, detail=f"No summary for concept '{concept}'")
     return result
@@ -382,13 +436,19 @@ async def get_summary(concept: str) -> MemorySummary:
 async def put_summary(concept: str, body: SummaryPut) -> MemorySummary:
     """Store an agent-supplied summary for ``concept`` (idempotent upsert)."""
     settings = load_settings()
-    engine = build_dreaming_engine(
-        get_store(),
-        settings.llm,
-        link_settings=settings.link,
-        summary_settings=settings.summary,
-    )
-    return engine.apply_summary(concept, body.summary_text)
+    store = get_store()
+    summary_text = body.summary_text
+
+    def _apply() -> MemorySummary:
+        engine = build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+        )
+        return engine.apply_summary(concept, summary_text)
+
+    return await _db(_apply)
 
 
 # ---------------------------------------------------------------------------
@@ -411,15 +471,18 @@ async def list_image_jobs(
     ``include_all=false`` (default) returns only images that still need a description.
     ``limit=0`` means no cap.
     """
-    from mintmory.core import vision as vision_mod
+    from mintmory.core import vision as vision_mod  # noqa: PLC0415
 
     settings = load_settings()
-    return vision_mod.image_jobs(
-        get_store(),
-        include_all=include_all,
-        include_bytes=include_bytes,
-        limit=limit,
-        settings=settings.vision,
+    store = get_store()
+    return await _db(
+        lambda: vision_mod.image_jobs(
+            store,
+            include_all=include_all,
+            include_bytes=include_bytes,
+            limit=limit,
+            settings=settings.vision,
+        )
     )
 
 
@@ -432,12 +495,16 @@ async def put_image_caption(file_id: str, body: ImageCaptionPut) -> ImageDescrip
     then drops out of the default ``GET /images/jobs`` work-list). No vision backend
     is required. Returns the stored ``ImageDescription`` with linkage facts.
     """
-    from mintmory.core import vision as vision_mod
+    from mintmory.core import vision as vision_mod  # noqa: PLC0415
 
     settings = load_settings()
+    store = get_store()
+    description = body.description
     try:
-        return vision_mod.image_caption_put(
-            get_store(), file_id, body.description, settings=settings.vision
+        return await _db(
+            lambda: vision_mod.image_caption_put(
+                store, file_id, description, settings=settings.vision
+            )
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -458,7 +525,7 @@ async def caption_run(body: CaptionRunRequest) -> CaptionRunReport:
 
     Raises 422 when the configured provider is not yet implemented (e.g. ``ocr``).
     """
-    from mintmory.core import vision as vision_mod
+    from mintmory.core import vision as vision_mod  # noqa: PLC0415
 
     settings = load_settings()
     try:
@@ -467,14 +534,18 @@ async def caption_run(body: CaptionRunRequest) -> CaptionRunReport:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if captioner is None:
         return CaptionRunReport(provider="agent")
+    store = get_store()
     budget = int(body.budget_mb * 1024 * 1024) if body.budget_mb > 0 else None
-    return vision_mod.caption_pending_images(
-        get_store(),
-        captioner=captioner,
-        limit=body.limit,
-        budget=budget,
-        include_all=body.include_all,
-        settings=settings.vision,
+    limit_val, include_all_val = body.limit, body.include_all
+    return await _db(
+        lambda: vision_mod.caption_pending_images(
+            store,
+            captioner=captioner,
+            limit=limit_val,
+            budget=budget,
+            include_all=include_all_val,
+            settings=settings.vision,
+        )
     )
 
 

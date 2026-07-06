@@ -42,6 +42,60 @@ jobs:
       - name: Pytest (coverage gate ≥ 80%)
         run: uv run pytest -q
 
+  conformance-pg:
+    name: PG conformance · golden recall · soak
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: mintmory
+          POSTGRES_DB: mintmory
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (postgres extra)
+        run: uv sync --frozen --extra postgres --extra cochange --extra otel
+
+      - name: Conformance suite (postgres backend)
+        env:
+          MINTMORY_TEST_PG_DSN: "postgresql://postgres:mintmory@localhost:55432/mintmory"
+        run: |
+          uv run pytest packages/core/tests/conformance/ \
+            -k postgres \
+            -v \
+            --tb=short
+
+      - name: Golden retrieval recall (postgres backend)
+        env:
+          MINTMORY_TEST_PG_DSN: "postgresql://postgres:mintmory@localhost:55432/mintmory"
+        run: |
+          uv run pytest packages/core/tests/conformance/test_golden_retrieval.py \
+            -k postgres \
+            -v \
+            --tb=short
+
+      - name: Soak test (postgres concurrent)
+        env:
+          MINTMORY_TEST_PG_DSN: "postgresql://postgres:mintmory@localhost:55432/mintmory"
+        run: |
+          uv run pytest packages/core/tests/test_pg_soak.py \
+            -v \
+            --tb=short
+
   deploy-validate:
     name: helm lint · template · dry-run · docker build
     runs-on: ubuntu-latest

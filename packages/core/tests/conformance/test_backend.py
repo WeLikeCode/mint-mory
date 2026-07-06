@@ -1078,38 +1078,51 @@ def test_vector_search_memory_exists_with_content(backend: BackendHandle) -> Non
 
 @pytest.mark.vector
 def test_mixed_dimension_embedding_survival(backend: BackendHandle) -> None:
-    """A memory with a different-dimension embedding causes NULL distance; search must not crash."""
+    """A memory with a different-dimension embedding causes NULL distance; search must not crash.
+
+    This test exercises the backend's dimension guard:
+    - SQLite: ``vec_distance_cosine`` returns NULL for mismatched BLOBs → row skipped in
+      the vector phase; memory still found via FTS.
+    - Postgres: ``WHERE vector_dims(embedding) = %s`` filters mismatched rows; memory
+      still found via FTS.
+
+    The test injects a wrong-dimension (8-dim) embedding directly into the DB so it
+    bypasses the normal embedding pipeline.  Both backends expose a test-only injection
+    helper so this test runs on ALL backends without skipping.
+    """
     import numpy as np  # noqa: PLC0415
 
     b = backend.backend
     if not b.vector_search_available():
         pytest.skip("vector search not available on this backend")
 
-    # Use a second handle to inject a wrong-dimension embedding.
     mid = _add(b, "PC VIDEOWALL credentials login note for cross-dim test")
     b2 = backend.new_connection()
     try:
-        # Overwrite the stored embedding with a different dimension (8 vs 64).
-        # We do this via update_memory since the port has no raw embedding setter.
-        # For SQLite the safest approach: inject a raw 8-dim embedding via a
-        # direct update on the second handle.  If the backend doesn't expose this,
-        # we skip (this is a SQLite-specific regression guard).
         from mintmory.core.storage import SqliteBackend  # noqa: PLC0415
 
-        if not isinstance(b2, SqliteBackend):
-            pytest.skip("mixed-dim injection only supported for SqliteBackend in Phase 1")
-        conn = b2.connect()
-        conn.execute(
-            "UPDATE memories SET embedding = ? WHERE id = ?",
-            (np.zeros(8, dtype=np.float32).tobytes(), mid),
-        )
-        conn.commit()
+        if isinstance(b2, SqliteBackend):
+            # Inject a raw 8-dim BLOB directly into SQLite.
+            conn = b2.connect()
+            conn.execute(
+                "UPDATE memories SET embedding = ? WHERE id = ?",
+                (np.zeros(8, dtype=np.float32).tobytes(), mid),
+            )
+            conn.commit()
+        else:
+            # PostgresBackend (and any future backend) exposes a test-only helper
+            # that stores a wrong-dimension vector via the pool.
+            from mintmory.core.storage_postgres import PostgresBackend  # noqa: PLC0415
+
+            if not isinstance(b2, PostgresBackend):
+                pytest.skip(f"mixed-dim injection not implemented for {type(b2).__name__}")
+            b2._inject_wrong_dim_embedding(mid, dim=8)
     finally:
         b2.close()
 
     resp = b.search(SearchRequest(query="videowall login credentials"))
     # Search must not raise; the memory must still be found via FTS even though
-    # vec_distance_cosine returns NULL for the mismatched embedding.
+    # the vector phase skips the mismatched-dimension row.
     assert mid in {m.id for m in resp.memories}
 
 

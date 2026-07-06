@@ -65,12 +65,12 @@ def test_build_storage_honors_backend_env(tmp_path: Path) -> None:
                 os.environ[k] = v
 
 
-def test_build_storage_postgres_raises_not_implemented() -> None:
-    """Requesting postgres backend raises NotImplementedError (not yet implemented)."""
+def test_build_storage_postgres_raises_value_error_without_dsn() -> None:
+    """Postgres backend without a DSN raises ValueError (Phase 2: backend implemented)."""
     from mintmory.core.config import StorageBackendEnum, StorageSettings
 
-    s = StorageSettings(backend=StorageBackendEnum.POSTGRES)
-    with pytest.raises(NotImplementedError):
+    s = StorageSettings(backend=StorageBackendEnum.POSTGRES)  # no dsn
+    with pytest.raises(ValueError, match="DSN"):
         build_storage(s)
 
 

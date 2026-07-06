@@ -156,11 +156,11 @@ def backend(
         return
 
     if param == "postgres":
-        # Phase 2: PostgresBackend construction goes here.
-        # This branch is unreachable in Phase 1 (the param is always skipped).
-        # Use build_storage() — the real factory dispatch — so Phase 2 must wire
-        # build_storage's postgres branch (not just add a class) to pass conformance.
+        # Phase 2: PostgresBackend construction.
+        # Use build_storage() — the real factory dispatch — so the postgres branch
+        # of build_storage() must be wired (not just the class) to pass conformance.
         from mintmory.core.config import StorageBackendEnum  # noqa: PLC0415
+        from mintmory.core.storage_postgres import PostgresBackend  # noqa: PLC0415
 
         dsn = os.environ.get("MINTMORY_TEST_PG_DSN", "")
         emb_pg = HashingEmbedder(dim=64)
@@ -173,6 +173,12 @@ def backend(
 
         pg = _make_postgres()
         pg.initialise()
+        # TRUNCATE all tables so each test function starts with a clean slate.
+        # PostgresBackend uses a shared database (unlike SQLite which gets a fresh
+        # file per tmp_path). The fixture is function-scoped, so TRUNCATE happens
+        # before EVERY test.
+        assert isinstance(pg, PostgresBackend), "build_storage must return PostgresBackend"
+        pg._truncate_all()
         handle_pg = BackendHandle(backend=pg, _factory=_make_postgres)
         yield handle_pg
         pg.close()
@@ -226,7 +232,35 @@ def backend_factory(
         return
 
     if param == "postgres":
-        # Unreachable in Phase 1 — skipped by the param mark.
-        pytest.fail("postgres factory not yet implemented")  # pragma: no cover
+        # Phase 2: PostgresBackend factory.
+        from mintmory.core.config import StorageBackendEnum  # noqa: PLC0415
+        from mintmory.core.storage_postgres import PostgresBackend  # noqa: PLC0415
+
+        dsn = os.environ.get("MINTMORY_TEST_PG_DSN", "")
+        emb_pg2 = HashingEmbedder(dim=64)
+
+        def _make_postgres_fac() -> StorageBackend:
+            return build_storage(
+                StorageSettings(backend=StorageBackendEnum.POSTGRES, dsn=dsn),
+                embedder=emb_pg2,
+            )
+
+        # Initialise schema and TRUNCATE once for this test function.
+        first_pg = _make_postgres_fac()
+        first_pg.initialise()
+        assert isinstance(first_pg, PostgresBackend)
+        first_pg._truncate_all()
+        handles.append(first_pg)
+
+        def _pg_factory() -> BackendHandle:
+            b = _make_postgres_fac()
+            b.initialise()
+            handles.append(b)
+            return BackendHandle(backend=b, _factory=_make_postgres_fac)
+
+        yield _pg_factory
+        for h in handles:
+            h.close()
+        return
 
     pytest.fail(f"Unknown backend param: {param!r}")  # pragma: no cover

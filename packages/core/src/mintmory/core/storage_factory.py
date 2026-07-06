@@ -65,9 +65,19 @@ def build_storage(
         )
 
     if s.backend is StorageBackendEnum.POSTGRES:
-        raise NotImplementedError(
-            "postgres backend arrives in a later phase "
-            "(set MINTMORY_STORAGE_BACKEND=sqlite to use the default SQLite backend)"
+        from mintmory.core.storage_postgres import PostgresBackend  # noqa: PLC0415
+
+        dsn = s.dsn or os.environ.get("MINTMORY_STORAGE_DSN", "")
+        if not dsn:
+            raise ValueError(
+                "PostgresBackend requires a DSN.  Set MINTMORY_STORAGE_DSN or "
+                "StorageSettings(dsn=...) / MINTMORY_STORAGE_DSN env var."
+            )
+        return PostgresBackend(
+            dsn=dsn,
+            embedder=embedder,
+            pool_min=s.pool_min,
+            pool_max=s.pool_max,
         )
 
     raise ValueError(f"unknown storage backend {s.backend!r}")

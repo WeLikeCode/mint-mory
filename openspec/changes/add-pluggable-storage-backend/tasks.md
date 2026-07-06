@@ -53,14 +53,33 @@ code lands here. Each phase becomes its own OpenSpec change when scheduled.
   `anchor_candidates`/`list_notes`/vision methods with zero coverage, both API-reachable + porting
   hazards) → all 2 must-fix + 4 should-fix applied → re-green. Coverage now spans all 33 port methods.*
 
-## 4. Phase 2 — PostgresBackend — future change `add-postgres-backend`
+## 4. Phase 2 — PostgresBackend — ✅ SHIPPED as MM-48
 
-- [ ] 4.1 `mintmory-core[postgres]` extra (psycopg3 + pool + pgvector).
-- [ ] 4.2 Alembic initial schema (jsonb, boolean, timestamptz, generated tsvector + GIN, pg_trgm,
-  `vector` column, same CHECKs + partial indexes).
-- [ ] 4.3 Three score methods (tsquery/`ts_rank`, `similarity`/pg_trgm, `<=>` exact scan) behind the shared fusion path.
-- [ ] 4.4 Atomic rewrites of `apply_feedback`/hot mutators; API `to_thread` offload.
-- [ ] 4.5 Exit: conformance + golden set green on PG; `/readyz` survives PG outage; 2-process soak, zero integrity errors.
+- [x] 4.1 `mintmory-core[postgres]` extra (psycopg3 `[binary,pool]` + pgvector).
+- [x] 4.2 Schema (`schema_postgres.sql`): jsonb, boolean, native timestamps, generated `tsvector` +
+  GIN, `pg_trgm` GIN, unconstrained `vector` column, same CHECKs + partial indexes. **Deviation
+  (accepted): runtime DDL under `pg_advisory_xact_lock` instead of Alembic** — idempotent + race-safe
+  across replicas; a versioned Alembic tree is deferred until the schema first evolves (wired into the
+  Phase 4 migration Job then). Keeps the postgres image lean (no sqlalchemy).
+- [x] 4.3 Three score methods (prefix `to_tsquery`/`ts_rank`, `pg_trgm similarity`, pgvector `<=>`
+  exact scan) — extracted a SHARED `core/hybrid_search.py` fusion pipeline; both backends call it, so a
+  backend implements only the three score methods (design §5.1). SQLite refactor is behaviour-preserving.
+- [x] 4.4 Atomic `apply_feedback` (single UPDATE + LEAST/GREATEST, verified 200 concurrent votes → no
+  lost updates); `update_memory` excludes counter columns (no clobber); API `anyio.to_thread` offload
+  with the thread-limiter capped to `pool_max`.
+- [x] 4.5 Exit met on a REAL Postgres 16 + pgvector (docker), verified independently on a clean DB,
+  sequentially: conformance 96 passed, golden recall ≥ 0.70, soak + lost-update invariant passed;
+  `ping()` returns False on outage (503, no crash-loop). Unconstrained-`vector` + dim-guard mirrors
+  SQLite's NULL-skip so it's embedder-dim-agnostic. Vector column has NO ANN index yet (exact scan =
+  today's semantics; HNSW deferred). CI gains a `conformance-pg` job (pgvector service container).
+
+  *Workflow: Sonnet impl → 3 adversarial Opus reviewers (ALL PASS, 0 must-fix — each ran the live-PG
+  suite; atomic feedback + shared-fusion parity independently verified) → 6 should-fix applied
+  (advisory-lock leak → `pg_advisory_xact_lock`; to_thread offload; real lost-update soak assertion;
+  mixed-dim test now runs on PG; dead `_passes_filter` removed). A `list_notes[postgres]` blip seen by
+  one reviewer was parallel-reviewer TRUNCATE contention — clean sequential re-run: 0 failures.*
+- [ ] 4.6 (Phase 2 follow-up, tracked) cochange MCP/CLI `cast(SqliteBackend, ...)` needs a runtime
+  guard once postgres is a real runtime option; HNSW ANN index is a later perf change with its own recall test.
 
 ## 5. Phase 3 — Migration tooling — future change `add-storage-migration-tool`
 

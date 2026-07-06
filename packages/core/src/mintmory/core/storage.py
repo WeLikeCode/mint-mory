@@ -43,7 +43,6 @@ from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
     ConceptLink,
     ConceptLinkType,
-    MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -863,7 +862,12 @@ class SqliteBackend:
         Hybrid search pipeline (PLAN.md §3): FTS5 + optional vector phase merged
         with RRF, filtered, scored, sorted, limited; optional graph union; a
         QuerySession + query_results are recorded and retrieval counters bumped.
+
+        Fusion/scoring/session logic lives in ``hybrid_search.fuse_and_search``
+        so it is shared identically with PostgresBackend.
         """
+        from mintmory.core.hybrid_search import fuse_and_search  # noqa: PLC0415
+
         # Wider candidate pool than the final limit so filtering + scoring have
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
@@ -871,40 +875,7 @@ class SqliteBackend:
         fts_scores = self._fts_scores(request.query, pool)
         vec_scores = self._vector_scores(request.query, query_embedding, pool)
         trigram_scores = self._trigram_scores(request.query, pool)
-        w = self._resolve_vector_rrf_weight()
-        paired = [
-            (fts_scores, 1.0),
-            (trigram_scores, 1.0),
-            (vec_scores, w),
-        ]
-        paired = [(s, wt) for (s, wt) in paired if s]
-        if not paired:
-            base_scores = {}
-        elif len(paired) == 1:
-            base_scores = paired[0][0]
-        else:
-            base_scores = scoring.rrf_merge(
-                *[s for s, _ in paired], weights=[wt for _, wt in paired]
-            )
 
-        # Min-max normalise relevance to [0, 1] so it is on a comparable scale to
-        # the usefulness/recency modifiers in effective_score. Raw RRF (~0.02) and
-        # raw bm25/cosine are tiny/negative, which let the recency bonus (up to
-        # 0.1) swamp text relevance and bury strong lexical matches. After
-        # normalisation, relevance dominates and usefulness/recency tie-break.
-        if base_scores:
-            lo = min(base_scores.values())
-            span = max(base_scores.values()) - lo
-            if span > 0:
-                base_scores = {mid: (s - lo) / span for mid, s in base_scores.items()}
-            else:
-                base_scores = dict.fromkeys(base_scores, 1.0)
-
-        candidate_ids = list(base_scores.keys())
-        memories = self._load_memories(candidate_ids)
-
-        filt = request.filter or MemoryFilter()
-        now = _utcnow()
         # Lazily resolve note_bonus / auto_include_cap from NoteSettings on first
         # use — import inside the call to avoid circular imports at module load time.
         if self._note_bonus is None:
@@ -915,71 +886,22 @@ class SqliteBackend:
             from mintmory.core.config import NoteSettings  # noqa: PLC0415
 
             self._auto_include_cap = NoteSettings().auto_include_cap
-        note_bonus = self._note_bonus
-        auto_include_cap = self._auto_include_cap
 
-        scored: list[tuple[float, MemoryRecord]] = []
-        for mem in memories:
-            if not self._passes_filter(mem, filt, request.include_archived):
-                continue
-            eff = scoring.effective_score(
-                base_relevance=base_scores.get(mem.id, 0.0),
-                usefulness_score=mem.usefulness_score,
-                staleness_score=mem.staleness_score,
-                last_accessed_at=mem.last_accessed_at,
-                now=now,
-                is_note=mem.is_note,
-                note_bonus=note_bonus,
-            )
-            scored.append((eff, mem))
-
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        primary = [mem for _, mem in scored[: request.limit]]
-
-        # Phase 2: graph traversal union (OR semantics — anchors always kept).
-        around_ids: list[str] = []
-        if request.search_around is not None and primary:
-            anchor_ids = [mem.id for mem in primary]
-            around_ids = self.search_around(anchor_ids, request.search_around)
-            existing = {mem.id for mem in primary}
-            for extra in self._load_memories(around_ids):
-                if extra.id not in existing:
-                    primary.append(extra)
-                    existing.add(extra.id)
-
-        # Phase 3: auto-include notes annotating each primary result (reverse
-        # ANNOTATES traversal — the result is the target, the note the source).
-        # Annotating notes are a SEPARATE channel (notes_on_results); they are NOT
-        # added to ``primary``, NOT counted in ``total_found``, NOT recorded as
-        # query_results, and do NOT bump retrieval counters (they are context, not
-        # direct hits).
-        notes_on_results: dict[str, list[MemoryRecord]] = {}
-        if auto_include_cap > 0:
-            for mem in primary:
-                annotating = self.get_annotating_notes(mem.id, auto_include_cap)
-                if annotating:
-                    notes_on_results[mem.id] = annotating
-
-        # Decision lineage: persist the session + results, bump counters.
-        session = QuerySession(query_text=request.query)
-        self.create_session(session)
-        results = [
-            QueryResult(
-                session_id=session.id,
-                memory_id=mem.id,
-                relevance_score=base_scores.get(mem.id, 0.0),
-            )
-            for mem in primary
-        ]
-        self.record_query_results(results)
-        self._bump_retrieval([mem.id for mem in primary], now)
-
-        return SearchResponse(
-            session_id=session.id,
-            memories=primary,
-            total_found=len(primary),
-            search_around_ids=around_ids,
-            notes_on_results=notes_on_results,
+        return fuse_and_search(
+            request=request,
+            fts_scores=fts_scores,
+            trigram_scores=trigram_scores,
+            vector_scores=vec_scores,
+            vector_rrf_weight=self._resolve_vector_rrf_weight(),
+            load_memories_fn=self._load_memories,
+            bump_retrieval_fn=self._bump_retrieval,
+            create_session_fn=self.create_session,
+            record_query_results_fn=self.record_query_results,
+            get_annotating_notes_fn=self.get_annotating_notes,
+            search_around_fn=self.search_around,
+            note_bonus=self._note_bonus,
+            auto_include_cap=self._auto_include_cap,
+            now=_utcnow(),
         )
 
     def _load_memories(self, ids: list[str]) -> list[MemoryRecord]:
@@ -1076,39 +998,21 @@ class SqliteBackend:
         record query_results, and does NOT bump retrieval counters. Returns
         ``(normalised_score, record)`` pairs sorted best-first.
         """
+        from mintmory.core.hybrid_search import fuse_and_rank  # noqa: PLC0415
+
         pool = max(limit * 5, 50)
         fts_scores = self._fts_scores(about, pool)
         vec_scores = self._vector_scores(about, None, pool)
         trigram_scores = self._trigram_scores(about, pool)
-        w = self._resolve_vector_rrf_weight()
-        paired = [
-            (fts_scores, 1.0),
-            (trigram_scores, 1.0),
-            (vec_scores, w),
-        ]
-        paired = [(s, wt) for (s, wt) in paired if s]
-        if not paired:
-            base_scores: dict[str, float] = {}
-        elif len(paired) == 1:
-            base_scores = paired[0][0]
-        else:
-            base_scores = scoring.rrf_merge(
-                *[s for s, _ in paired], weights=[wt for _, wt in paired]
-            )
 
-        if base_scores:
-            lo = min(base_scores.values())
-            span = max(base_scores.values()) - lo
-            if span > 0:
-                base_scores = {mid: (s - lo) / span for mid, s in base_scores.items()}
-            else:
-                base_scores = dict.fromkeys(base_scores, 1.0)
-
-        candidate_ids = list(base_scores.keys())
-        memories = self._load_memories(candidate_ids)
-        scored = [(base_scores.get(m.id, 0.0), m) for m in memories]
-        scored.sort(key=lambda pair: pair[0], reverse=True)
-        return scored[:limit]
+        return fuse_and_rank(
+            fts_scores=fts_scores,
+            trigram_scores=trigram_scores,
+            vector_scores=vec_scores,
+            vector_rrf_weight=self._resolve_vector_rrf_weight(),
+            load_memories_fn=self._load_memories,
+            limit=limit,
+        )
 
     def list_notes(
         self,
@@ -1124,7 +1028,7 @@ class SqliteBackend:
         """SQL backing for ``notes_list`` (design §5c). Always filters is_note = 1.
 
         entity:         case-insensitive membership in entity_ids (post-filter in
-                        Python, mirroring ``_passes_filter``'s entity check).
+                        Python, same predicate as ``hybrid_search._passes_filter``).
         anchor_substr:  case-insensitive substring of metadata['anchor'] (post-filter).
         upcoming:       WHERE valid_from > now ORDER BY valid_from ASC (soonest first).
         overdue:        WHERE valid_from IS NOT NULL AND valid_from < now
@@ -1159,8 +1063,8 @@ class SqliteBackend:
         rows = conn.execute(sql, params).fetchall()
         records = [self._row_to_memory(row) for row in rows]
 
-        # Post-filter entity and anchor_substr in Python — consistent with how
-        # ``_passes_filter`` handles entity checks.
+        # Post-filter entity and anchor_substr in Python — consistent with
+        # ``hybrid_search._passes_filter``'s entity check.
         if entity is not None:
             entity_lower = entity.lower()
             records = [r for r in records if entity_lower in {e.lower() for e in r.entity_ids}]
@@ -1187,30 +1091,6 @@ class SqliteBackend:
                 "updated_at = ? WHERE id = ?",
                 (by_id, _iso(_utcnow()), memory_id),
             )
-
-    @staticmethod
-    def _passes_filter(mem: MemoryRecord, filt: MemoryFilter, include_archived: bool) -> bool:
-        if not include_archived and mem.is_archived:
-            return False
-        if filt.active_only and not mem.is_active:
-            return False
-        if filt.exclude_stale and mem.is_stale:
-            return False
-        if filt.category is not None and mem.category != filt.category:
-            return False
-        if filt.source is not None and mem.source != filt.source:
-            return False
-        if filt.verified_only and not mem.verified:
-            return False
-        if filt.entity is not None and filt.entity.lower() not in {
-            e.lower() for e in mem.entity_ids
-        }:
-            return False
-        if filt.min_usefulness is not None and mem.usefulness_score < filt.min_usefulness:
-            return False
-        if filt.max_staleness is not None and mem.staleness_score > filt.max_staleness:  # noqa: SIM103
-            return False
-        return True
 
     def _bump_retrieval(self, ids: list[str], now: datetime) -> None:
         if not ids:
