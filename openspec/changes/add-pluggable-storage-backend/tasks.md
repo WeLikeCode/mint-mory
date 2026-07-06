@@ -81,11 +81,28 @@ code lands here. Each phase becomes its own OpenSpec change when scheduled.
 - [ ] 4.6 (Phase 2 follow-up, tracked) cochange MCP/CLI `cast(SqliteBackend, ...)` needs a runtime
   guard once postgres is a real runtime option; HNSW ANN index is a later perf change with its own recall test.
 
-## 5. Phase 3 — Migration tooling — future change `add-storage-migration-tool`
+## 5. Phase 3 — Migration tooling — ✅ SHIPPED as MM-49
 
-- [ ] 5.1 `mintmory migrate-storage --from sqlite:PATH --to postgres:DSN` streaming copy + type conversion + `--dry-run`.
-- [ ] 5.2 Row-count + per-table checksum verification; dimension-policy enforcement; K8s runbook.
-- [ ] 5.3 Exit: round-trip test (migrate fixture, run read-suite on PG, diff vs SQLite); idempotent re-run.
+- [x] 5.1 `mintmory migrate-storage --from sqlite:PATH --to postgres:DSN` (core/migrate.py) — streaming
+  batch copy in FK-safe order (memories two-pass for the self-referential `superseded_by`), type
+  conversions (int→bool, ISO-TEXT→timestamp, JSON→jsonb, float32 BLOB→pgvector), `--dry-run` (writes
+  nothing, runs NO DDL), `--force` (truncate+re-verify). Whole migration in ONE transaction — a
+  mid-run crash rolls back to an empty target (no half-migrated DB).
+- [x] 5.2 Verification: per-table row counts + SHA-256 content checksums (collation-independent Python
+  BINARY sort so PG `en_US.utf8` vs SQLite `BINARY` can't spuriously fail); tsvector/embedding excluded
+  from the checksum but embedding fidelity separately asserted (element-wise `max_abs_diff==0.0`). No
+  embedding-dim enforcement needed (unconstrained vector + query-time dim-guard). K8s runbook in the
+  module docstring. Non-empty target refused unless `--force`; DSN kept out of logs/tracebacks.
+- [x] 5.3 Exit met: 34 round-trip tests green on real PG (all tables count+checksum PASS; read-parity
+  via get_memory/search/get_links/list_notes/get_summary/manifest_get/get_session); idempotent re-run
+  refused; `--dry-run` writes nothing. Orchestrator also ran a live end-to-end CLI smoke (dry-run →
+  real migrate → refused re-run → queryable read-back through PostgresBackend). SQLite suite 1520
+  passed, 90.29% cov; ruff + mypy(89) clean.
+
+  *Workflow: Sonnet impl → 2 Opus reviewers (both PASS, 0 must-fix) → all 8 should-fix applied
+  (collation-safe checksum sort, single-transaction rollback safety, real embedding-vector assertion,
+  `postgres://` scheme parsing, dry-run runs no DDL, bad-DSN pre-flight). Nits deferred: runbook
+  `kubectl set env` DSN-in-plaintext → superseded by Phase 4's Secret-ref DSN.*
 
 ## 6. Phase 4 — Helm HA relaxation — future change `relax-chart-ha-constraints`
 

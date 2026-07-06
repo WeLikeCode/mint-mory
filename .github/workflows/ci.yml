@@ -106,6 +106,15 @@ jobs:
             -v \
             --tb=short
 
+      - name: Migration round-trip (SQLite -> postgres, MM-49)
+        env:
+          MINTMORY_TEST_PG_DSN: "postgresql://postgres:mintmory@localhost:55432/mintmory"
+        run: |
+          uv run pytest packages/core/tests/test_migrate.py \
+            --no-cov \
+            -v \
+            --tb=short
+
   deploy-validate:
     name: helm lint · template · dry-run · docker build
     runs-on: ubuntu-latest

@@ -1751,5 +1751,139 @@ def docs_changed_with(
         console.print(f"  [dim]path:[/dim] {peer['path']}")
 
 
+@app.command("migrate-storage")
+def migrate_storage(
+    source: str = typer.Option(
+        ...,
+        "--from",
+        help="Source database URI: sqlite:/path/to/memories.db",
+    ),
+    target: str | None = typer.Option(
+        None,
+        "--to",
+        help=("Target database URI: postgres:<DSN>. Defaults to MINTMORY_STORAGE_DSN env var."),
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Validate and count rows without writing to the target.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Truncate the target before writing (allows idempotent re-runs).",
+    ),
+    batch_size: int = typer.Option(
+        500,
+        "--batch-size",
+        help="Number of rows per INSERT batch.",
+    ),
+    source_db: str | None = typer.Option(
+        None,
+        "--source-db",
+        help="Alias for --from (SQLite path, no prefix required).",
+        hidden=True,
+    ),
+    target_dsn: str | None = typer.Option(
+        None,
+        "--target-dsn",
+        help="Alias for --to (DSN string, no prefix required).",
+        hidden=True,
+    ),
+) -> None:
+    """Migrate a SQLite MintMory database to PostgreSQL (one-shot, verified).
+
+    The source is always a SQLite file (v1 scope). The target must be a
+    PostgreSQL database reachable via a psycopg DSN.
+
+    Example::
+
+        mintmory migrate-storage \\
+            --from sqlite:/home/user/.mintmory/memories.db \\
+            --to postgres:postgresql://user:pass@host:5432/mintmory
+
+    Run with --dry-run first to validate counts without writing.
+    Use --force to overwrite an already-populated target.
+    """
+    from mintmory.core.migrate import migrate_sqlite_to_postgres  # noqa: PLC0415
+
+    # Resolve source path.
+    # Strip the 'sqlite:' convenience prefix only when it is NOT a real URI
+    # scheme (i.e. not followed by '//').  This preserves the standard
+    # 'sqlite:///abs/path' URI form if a caller passes one.
+    raw_src = source_db or source
+    if raw_src.startswith("sqlite:") and not raw_src.startswith("sqlite://"):
+        src_path = raw_src[len("sqlite:") :]
+    else:
+        src_path = raw_src
+
+    # Resolve target DSN.
+    # Strip the 'postgres:' convenience prefix only when it is NOT a real URI
+    # scheme (i.e. not followed by '//').  Both 'postgres://' and
+    # 'postgresql://' are valid libpq URI schemes and must be passed through
+    # unchanged.
+    raw_target = target_dsn or target or os.environ.get("MINTMORY_STORAGE_DSN", "")
+    if raw_target.startswith("postgres:") and not raw_target.startswith("postgres://"):
+        dst_dsn = raw_target[len("postgres:") :]
+    else:
+        dst_dsn = raw_target
+
+    if not dst_dsn:
+        raise typer.BadParameter(
+            "Target DSN is required. Pass --to postgres:<DSN> or set MINTMORY_STORAGE_DSN."
+        )
+
+    # Pre-flight: verify PG reachability with a short timeout BEFORE building
+    # the connection pool.  This converts the 30-second PoolTimeout hang + 130-line
+    # traceback into a clear one-line error message with exit code 1.
+    if not dry_run:
+        try:
+            import psycopg as _psycopg  # noqa: PLC0415
+
+            _tc = _psycopg.connect(dst_dsn, connect_timeout=5)
+            _tc.close()
+        except Exception as conn_exc:
+            console.print(f"\n[red]Error:[/red] could not connect to target Postgres: {conn_exc}")
+            raise typer.Exit(code=1) from conn_exc
+
+    def _progress(table: str, written: int, total: int) -> None:
+        console.print(f"  [dim]{table:<20} {written:>6}/{total:<6}[/dim]", end="\r")
+
+    console.print(
+        f"[bold]migrate-storage[/bold] {'[DRY-RUN] ' if dry_run else ''}{src_path!r} → Postgres"
+    )
+    console.print(f"[dim]batch_size={batch_size} force={force}[/dim]")
+
+    try:
+        report = migrate_sqlite_to_postgres(
+            src_path,
+            dst_dsn,
+            dry_run=dry_run,
+            batch_size=batch_size,
+            force=force,
+            on_progress=_progress,
+        )
+    except (FileNotFoundError, ValueError, ImportError) as exc:
+        console.print(f"\n[red]Error:[/red] {exc}")
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        # Catch psycopg_pool.PoolTimeout and other unexpected connectivity errors
+        # that weren't caught by the pre-flight check (e.g. transient failures).
+        console.print(f"\n[red]Error:[/red] {type(exc).__name__}: {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print()  # newline after progress line
+    for line in report.summary_lines():
+        if "FAIL" in line and not line.startswith(" "):
+            console.print(f"[red]{line}[/red]")
+        elif "ALL PASS" in line:
+            console.print(f"[green]{line}[/green]")
+        else:
+            console.print(line)
+
+    if not report.all_ok and not dry_run:
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()
