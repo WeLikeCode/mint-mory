@@ -26,9 +26,12 @@ jobs:
         # path is exercised; --extra otel installs the OpenTelemetry SDK so the
         # telemetry activation + OTLP metric-exporter path (MM-42) is actually
         # tested (fallback/no-op paths are still covered via monkeypatched tests).
+        # --extra postgres installs psycopg/pgvector so mypy can type-check
+        # storage_postgres.py (MM-48); the PG-backed tests still skip here with no
+        # MINTMORY_TEST_PG_DSN — they run in the conformance-pg job below.
         # --frozen installs strictly from the committed uv.lock (MM-44) and fails
         # loudly if the lock drifted from pyproject.toml (regen with `uv lock`).
-        run: uv sync --frozen --extra cochange --extra otel
+        run: uv sync --frozen --extra cochange --extra otel --extra postgres
 
       - name: Ruff (lint)
         run: uv run ruff check .
@@ -70,12 +73,17 @@ jobs:
       - name: Sync dependencies (postgres extra)
         run: uv sync --frozen --extra postgres --extra cochange --extra otel
 
+      # These runs target a SUBSET (the postgres leg / soak), so the repo-wide
+      # --cov-fail-under=80 in pyproject does not apply — disable coverage here
+      # (the full-suite coverage gate lives in the `gates` job). Without --no-cov
+      # the subset trips "Coverage failure: total ... less than fail-under=80".
       - name: Conformance suite (postgres backend)
         env:
           MINTMORY_TEST_PG_DSN: "postgresql://postgres:mintmory@localhost:55432/mintmory"
         run: |
           uv run pytest packages/core/tests/conformance/ \
             -k postgres \
+            --no-cov \
             -v \
             --tb=short
 
@@ -85,6 +93,7 @@ jobs:
         run: |
           uv run pytest packages/core/tests/conformance/test_golden_retrieval.py \
             -k postgres \
+            --no-cov \
             -v \
             --tb=short
 
@@ -93,6 +102,7 @@ jobs:
           MINTMORY_TEST_PG_DSN: "postgresql://postgres:mintmory@localhost:55432/mintmory"
         run: |
           uv run pytest packages/core/tests/test_pg_soak.py \
+            --no-cov \
             -v \
             --tb=short
 
