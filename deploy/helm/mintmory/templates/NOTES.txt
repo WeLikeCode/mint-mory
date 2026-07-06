@@ -1,8 +1,20 @@
+{{- $backend := .Values.storage.backend | default "sqlite" }}
 MintMory ({{ include "mintmory.fullname" . }}) is deploying.
 
+{{- if eq $backend "postgres" }}
+Topology (Postgres HA mode):
+  * {{ .Values.replicaCount | default 1 }} replica(s), RollingUpdate (maxUnavailable 0, maxSurge 1)
+  * Stateless pods — no PVC; external Postgres carries all state
+  * PodDisruptionBudget: maxUnavailable 1
+  * Pod anti-affinity: replicas prefer separate nodes (preferredDuringScheduling)
+  * /readyz gates on PG reachability (ping()); transient DB blip -> 503, not crash-loop
+  * Schema self-creates at pod startup under pg_advisory_xact_lock (race-safe)
+  DSN Secret: {{ include "mintmory.postgresSecretName" . }}
+{{- else }}
 Topology (SQLite single-writer — fixed, not tunable):
   * 1 replica, Recreate rollout, 1 uvicorn worker
   * ReadWriteOnce PVC mounted at /data (use BLOCK storage, not NFS)
+{{- end }}
 
 Reach the API:
 {{- if .Values.ingress.enabled }}
@@ -34,6 +46,15 @@ Observability:
 {{- end }}
 
 Backups:
+{{- if eq $backend "postgres" }}
+  Postgres mode: backups are the responsibility of your external database.
+  Use your Postgres operator's built-in backup (e.g. CNPG scheduled backups,
+  managed-PG snapshots) — no in-cluster chart hook is needed or provided.
+  One-time data migration from SQLite:
+    mintmory migrate-storage --from sqlite:/path/to/memories.db \
+                             --to   postgres://<dsn>
+  See the chart README "Runbooks" section for the full procedure.
+{{- else }}
   Automated in-cluster backups are NOT shipped as a CronJob: a ReadWriteOnce PVC
   cannot be co-mounted by both the app pod and a CronJob pod. Back up manually:
 
@@ -42,3 +63,4 @@ Backups:
     kubectl cp {{ .Release.Namespace }}/<pod>:/tmp/backup.db ./backup.db
 
   See the chart README for details.
+{{- end }}

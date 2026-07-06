@@ -1,13 +1,23 @@
 # Default values for the mintmory chart == the "simple" tier.
 #
-# MintMory's store is a single SQLite file, so the topology is fixed:
-#   * exactly ONE replica (values.schema.json enforces replicaCount <= 1),
-#   * Recreate rollout (never RollingUpdate — two writers corrupt the WAL),
-#   * a ReadWriteOnce PVC on BLOCK storage (not NFS — SQLite WAL uses mmap).
-# See README.md for the full rationale.
+# STORAGE MODES — two mutually-exclusive topologies:
+#
+# sqlite (default)  — single SQLite file, single-writer, non-negotiable constraints:
+#   * exactly ONE replica (values.schema.json enforces replicaCount <= 1 in this mode)
+#   * Recreate rollout (never RollingUpdate — two writers corrupt the WAL)
+#   * ReadWriteOnce PVC on BLOCK storage (not NFS — SQLite WAL uses mmap)
+#
+# postgres — external PostgreSQL via a BYO DSN; stateless pods, real HA:
+#   * N replicas, RollingUpdate (maxUnavailable 0), PodDisruptionBudget
+#   * no PVC — pods are stateless; /data is unused
+#   * schema self-creates at startup under a pg_advisory_xact_lock (race-safe across replicas)
+#
+# See README.md for the full rationale and runbooks.
 
-# Number of pods. MUST be 1 (schema maximum: 1). Present only so the constraint
-# is explicit and greppable; do not raise it.
+# Number of pods.
+#   sqlite mode  — MUST be 1 (schema maximum: 1; see storage.backend). Present only so the
+#                  constraint is explicit and greppable; do not raise it.
+#   postgres mode — any value up to 20; the schema maximum relaxes conditionally.
 replicaCount: 1
 
 image:
@@ -25,11 +35,37 @@ fullnameOverride: ""
 podAnnotations: {}
 podLabels: {}
 
+# Storage backend selection.
+#
+# backend: sqlite   (default) — single-file SQLite; the single-writer topology below is
+#                               non-negotiable; values.schema.json enforces it.
+# backend: postgres           — external PostgreSQL; pods are stateless; N replicas allowed;
+#                               persistence.enabled is ignored (no PVC created or mounted).
+#
+# Switching backends mid-deployment requires a data migration — see the runbook in README.md.
+storage:
+  backend: sqlite
+  postgres:
+    # libpq DSN (e.g. "postgresql://user:pass@host:5432/mintmory").
+    # This value is stored in a Secret — never put it in a ConfigMap or plain env.
+    # Set EITHER dsn OR existingSecret, not both.
+    dsn: ""
+    # Reference an operator-managed (e.g. CNPG) Secret that already contains the DSN.
+    # When set, dsn above is ignored and no Secret is created by this chart.
+    existingSecret: ""
+    # Key inside existingSecret (or the chart-created Secret) that holds the DSN.
+    existingSecretKey: "dsn"
+    # psycopg3 connection pool sizing (used by the API; irrelevant for CLI/MCP).
+    pool:
+      min: 2
+      max: 10
+
 # Persistent volume for /data (the SQLite .db/.db-wal/.db-shm triple).
+# In postgres mode persistence.enabled is ignored — pods are stateless, no PVC.
 persistence:
   enabled: true
   size: 1Gi
-  # ReadWriteOnce is required (single writer). Do not change to RWX.
+  # ReadWriteOnce is required in sqlite mode (single writer). Do not change to RWX.
   accessMode: ReadWriteOnce
   # Leave empty to use the cluster default StorageClass. Use a BLOCK-storage
   # class (e.g. ebs/pd/local-path), NOT an NFS-backed one.
@@ -145,7 +181,8 @@ affinity: {}
 # Automated in-cluster backup is intentionally NOT shipped as a CronJob: a
 # ReadWriteOnce PVC cannot be co-mounted by both the running app pod and a
 # CronJob pod, so any such CronJob would deadlock on the volume (Pending forever).
-# See README.md "Backups" for the supported manual `kubectl exec ... sqlite3
-# .backup` procedure.
+# In postgres mode, backups are the responsibility of the external database
+# (CNPG, managed-PG snapshots, etc.) — no in-cluster chart hook needed.
+# See README.md "Backups" for the supported procedures.
 backup:
   enabled: false

@@ -160,6 +160,24 @@ jobs:
             -f deploy/helm/mintmory/values-advanced.yaml \
             | kubeconform -strict -summary -kubernetes-version 1.29.0 -
 
+      # postgres HA tier (MM-50) — N replicas / RollingUpdate / no PVC / DSN Secret.
+      - name: Validate rendered manifests (postgres HA)
+        run: |
+          helm template t deploy/helm/mintmory \
+            -f deploy/helm/mintmory/values-postgres.yaml \
+            | kubeconform -strict -summary -kubernetes-version 1.29.0 -
+
+      # The SQLite single-writer guardrail is non-negotiable: prove the schema still
+      # rejects a multi-writer sqlite topology (this MUST fail — inverted exit check).
+      - name: Guardrail negative test (sqlite + replicaCount=2 must be rejected)
+        run: |
+          if helm template t deploy/helm/mintmory \
+               --set storage.backend=sqlite --set replicaCount=2 >/dev/null 2>&1; then
+            echo "ERROR: sqlite mode accepted replicaCount=2 — single-writer guardrail broken"; exit 1
+          else
+            echo "OK: sqlite + replicaCount=2 correctly rejected by values.schema.json"
+          fi
+
       # Build-smoke only — the light image. No registry push; the full/torch
       # variant is documented in the chart README but not built in CI (size/time).
       - name: Docker build (light variant)

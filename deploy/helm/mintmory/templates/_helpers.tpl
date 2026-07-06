@@ -84,3 +84,16 @@ Image reference (tag falls back to the chart appVersion).
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
+
+{{/*
+Name of the Postgres DSN Secret.
+  - existingSecret wins (operator-managed, e.g. CNPG credentials Secret).
+  - Otherwise the chart creates <fullname>-postgres-dsn.
+*/}}
+{{- define "mintmory.postgresSecretName" -}}
+{{- if .Values.storage.postgres.existingSecret -}}
+{{- .Values.storage.postgres.existingSecret -}}
+{{- else -}}
+{{- printf "%s-postgres-dsn" (include "mintmory.fullname" .) -}}
+{{- end -}}
+{{- end -}}

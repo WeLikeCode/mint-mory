@@ -1,13 +1,92 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "title": "MintMory Helm values",
+  "description": "Schema with CONDITIONAL guardrails: replicaCount and accessMode constraints depend on storage.backend.",
   "type": "object",
+
+  "if": {
+    "properties": {
+      "storage": {
+        "type": "object",
+        "properties": {
+          "backend": { "const": "postgres" }
+        },
+        "required": ["backend"]
+      }
+    },
+    "required": ["storage"]
+  },
+  "then": {
+    "description": "Postgres mode: relax HA constraints, require a DSN source.",
+    "properties": {
+      "replicaCount": {
+        "description": "Number of pods. Up to 20 in Postgres (HA) mode.",
+        "maximum": 20
+      }
+    }
+  },
+  "else": {
+    "description": "SQLite mode (default): hard single-writer guardrails — non-negotiable.",
+    "properties": {
+      "replicaCount": {
+        "description": "Number of pods. MUST be 1 — SQLite is single-writer.",
+        "maximum": 1
+      },
+      "persistence": {
+        "properties": {
+          "accessMode": {
+            "description": "Must stay ReadWriteOnce (single writer).",
+            "enum": ["ReadWriteOnce"]
+          }
+        }
+      }
+    }
+  },
+
   "properties": {
     "replicaCount": {
-      "description": "Number of pods. MUST be 1 — SQLite is single-writer.",
+      "description": "Number of pods. Constrained conditionally on storage.backend (see if/then/else above).",
       "type": "integer",
-      "minimum": 1,
-      "maximum": 1
+      "minimum": 1
+    },
+    "storage": {
+      "type": "object",
+      "description": "Storage backend selection and configuration.",
+      "properties": {
+        "backend": {
+          "description": "Storage backend. 'sqlite' (default) = single-file, single-writer. 'postgres' = external PostgreSQL, stateless pods, N replicas.",
+          "type": "string",
+          "enum": ["sqlite", "postgres"]
+        },
+        "postgres": {
+          "type": "object",
+          "description": "PostgreSQL backend configuration. Required when storage.backend=postgres.",
+          "properties": {
+            "dsn": {
+              "description": "libpq connection string (e.g. postgresql://user:pass@host:5432/db). Stored in a Secret. Mutually exclusive with existingSecret.",
+              "type": "string"
+            },
+            "existingSecret": {
+              "description": "Name of an existing Secret containing the DSN. When set, storage.postgres.dsn is ignored.",
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "description": "Key inside existingSecret (or the chart-created Secret) that holds the DSN.",
+              "type": "string"
+            },
+            "pool": {
+              "type": "object",
+              "properties": {
+                "min": { "type": "integer", "minimum": 1 },
+                "max": { "type": "integer", "minimum": 1 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "image": {
       "type": "object",
@@ -33,9 +112,8 @@
         "enabled": { "type": "boolean" },
         "size": { "type": "string" },
         "accessMode": {
-          "description": "Must stay ReadWriteOnce (single writer).",
-          "type": "string",
-          "enum": ["ReadWriteOnce"]
+          "description": "Access mode. In sqlite mode, constrained to ReadWriteOnce by the schema else-branch.",
+          "type": "string"
         },
         "storageClassName": { "type": "string" },
         "existingClaim": { "type": "string" }
@@ -133,7 +211,7 @@
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Automated CronJob backup is not shipped (RWO cannot co-mount). Keep false; see README for manual backup.",
+          "description": "Automated CronJob backup is not shipped (see README). Keep false.",
           "type": "boolean",
           "enum": [false]
         }

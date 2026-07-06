@@ -1,0 +1,96 @@
+# Postgres (HA) tier — stateless pods, external PostgreSQL, N replicas.
+#
+#   helm install mm deploy/helm/mintmory -f deploy/helm/mintmory/values-postgres.yaml \
+#     --set-string storage.postgres.dsn="postgresql://mintmory:s3cr3t@pg-host:5432/mintmory"
+#
+# Or, with a pre-existing Secret managed by an operator (e.g. CloudNativePG):
+#
+#   helm install mm deploy/helm/mintmory -f deploy/helm/mintmory/values-postgres.yaml \
+#     --set storage.postgres.existingSecret=cnpg-mintmory-app \
+#     --set storage.postgres.existingSecretKey=uri
+#
+# HA characteristics:
+#   * N stateless replicas, RollingUpdate (maxUnavailable 0), PodDisruptionBudget
+#   * No PVC — persistence.enabled is ignored (pods carry no local state)
+#   * Schema self-creates at first pod startup under pg_advisory_xact_lock (race-safe
+#     across replicas — no pre-deploy migration Job required)
+#   * /readyz gates on PG reachability via ping(); a transient DB blip flips readiness,
+#     not liveness — no crash-loop on a momentary network hiccup
+#   * Pod anti-affinity (preferredDuringScheduling) spreads replicas across nodes
+#
+# Switching from SQLite to Postgres requires a one-time data migration:
+#   mintmory migrate-storage --from sqlite:/data/memories.db \
+#                            --to   postgres://<dsn>
+# See README.md "Runbooks" for the full procedure.
+#
+# ⚠️  EXAMPLE ONLY — storage.postgres.dsn is a PLACEHOLDER.
+# Do NOT `helm install -f` this as-is: it has no real DSN and will fail at pod start.
+# Pass the real DSN via --set-string or existingSecret before installing.
+
+# Storage backend: postgres enables HA mode, relaxes schema constraints.
+storage:
+  backend: postgres
+  postgres:
+    # PLACEHOLDER — replace with a real libpq DSN or use existingSecret below.
+    dsn: "postgresql://mintmory:REPLACE-ME@postgres-host:5432/mintmory"
+    # Alternatively, reference an operator-managed (e.g. CNPG) Secret:
+    # existingSecret: cnpg-mintmory-app
+    # existingSecretKey: uri
+    pool:
+      min: 2
+      max: 10
+
+# 3 replicas: survives a single-pod failure and node drain without downtime.
+# Increase further (up to schema max 20) or wire to an HPA for traffic-driven scaling.
+replicaCount: 3
+
+# Postgres pods are stateless — no PVC needed (persistence.enabled is ignored in
+# postgres mode, but setting it false makes intent explicit and avoids a stale PVC).
+persistence:
+  enabled: false
+
+image:
+  repository: ghcr.io/welikecode/mint-mory
+  tag: ""
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 384Mi
+  limits:
+    cpu: "2"
+    memory: 768Mi
+
+# Non-secret settings: tell the app to use psycopg3 (pool sizing comes from
+# storage.postgres.pool above and is injected as env vars by the Deployment template).
+config:
+  MINTMORY_EMBED_PROVIDER: "hashing"
+  MINTMORY_LLM_PROVIDER: "portkey"
+  MINTMORY_LLM_BASE_URL: "http://portkey-gateway:8789/v1"
+  MINTMORY_LLM_MODEL: "MiniMax-M2.5"
+
+otel:
+  enabled: true
+  endpoint: "http://otel-collector:4318"
+  serviceName: "mintmory-api"
+
+ingress:
+  enabled: true
+  className: nginx
+  host: mintmory.example.com
+  path: /
+  pathType: Prefix
+  tls:
+    - secretName: mintmory-tls
+      hosts:
+        - mintmory.example.com
+
+# HTTP basic auth at the ingress.
+# ⚠️  EXAMPLE ONLY — "change-me" is a placeholder; replace before installing.
+auth:
+  mode: basic
+  basic:
+    username: admin
+    password: "change-me"
+    realm: "MintMory"

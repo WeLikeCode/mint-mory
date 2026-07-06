@@ -1,0 +1,23 @@
+{{- $backend := .Values.storage.backend | default "sqlite" }}
+{{- if eq $backend "postgres" }}
+{{- /*
+  PodDisruptionBudget — only meaningful in postgres mode where replicaCount > 1.
+  Ensures at least one pod stays up during voluntary disruptions (node drain, rolling upgrade).
+  Pointless (and harmless) at replicaCount=1, but rendered anyway so HPA scale-up events
+  are guarded from the moment the first extra pod appears.
+*/}}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "mintmory.fullname" . }}
+  labels:
+    {{- include "mintmory.labels" . | nindent 4 }}
+spec:
+  # Allow at most one pod to be unavailable at any time (node drains, rolling upgrades).
+  # With RollingUpdate maxUnavailable=0 the Deployment already prevents simultaneous
+  # termination; the PDB adds protection against concurrent voluntary node evictions.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "mintmory.selectorLabels" . | nindent 6 }}
+{{- end }}
