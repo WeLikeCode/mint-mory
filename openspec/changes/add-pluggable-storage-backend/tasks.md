@@ -36,12 +36,22 @@ code lands here. Each phase becomes its own OpenSpec change when scheduled.
   3 should-fix applied). Known Phase 2 follow-up: cochange MCP/CLI tools reach the primary store via
   `cast(SqliteBackend, ...)` — safe now (always SQLite), needs a runtime guard when postgres lands.*
 
-## 3. Phase 1 — Backend conformance harness — future change `add-storage-conformance-suite`
+## 3. Phase 1 — Backend conformance harness — ✅ SHIPPED as MM-47
 
-- [ ] 3.1 Parametrize storage-behaviour tests over a `backend` fixture (sqlite always; PG when DSN set).
-- [ ] 3.2 Golden-set retrieval corpus + thresholded recall assertions (recall@K vs SQLite baseline).
-- [ ] 3.3 CI matrix: sqlite always; `postgres:16`+pgvector service container wired, allowed-empty.
-- [ ] 3.4 Exit: conformance green on SQLite; documented MUST-vs-capability test matrix.
+- [x] 3.1 `backend` fixture (`tests/conformance/conftest.py`) parametrized over sqlite (always) +
+  postgres (auto-skips until `MINTMORY_TEST_PG_DSN` set AND PostgresBackend importable). Built via
+  `build_storage()` so Phase 2 validates the factory-dispatch plug-in path, not just the class.
+- [x] 3.2 Golden-set retrieval (`test_golden_retrieval.py`): deterministic 70-memory / 7-cluster
+  corpus + HashingEmbedder, `recall@5 >= 0.70` (SQLite baseline is 1.0 — headroom for PG tsvector drift).
+- [x] 3.3 SQLite conformance leg runs inside the existing `gates` pytest. The `pgvector/pgvector:pg16`
+  CI service + `MINTMORY_TEST_PG_DSN` is deferred to Phase 2 (an empty PG job now = pure waste); the
+  YAML snippet is staged in `tests/conformance/README.md`.
+- [x] 3.4 Exit met: 96 conformance tests green on SQLite (96 PG legs skip); documented MUST-pass vs
+  capability-gated (`@pytest.mark.vector`/`@pytest.mark.trigram`) matrix. Full suite 1501 passed, 95.87% cov.
+
+  *Workflow: Sonnet impl → 2 Opus reviewers (completeness reviewer FAILED first pass — caught
+  `anchor_candidates`/`list_notes`/vision methods with zero coverage, both API-reachable + porting
+  hazards) → all 2 must-fix + 4 should-fix applied → re-green. Coverage now spans all 33 port methods.*
 
 ## 4. Phase 2 — PostgresBackend — future change `add-postgres-backend`
 
