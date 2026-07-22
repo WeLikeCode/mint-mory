@@ -46,6 +46,7 @@ from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
 from mintmory.core.storage import SqliteBackend
 from mintmory.core.storage_factory import build_storage
+from mintmory.core.telemetry import init_telemetry
 from mintmory.core.types import (
     CaptionRunReport,
     ConceptLinkType,
@@ -852,6 +853,12 @@ def main() -> None:
 
     if args.db:
         os.environ["MINTMORY_DB"] = args.db
+
+    # Initialise OTel exactly once, before the server starts handling requests.
+    # Mirrors packages/api/src/mintmory/api/app.py's lifespan: no-op (returns
+    # False) when MINTMORY_OTEL_ENABLED is unset/false or the optional
+    # opentelemetry SDK is not installed — safe to call unconditionally.
+    init_telemetry(load_settings().otel)
 
     if args.transport == "stdio":
         mcp.run(transport="stdio")
