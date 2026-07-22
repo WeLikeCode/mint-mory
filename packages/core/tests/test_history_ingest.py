@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -565,16 +566,21 @@ class TestWriteSessionSegments:
         new_store = StorageAdapter(db_path)
         new_store.initialise()
 
+        # Relative to "now" (not a fixed historical date): the timeline() call
+        # below filters with since="400d", so a hardcoded date silently rots
+        # out of that rolling window as real time passes (see MM-51 fix).
+        now = datetime.now(UTC).replace(tzinfo=None)
+        ts_start = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        ts_end = (now - timedelta(days=5) + timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         session_id = "seg-orphan-tl-001"
         summary = _make_session_for_seg(
             session_id=session_id,
-            ts_start="2025-06-01T10:00:00Z",
-            ts_end="2025-06-01T11:00:00Z",
+            ts_start=ts_start,
+            ts_end=ts_end,
         )
         turns = _make_turns_for_segs(10)
 
-        ts_start = "2025-06-01T10:00:00Z"
-        ts_end = "2025-06-01T10:30:00Z"
         # First: 5 segments
         segs5 = [_make_segment(i, i * 2, i * 2 + 1, ts_start, ts_end) for i in range(5)]
         write_session_segments(new_store, summary, segs5, turns)

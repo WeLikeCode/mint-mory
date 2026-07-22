@@ -576,8 +576,12 @@ class TestPhase2TimelineTiebreak:
         store = _open_store(db)
 
         session_id = "tiebreak-sess"
-        # Same second for both segments
-        same_ts = "2025-06-01T10:00:00Z"
+        # Same second for both segments. Relative to "now" (not a fixed
+        # historical date): the timeline() call below filters with
+        # since="400d", so a hardcoded date silently rots out of that
+        # rolling window as real time passes (see MM-51 fix).
+        now = datetime.now(UTC).replace(tzinfo=None)
+        same_ts = (now - timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
         summary = _make_seg_session(session_id=session_id, ts_start=same_ts, ts_end=same_ts)
         turns = _make_seg_turns(4)
         segs = [
