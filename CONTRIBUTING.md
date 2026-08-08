@@ -59,6 +59,32 @@ dreaming, the source-of-truth hierarchy, the single-file rule, the
 - Add tests that assert real behaviour, not just exit codes.
 - Conventional, focused commits; one logical change per PR.
 
+## Releasing
+
+All five distros (`mintmory`, `mintmory-core`, `mintmory-mcp`, `mintmory-api`,
+`mintmory-cli`) version in lockstep and publish from one git tag.
+
+1. `python scripts/bump_version.py X.Y.Z` — rewrites versions + `~=` bounds
+2. `uv lock` — refresh the lockfile
+3. `bash scripts/check_dist.sh` — local build + smoke test (CI reruns this)
+4. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`
+5. The `release` workflow builds, publishes to TestPyPI, then (after the
+   `pypi` environment gate, if configured) to PyPI via Trusted Publishing.
+
+### One-time PyPI setup (repo owner)
+
+On **both** pypi.org and test.pypi.org, while logged in: *Your account →
+Publishing → Add a new pending publisher*, once per distro name
+(`mintmory`, `mintmory-core`, `mintmory-mcp`, `mintmory-api`, `mintmory-cli`):
+
+- Owner: `WeLikeCode` — Repository: `mint-mory`
+- Workflow name: `release.yml`
+- Environment: `pypi` (on pypi.org) / `testpypi` (on test.pypi.org)
+
+Then in GitHub → Settings → Environments, create `testpypi` and `pypi`;
+optionally add a required-reviewer rule on `pypi` for a manual approval gate.
+Do this soon — registering pending publishers is also what claims the names.
+
 ## Reporting bugs / proposing features
 
 Open an issue with a minimal reproduction (for bugs) or a short problem statement

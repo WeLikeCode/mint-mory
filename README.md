@@ -72,7 +72,21 @@ useful when it is typed, linked, and queryable — not stored as opaque blobs.
 
 ## Install
 
-MintMory uses [uv](https://docs.astral.sh/uv/). Clone and sync:
+From PyPI (Python 3.12+):
+
+```bash
+pip install mintmory          # CLI + core
+pip install "mintmory[mcp]"   # + MCP server (mintmory-mcp entry point)
+pip install "mintmory[api]"   # + REST API (mintmory-api entry point)
+pip install "mintmory[all]"   # everything above
+```
+
+Capability extras (combine freely, e.g. `"mintmory[all,local,docs]"`):
+`local` (sentence-transformers embeddings — pulls PyTorch), `openai`,
+`anthropic`, `docs` (PDF/DOCX/XLSX/… ingestion), `otel`, `image`, `ocr`,
+`cochange`, `postgres`.
+
+For development, use [uv](https://docs.astral.sh/uv/). Clone and sync:
 
 ```bash
 git clone https://github.com/WeLikeCode/mint-mory.git
@@ -81,8 +95,6 @@ uv sync                 # core + CLI + MCP + API
 uv sync --extra docs    # optional: PDF/DOCX/XLSX/… ingestion (markitdown)
 uv sync --extra local   # optional: local sentence-transformers embeddings
 ```
-
-Requires Python 3.12+.
 
 ---
 
