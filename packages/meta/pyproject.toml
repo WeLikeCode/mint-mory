@@ -1,0 +1,57 @@
+[project]
+name = "mintmory"
+version = "0.1.0"
+description = "MintMory — typed memory for LLM agents. Umbrella package: CLI + core, extras for the MCP server and REST API."
+requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "WeLikeCode" }]
+keywords = ["memory", "llm", "agents", "mcp", "sqlite", "vector-search"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "mintmory-cli~=0.1.0",
+]
+
+[project.optional-dependencies]
+# Sibling distros
+mcp = ["mintmory-mcp~=0.1.0"]
+api = ["mintmory-api~=0.1.0"]
+all = ["mintmory-mcp~=0.1.0", "mintmory-api~=0.1.0"]
+# Pass-throughs to core's heavy/optional extras
+local = ["mintmory-core[local]~=0.1.0"]
+openai = ["mintmory-core[openai]~=0.1.0"]
+anthropic = ["mintmory-core[anthropic]~=0.1.0"]
+docs = ["mintmory-core[docs]~=0.1.0"]
+otel = ["mintmory-core[otel]~=0.1.0"]
+image = ["mintmory-core[image]~=0.1.0"]
+ocr = ["mintmory-core[ocr]~=0.1.0"]
+cochange = ["mintmory-core[cochange]~=0.1.0"]
+postgres = ["mintmory-core[postgres]~=0.1.0"]
+
+[project.urls]
+Homepage = "https://github.com/WeLikeCode/mint-mory"
+Repository = "https://github.com/WeLikeCode/mint-mory"
+Issues = "https://github.com/WeLikeCode/mint-mory/issues"
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+# Metadata-only distro: ship no code so it can never shadow the mintmory.*
+# namespace owned by the real packages.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.uv.sources]
+mintmory-cli = { workspace = true }
+mintmory-mcp = { workspace = true }
+mintmory-api = { workspace = true }
+mintmory-core = { workspace = true }

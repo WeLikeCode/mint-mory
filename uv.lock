@@ -14,6 +14,7 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "mintmory",
     "mintmory-api",
     "mintmory-cli",
     "mintmory-core",
@@ -1639,6 +1640,72 @@ sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec9
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
 ]
+
+[[package]]
+name = "mintmory"
+version = "0.1.0"
+source = { editable = "packages/meta" }
+dependencies = [
+    { name = "mintmory-cli" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "mintmory-api" },
+    { name = "mintmory-mcp" },
+]
+anthropic = [
+    { name = "mintmory-core", extra = ["anthropic"] },
+]
+api = [
+    { name = "mintmory-api" },
+]
+cochange = [
+    { name = "mintmory-core", extra = ["cochange"] },
+]
+docs = [
+    { name = "mintmory-core", extra = ["docs"] },
+]
+image = [
+    { name = "mintmory-core", extra = ["image"] },
+]
+local = [
+    { name = "mintmory-core", extra = ["local"] },
+]
+mcp = [
+    { name = "mintmory-mcp" },
+]
+ocr = [
+    { name = "mintmory-core", extra = ["ocr"] },
+]
+openai = [
+    { name = "mintmory-core", extra = ["openai"] },
+]
+otel = [
+    { name = "mintmory-core", extra = ["otel"] },
+]
+postgres = [
+    { name = "mintmory-core", extra = ["postgres"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "mintmory-api", marker = "extra == 'all'", editable = "packages/api" },
+    { name = "mintmory-api", marker = "extra == 'api'", editable = "packages/api" },
+    { name = "mintmory-cli", editable = "packages/cli" },
+    { name = "mintmory-core", extras = ["anthropic"], marker = "extra == 'anthropic'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["cochange"], marker = "extra == 'cochange'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["docs"], marker = "extra == 'docs'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["image"], marker = "extra == 'image'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["local"], marker = "extra == 'local'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["ocr"], marker = "extra == 'ocr'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["openai"], marker = "extra == 'openai'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["otel"], marker = "extra == 'otel'", editable = "packages/core" },
+    { name = "mintmory-core", extras = ["postgres"], marker = "extra == 'postgres'", editable = "packages/core" },
+    { name = "mintmory-mcp", marker = "extra == 'all'", editable = "packages/mcp" },
+    { name = "mintmory-mcp", marker = "extra == 'mcp'", editable = "packages/mcp" },
+]
+provides-extras = ["mcp", "api", "all", "local", "openai", "anthropic", "docs", "otel", "image", "ocr", "cochange", "postgres"]
 
 [[package]]
 name = "mintmory-api"

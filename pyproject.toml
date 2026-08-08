@@ -4,6 +4,7 @@ members = [
     "packages/mcp",
     "packages/api",
     "packages/cli",
+    "packages/meta",
 ]
 
 [tool.uv]
