@@ -20,9 +20,7 @@ PYPROJECTS = [
 
 
 def bump_text(text: str, new_version: str) -> str:
-    text = re.sub(
-        r'^version = "[^"]+"', f'version = "{new_version}"', text, count=1, flags=re.M
-    )
+    text = re.sub(r'^version = "[^"]+"', f'version = "{new_version}"', text, count=1, flags=re.M)
     return re.sub(
         r"(mintmory-[a-z]+(?:\[[^\]]*\])?)~=\d+\.\d+\.\d+",
         rf"\g<1>~={new_version}",
@@ -39,8 +37,9 @@ def main() -> None:
         path = root / rel
         path.write_text(bump_text(path.read_text(), new_version))
         print(f"bumped {rel}")
-    print(f"\nnow run: uv lock && git commit -am 'release: v{new_version}' "
-          f"&& git tag v{new_version}")
+    print(
+        f"\nnow run: uv lock && git commit -am 'release: v{new_version}' && git tag v{new_version}"
+    )
 
 
 if __name__ == "__main__":

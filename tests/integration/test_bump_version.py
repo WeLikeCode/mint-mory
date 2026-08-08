@@ -11,7 +11,7 @@ assert _spec.loader is not None
 _spec.loader.exec_module(_mod)
 bump_text = _mod.bump_text
 
-SAMPLE = '''\
+SAMPLE = """\
 [project]
 name = "mintmory-cli"
 version = "0.1.0"
@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 docs = ["mintmory-core[docs]~=0.1.0"]
-'''
+"""
 
 
 def test_bump_rewrites_version_and_bounds() -> None:
