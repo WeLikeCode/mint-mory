@@ -3,16 +3,36 @@ name = "mintmory-api"
 version = "0.1.0"
 description = "MintMory HTTP REST API via FastAPI"
 requires-python = ">=3.12"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "WeLikeCode" }]
+keywords = ["memory", "llm", "agents", "mcp", "sqlite", "vector-search"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+
 dependencies = [
-    "mintmory-core",
+    "mintmory-core~=0.1.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.12",
     "structlog>=24.4",
 ]
 
+[project.urls]
+Homepage = "https://github.com/WeLikeCode/mint-mory"
+Repository = "https://github.com/WeLikeCode/mint-mory"
+Issues = "https://github.com/WeLikeCode/mint-mory/issues"
+
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
