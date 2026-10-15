@@ -1,5 +1,9 @@
 # Design (proposed) — `add-recurrent-tree-indexing`
 
+> **Note (2026-10-15):** §4 (launchd recurrence, `--once`, `--install-agent`) is out
+> of scope (manual cadence), and the artifact list below is not a default denylist:
+> artifacts are excluded only through `--exclude`. See `proposal.md` and `specs/`.
+
 Stable across the scope/cadence/DB decisions in `gaps.md`; the scope-dependent
 parts are marked. This is a *draft* contract — it is frozen only once the
 decisions are answered.

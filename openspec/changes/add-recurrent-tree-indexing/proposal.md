@@ -2,6 +2,8 @@
 
 **ID:** `add-recurrent-tree-indexing`
 **Status:** IMPLEMENTED (manual cadence) — `mintmory index-tree`. See `results.md`.
+One gap remains: the default text-content pass must skip online-only files
+(`tasks.md` section 2).
 **Capability:** `ingestion`
 **Owner:** team-lead (Claude)
 
@@ -52,7 +54,7 @@ the team's living document set. The concrete target:
    are noise (and possibly private) for a shared agent memory; scope + exclusions
    matter, as does whether this lands in the shared `hermes.db` or a dedicated DB.
 
-## What changes (proposed)
+## What Changes
 
 A new **tree indexer** capability:
 
@@ -65,19 +67,36 @@ A new **tree indexer** capability:
    instead of duplicating.
 3. **Opt-in content depth** — for selected types/folders, download + markitdown
    (MM-11) + chunk the full text, under an explicit **download budget**.
-4. **Recurrence** — a launchd LaunchAgent (daily by default) invoking the
-   indexer; plus `--once` for manual runs.
-5. **Scoping & exclusions** — include/exclude globs and folder filters (default:
-   drop build artifacts; `Personal` photos configurable).
+4. **Scoping & exclusions** — include/exclude globs and folder filters. Build
+   artifacts are excluded only when listed in `--exclude` (there is no default
+   denylist; `ARTIFACT_SUFFIXES` in `tree_index.py` is used only to keep artifacts
+   out of co-change clustering). `Personal` photos are excluded the same way.
+5. **Online-only safety for the text pass** — improve-search-recall later turned on
+   inline full-text of small plain-text files by default (`--text-content`). That
+   pass SHALL skip online-only files (the owner chose "skip online-only by
+   default"), index them as metadata only, and count them in a
+   `text-skipped-online-only` report row. A user who wants them downloaded uses the
+   budgeted `--content --content-types txt,md` pass.
+
+### Out of scope
+
+- **Recurrent execution** (a launchd LaunchAgent and an `--once` flag). The owner
+  chose a manual cadence: re-run `mintmory index-tree …` when a refresh is wanted;
+  every run is incremental and idempotent. A scheduler, if wanted later, is a
+  separate change.
 
 The detailed interface contract is in `design.md`; the **gaps that block a clean
-implementation** (and the decisions needed) are in `gaps.md`.
+implementation** (and the decisions needed) are in `gaps.md`. Where they differ from
+this proposal, this proposal and `specs/` win: `design.md` §4 (launchd recurrence)
+is out of scope, and its "default artifact denylist" was shipped as opt-in
+(`--exclude`).
 
 ## Impact
 
 - **Affected specs:** `ingestion` (deltas in `specs/`).
 - **New code (planned):** a tree-indexer module + `mintmory index-tree` CLI +
   manifest table/migration; reuses MM-11 `conversion` for the opt-in content pass.
-- **Ops:** a `~/Library/LaunchAgents` plist for recurrence (install gated on
-  user go-ahead — outward-facing).
 - **Data:** writes into `hermes.db` (or a dedicated DB — see `gaps.md` G6).
+- **Remaining gap (tasks.md section 2):** `packages/cli/src/mintmory/cli/main.py`
+  (`index_tree`: online-only guard on the text-content pass + the
+  `text-skipped-online-only` report row) and `packages/cli/tests/test_cli.py`.

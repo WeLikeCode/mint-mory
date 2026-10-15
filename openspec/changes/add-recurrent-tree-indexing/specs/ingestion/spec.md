@@ -1,15 +1,18 @@
-# Capability: ingestion (delta) — recurrent tree indexing
+# Capability: ingestion (delta) — tree indexing (manual cadence)
 
 ## ADDED Requirements
 
 ### Requirement: Online-only-safe tree indexing
-The system SHALL index a directory tree without reading file contents by default,
-so that indexing a cloud-backed (online-only) library does not trigger downloads.
+`mintmory index-tree` SHALL walk a directory tree with `os.stat` only, and SHALL NOT
+open or read an online-only file (a cloud placeholder: `st_blocks == 0` and
+`st_size > 0`) unless the user opts in to a budgeted pass (`--content`, `--vision`).
+Indexing a cloud-backed library with default options therefore triggers no
+download. Local small plain-text files MAY be read by default (see "Default
+text-content pass skips online-only files").
 
 #### Scenario: Placeholder files are indexed without download
-- **WHEN** `mintmory index-tree` runs over a tree of online-only placeholders
-- **THEN** every file is recorded from its metadata (stat only), no file is
-  opened, and no download is triggered.
+- **WHEN** `mintmory index-tree` runs with default options over a tree of online-only placeholders
+- **THEN** every file is recorded from its metadata (stat only), no file is opened, and no download is triggered.
 
 ### Requirement: Metadata + folder-context records
 For any file not indexed as text, the system SHALL create a memory from its
@@ -31,29 +34,47 @@ that path), and optionally archive memories for files that have disappeared.
   are replaced (not duplicated), and the manifest reflects the new state.
 
 ### Requirement: Bounded, opt-in content extraction
-Full-text extraction (download + convert) SHALL be opt-in and bounded by a
-download budget and type/glob filters.
+Downloading and converting binary documents (`--content`) SHALL be opt-in and
+bounded by a download budget (`--max-download-mb`) and a type filter
+(`--content-types`). The inline text-content pass for small plain-text files is the
+one content read that is on by default, and it never reads online-only files.
 
 #### Scenario: Content pass respects the budget
 - **WHEN** `--content` is set with `--max-download-mb`
 - **THEN** files are downloaded+converted until the budget is reached, after
   which remaining files fall back to metadata-only and the run reports the cutoff.
 
-### Requirement: Recurrent execution
-The system SHALL provide a recurring scheduler integration (launchd) whose unit
-of work is a single idempotent `--once` pass, with run logging.
-
-#### Scenario: Scheduled run is idempotent
-- **WHEN** the scheduled `index-tree --once` runs on an unchanged tree
-- **THEN** it makes no new memories and exits 0.
-
 ### Requirement: Scoping, exclusions, and collection tagging
-The system SHALL support include/exclude globs, a default build-artifact
-denylist, and a collection tag stamped on every produced memory so a source can
-be filtered or swept as a unit (and optionally targeted to a dedicated DB).
+The system SHALL support include/exclude globs (`--include`, `--exclude`) and a
+collection tag stamped on every produced memory and manifest row, so a source can
+be filtered or swept as a unit (and optionally targeted to a dedicated DB with
+`--db`). Build artifacts are excluded only when the caller lists them in
+`--exclude`; there is no default denylist.
 
-#### Scenario: Artifacts and excluded folders are skipped
-- **WHEN** a tree contains build artifacts (.dll/.exe/.jar/…) and an excluded
-  folder
-- **THEN** those files produce no memories, and every produced memory carries the
-  collection tag.
+#### Scenario: Excluded files and folders are skipped
+- **WHEN** a tree contains build artifacts (`.dll`/`.exe`/`.jar`) and a `Personal/` folder, and `index-tree` runs with `--exclude "*.dll,*.exe,*.jar,Personal/**"`
+- **THEN** those files produce no memories, and every produced memory carries the collection tag.
+
+#### Scenario: Without --exclude, artifacts are indexed as metadata
+- **WHEN** the same tree is indexed without `--exclude`
+- **THEN** each artifact gets a metadata + folder-context record like any other non-text file (no default denylist is applied).
+
+### Requirement: Default text-content pass skips online-only files
+The inline text-content pass (on by default via `--text-content`; suffixes in
+`mintmory.core.conversion.TEXT_SUFFIXES`, size up to `--text-max-kb`) SHALL NOT read
+a file whose walk entry has `online_only` set. That file SHALL be indexed as
+metadata only (manifest `index_mode` `metadata`), and the run report SHALL count it
+in a `text-skipped-online-only` row.
+
+#### Scenario: An online-only text file is not read by default
+- **GIVEN** a tree with a local `local.txt` and a `cloud.txt` that the walk reports as online-only
+- **WHEN** `mintmory index-tree <tree> --collection lib` runs with default options
+- **THEN** the command exits 0, `extract_markdown` is never called with `cloud.txt`, no `category='fact'` memory holds `cloud.txt`'s body, the manifest row of `cloud.txt` has `index_mode='metadata'` and `online_only=1`, `local.txt` is still full-texted (`index_mode='content'`), and the report table has a row `text-skipped-online-only` whose value is `1`.
+
+#### Scenario: The count is per run and the row is shown only when non-zero
+- **WHEN** the same command runs a second time on the unchanged tree
+- **THEN** the row `text-skipped-online-only` again shows `1` (every scanned online-only text file within the size cap is counted, unchanged or not); and a run in which no text file is online-only, or a run with `--no-text-content`, prints no `text-skipped-online-only` row.
+
+#### Scenario: The budgeted content pass can still fetch it on request
+- **WHEN** the run adds `--content --content-types txt`
+- **THEN** `cloud.txt` is read by the content pass, its size counts toward the `downloaded` row and the download budget, its manifest `index_mode` is `content`, and it is NOT counted in `text-skipped-online-only`.
