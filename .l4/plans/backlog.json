@@ -9,38 +9,6 @@
       "depends_on": [],
       "units": [
         {
-          "id": "openspec:add-agent-history-index",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-agent-history-mcp",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-agent-supplied-summaries",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-api-health-and-otel",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-cochange-mcp-tools",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-document-recency-cochange",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-helm-chart",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-hermes-history-adapter",
-          "depends_on": []
-        },
-        {
           "id": "openspec:add-image-understanding",
           "depends_on": []
         },
@@ -49,23 +17,7 @@
           "depends_on": []
         },
         {
-          "id": "openspec:add-markitdown-ingestion",
-          "depends_on": []
-        },
-        {
           "id": "openspec:add-mcp-code-execution-mode",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-mcp-resources-prompts",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-personal-notes",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-pluggable-storage-backend",
           "depends_on": []
         },
         {
@@ -73,43 +25,7 @@
           "depends_on": []
         },
         {
-          "id": "openspec:add-segmented-llm-distiller",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-trigram-substring-search",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:add-weighted-rrf-fusion",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:bound-llm-distiller",
-          "depends_on": []
-        },
-        {
           "id": "openspec:deployment-hardening",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:improve-document-cochange-quality",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:improve-search-recall",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:leann-informed-tuning",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:optimize-document-cochange-performance",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:optimize-mcp-token-usage",
           "depends_on": []
         }
       ]
