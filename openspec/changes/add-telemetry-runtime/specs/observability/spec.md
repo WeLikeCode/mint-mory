@@ -1,5 +1,9 @@
 # Capability: observability (delta)
 
+## Purpose
+
+MintMory's observability: OpenTelemetry traces and metrics from every entry point (CLI, REST API, MCP servers), safe and silent when no collector runs, distributed across HTTP, MCP and outbound LLM calls, with a local collector, Jaeger and Prometheus stack for development.
+
 ## ADDED Requirements
 
 ### Requirement: Telemetry enablement modes
