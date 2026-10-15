@@ -19,10 +19,10 @@ Each API request, except excluded paths, SHALL run in a SERVER span named `<METH
 - **THEN** no span is exported for them
 
 ### Requirement: Excluded, unmatched and failing HTTP requests
-`/healthz` and `/readyz` SHALL NOT be traced, nor a path for which `re.search` finds one of the comma-separated regexes of `OTEL_PYTHON_EXCLUDED_URLS` in the request path (no query string). A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx response or an unhandled exception SHALL set status ERROR and `error.type` (the status code, or the exception class name).
+`/healthz` and `/readyz` SHALL NOT be traced, nor a path for which `re.search` finds one of the comma-separated regexes of `OTEL_PYTHON_EXCLUDED_URLS` in the request path (no query string); the variable is read on each request. A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx response or an unhandled exception SHALL set status ERROR and `error.type` (the status code, or the exception class name).
 
 #### Scenario: Excluded by the environment
-- **GIVEN** `OTEL_PYTHON_EXCLUDED_URLS=^/stats$,/summaries`
+- **GIVEN** the module-level `app` from `mintmory.api.app` and, set with `monkeypatch.setenv` after import, `OTEL_PYTHON_EXCLUDED_URLS=^/stats$,/summaries`
 - **WHEN** `GET /stats` and `GET /summaries` are called
 - **THEN** no span is exported for them, and `GET /memories/<an existing id>` is still traced
 

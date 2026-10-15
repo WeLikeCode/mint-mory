@@ -21,7 +21,7 @@
 - **THEN** it returns False
 
 #### Scenario: Endpoint configured but SDK missing
-- **GIVEN** `OTEL_EXPORTER_OTLP_ENDPOINT` set and `opentelemetry.sdk` not importable
+- **GIVEN** any of `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` set and `opentelemetry.sdk` not importable
 - **WHEN** `init_telemetry` runs
 - **THEN** it returns False and logs one WARNING naming the `otel` extra
 
