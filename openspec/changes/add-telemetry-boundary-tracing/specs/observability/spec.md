@@ -39,7 +39,7 @@ Each MCP tool call in `mintmory-mcp` and `mintmory-history-mcp` SHALL be traced 
 - **THEN** the `tools/call memory_stats` span has trace id `4bf92f3577b34da6a3ce929d0e0e4736` and parent span id `00f067aa0ba902b7`
 
 ### Requirement: Outbound calls carry the trace context
-`gen_ai.chat` SHALL be a CLIENT span with `server.address` and `server.port` of the endpoint. Every outbound LLM request (`llm.py`) and embedding request (`OllamaEmbedder`, `OpenAIEmbedder`) SHALL carry the W3C `traceparent` header, and `tracestate` and `baggage` when present, injected inside its client span, so the remote side's parent is that span. With telemetry off, no header SHALL be added.
+`gen_ai.chat` SHALL be a CLIENT span with `server.address` and `server.port` of the endpoint. Every outbound LLM request (`llm.py`) and embedding request (`OllamaEmbedder`, `OpenAIEmbedder`) SHALL carry the W3C `traceparent` header (and `tracestate`, `baggage` when present), injected inside the span that wraps the request, `gen_ai.chat` or `mintmory.embed`, so that span is the remote side's parent. With telemetry off, no header SHALL be added.
 
 #### Scenario: LLM endpoint receives traceparent
 - **GIVEN** telemetry initialised with an in-memory exporter and a local test HTTP server that answers like an OpenAI-compatible `/chat/completions`

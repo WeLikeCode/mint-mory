@@ -7,7 +7,8 @@ The REST API SHALL initialise OpenTelemetry at startup by calling the telemetry
 activator with the configured OTel settings and the default service name `mintmory-api`.
 Activation SHALL follow the observability capability's enablement modes: it SHALL be a
 no-op when telemetry is off (`MINTMORY_OTEL_ENABLED=false`, `OTEL_SDK_DISABLED=true`, the
-SDK not installed, or `auto` with no collector configured or answering). When telemetry
+SDK not installed, which logs the observability capability's one WARNING when an endpoint
+is configured, or `auto` with no collector configured or answering). When telemetry
 is on, the API SHALL emit its spans and metrics through the configured exporter, and the
 lifespan SHALL flush them with a bounded shutdown when the application stops.
 

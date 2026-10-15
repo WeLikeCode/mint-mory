@@ -41,7 +41,7 @@ The CLI commands `add`, `search`, `ingest`, `index-tree`, `dream`, `vision-run`,
 
 #### Scenario: A failing command is marked
 - **GIVEN** telemetry initialised with an in-memory exporter
-- **WHEN** `mintmory ingest` runs on a path that does not exist and exits with an error
+- **WHEN** `mintmory ingest` runs on a path that does not exist (Typer does not validate it: the command body finds no files, prints "No matching files to ingest" and raises `typer.Exit(code=1)`)
 - **THEN** the `mintmory.cli.ingest` span has status ERROR
 
 ### Requirement: Indexing and conversion phases are traced
