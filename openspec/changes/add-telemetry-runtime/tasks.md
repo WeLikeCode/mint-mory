@@ -79,7 +79,8 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
   `reset_telemetry()` resets the API globals as OpenTelemetry's test utilities do (`from opentelemetry.util._once import Once`;
   `trace._TRACER_PROVIDER_SET_ONCE = Once()`; `trace._TRACER_PROVIDER = None`; same with
   `metrics._internal._METER_PROVIDER_SET_ONCE` / `_METER_PROVIDER`), calls `shutdown_telemetry(0.5)` and clears module
-  state. Injected `span_exporter` via `SimpleSpanProcessor`; injected `metric_reader` replaces the periodic one.
+  state. Injected `span_exporter` via `SimpleSpanProcessor`; injected `metric_reader` replaces the periodic one; injection
+  enables telemetry even when `_resolve_state` says `off` (tests run with the conftest's `false`).
 
 ## 9. Checks
 - [ ] 9.1 Update the `telemetry.py` docstring; `ruff check`, `ruff format --check`, `mypy packages`, full suite with

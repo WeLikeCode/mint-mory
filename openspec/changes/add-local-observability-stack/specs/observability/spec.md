@@ -39,14 +39,14 @@
 - **THEN** the output does not contain `SECRET-1234`
 
 ### Requirement: Helm telemetry settings
-The chart SHALL render `MINTMORY_OTEL_ENABLED: "false"` when `otel.enabled` is false. When it is true, the chart SHALL also render `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` and `OTEL_RESOURCE_ATTRIBUTES` from `otel.sampler`, `otel.samplerArg` and `otel.resourceAttributes` when they are set, and `values.schema.json` SHALL describe the three values.
+`values.yaml` SHALL keep `otel.enabled: false` as the default, and the chart SHALL render `MINTMORY_OTEL_ENABLED: "false"` when `otel.enabled` is false. When it is true, the chart SHALL also render `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` and `OTEL_RESOURCE_ATTRIBUTES` from `otel.sampler`, `otel.samplerArg` and `otel.resourceAttributes` when they are set, and `values.schema.json` SHALL describe the three values.
 
 #### Scenario: Sampler values are rendered
 - **WHEN** the configmap template is read
 - **THEN** inside the `otel.enabled` branch it renders `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` and `OTEL_RESOURCE_ATTRIBUTES` from `otel.sampler`, `otel.samplerArg` and `otel.resourceAttributes`, each only when set
 
 #### Scenario: Disabled means disabled
-- **WHEN** the configmap template is rendered with the default values
+- **WHEN** the configmap template is rendered with the default values (`otel.enabled: false`, as in `values.yaml` today)
 - **THEN** it contains `MINTMORY_OTEL_ENABLED: "false"`
 
 ### Requirement: Observability guide

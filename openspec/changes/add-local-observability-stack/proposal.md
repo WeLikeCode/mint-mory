@@ -5,8 +5,8 @@
 Parts 1 to 3 make MintMory export traces and metrics to any OTLP collector, and switch on by themselves when one
 answers on `localhost:4318`. A developer still needs a collector and a viewer, a way to check what MintMory sees,
 and a guide. `docs/OBSERVABILITY.md` section 4.5 only suggests "`jaegertracing/all-in-one` on `:4318`" in prose.
-The Helm chart cannot switch telemetry off any more under the new `auto` default (it renders nothing when
-`otel.enabled` is false), and cannot set sampling.
+With `otel.enabled: false` (its default) the chart renders no `MINTMORY_OTEL_ENABLED` key, so under the new `auto`
+default it would no longer switch telemetry off; it also cannot set sampling.
 
 ## What changes
 

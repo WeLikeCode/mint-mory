@@ -17,7 +17,7 @@
 
 #### Scenario: Explicit off wins
 - **GIVEN** `MINTMORY_OTEL_ENABLED=false`, or `OTEL_SDK_DISABLED=true` with `MINTMORY_OTEL_ENABLED=true`
-- **WHEN** `init_telemetry` runs
+- **WHEN** `init_telemetry` runs without an injected exporter or reader
 - **THEN** it returns False
 
 #### Scenario: Endpoint configured but SDK missing
@@ -103,7 +103,12 @@ The CLI SHALL initialise telemetry in a Typer callback before any command except
 - **THEN** `init_telemetry` was called once, before the server runs, with `default_service_name="mintmory-history-mcp"`
 
 ### Requirement: Telemetry test seam and global provider
-`init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)` SHALL use an injected span exporter (synchronous processor) and metric reader instead of the configured exporters, enabling telemetry when either is given and the SDK imports. Each successful init SHALL make its providers global, so library spans (FastMCP's) reach the same exporters. `reset_telemetry()` SHALL clear all of this.
+`init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)` SHALL use an injected span exporter (synchronous processor) and metric reader instead of the configured exporters. Injection SHALL enable telemetry when the SDK imports, even with `MINTMORY_OTEL_ENABLED=false` or `OTEL_SDK_DISABLED=true`. Each successful init SHALL make its providers global, so library spans (FastMCP's) reach the same exporters. `reset_telemetry()` SHALL clear all of this.
+
+#### Scenario: Injection beats the suite's off default
+- **GIVEN** `MINTMORY_OTEL_ENABLED=false` (the root `conftest.py` default)
+- **WHEN** `init_telemetry(span_exporter=InMemorySpanExporter())` runs and a span is created
+- **THEN** it returns True and the span is in that exporter
 
 #### Scenario: Re-initialisation in one process
 - **GIVEN** telemetry initialised with one in-memory exporter, then reset
