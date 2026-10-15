@@ -19,12 +19,17 @@ Each API request, except excluded paths, SHALL run in a SERVER span named `<METH
 - **THEN** no span is exported for them
 
 ### Requirement: Excluded HTTP paths
-`/healthz` and `/readyz` SHALL NOT be traced, nor a path for which `re.search` finds one of the comma-separated regexes of `OTEL_PYTHON_EXCLUDED_URLS` in the request path (no query string). The variable SHALL be read on each request; an item that is not a valid regex SHALL be skipped with one WARNING per distinct value and SHALL never fail a request.
+`/healthz` and `/readyz` SHALL NOT be traced, nor a path for which `re.search` finds one of the comma-separated regexes of `OTEL_PYTHON_EXCLUDED_URLS` in the request path (no query string). The variable SHALL be read on each request; items are stripped, empty items ignored, and an item that is not a valid regex skipped with one WARNING per distinct value, never failing a request.
 
 #### Scenario: Excluded by the environment
 - **GIVEN** the module-level `app` from `mintmory.api.app` and, set with `monkeypatch.setenv` after import, `OTEL_PYTHON_EXCLUDED_URLS=^/stats$,/summaries`
 - **WHEN** `GET /stats` and `GET /summaries` are called
 - **THEN** no span is exported for them, and `GET /memories/<an existing id>` is still traced
+
+#### Scenario: Empty items exclude nothing
+- **GIVEN** `OTEL_PYTHON_EXCLUDED_URLS=" , ^/stats$ ,"`
+- **WHEN** `GET /stats` and `GET /memories/<an existing id>` are called
+- **THEN** `GET /stats` is not traced and the memory request is
 
 #### Scenario: A bad exclusion pattern is skipped
 - **GIVEN** `OTEL_PYTHON_EXCLUDED_URLS=([,^/stats$`

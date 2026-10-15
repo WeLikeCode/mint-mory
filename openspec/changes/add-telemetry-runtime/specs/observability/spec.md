@@ -68,12 +68,16 @@ Loading settings SHALL never raise for a bad `MINTMORY_OTEL_*` value: each bad v
 - **THEN** nothing raises, traces go to the console exporter over stderr, and one WARNING per bad value is logged
 
 ### Requirement: Bounded flush on exit
-`shutdown_telemetry(timeout_s=2.0)` SHALL flush and shut the providers down, return within `timeout_s` + 0.5 s whatever the collector state, and be safe to repeat. `init_telemetry` SHALL register it with `atexit` and create the providers with `shutdown_on_exit=False`.
+`shutdown_telemetry(timeout_s=2.0)` SHALL flush and shut the providers down, return within `timeout_s` + 0.5 s whatever the collector state, be safe to repeat, and leave the module as `reset_telemetry()` does, so a later `init_telemetry` initialises again. `init_telemetry` SHALL register it with `atexit` and create the providers with `shutdown_on_exit=False`.
 
 #### Scenario: Exit is fast without a collector
 - **GIVEN** telemetry enabled with the endpoint at a closed local port and spans pending
 - **WHEN** `shutdown_telemetry(timeout_s=1.0)` runs
 - **THEN** it returns within 1.5 s
+
+#### Scenario: Init after shutdown works
+- **WHEN** telemetry is initialised with an in-memory exporter, shut down, then initialised with a second in-memory exporter and a span is created
+- **THEN** the second init returns True and the span is in the second exporter
 
 #### Scenario: Pending spans are delivered on exit
 - **GIVEN** telemetry enabled with the endpoint at a test HTTP receiver answering 200

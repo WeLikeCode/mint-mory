@@ -52,15 +52,17 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 
 ## 4b. Export scrubber
 - [ ] 4b.1 Test "A library's exception is scrubbed" (and a MintMory span through `telemetry.span`).
-- [ ] 4b.2 A `_Scrubbing(SpanExporter)` wrapper used for every span exporter, configured or injected (inside the guard
-  for OTLP): `export` rebuilds each span as `ReadableSpan(...)` (same name, context, parent, resource, attributes, links,
+- [ ] 4b.2 A `_Scrubbing(SpanExporter)` wrapper, outermost on every span exporter: `_Scrubbing(_GuardedSpanExporter(OTLP))`,
+  `_Scrubbing(ConsoleSpanExporter)`, `_Scrubbing(<injected>)`; metric exporters get only the guard
+  (`_GuardedMetricExporter(OTLPMetricExporter)`, so `guard._inner` stays the OTLP exporter). Every wrapper keeps its
+  inner exporter as `_inner`. `export` rebuilds each span as `ReadableSpan(...)` (same name, context, parent, resource, attributes, links,
   kind, scope, times) with `exception` events reduced to `{"exception.type": ...}` and `Status(StatusCode.ERROR)`
   without a description; other spans pass unchanged.
 
 ## 5. Bounded shutdown
 - [ ] 5.1 Tests for "Bounded flush on exit" (`otlp_receiver()`, `closed_port()`).
-- [ ] 5.2 `shutdown_telemetry(timeout_s=2.0)`: providers' `shutdown()` in a daemon thread, `join(timeout_s)`, then
-  disabled. Providers built with `shutdown_on_exit=False`; `atexit.register(shutdown_telemetry)` once per process.
+- [ ] 5.2 `shutdown_telemetry(timeout_s=2.0)`: providers' `shutdown()` in a daemon thread, `join(timeout_s)`, then the
+  same state clearing as `reset_telemetry()` (globals released), so a second app start in one process can init again. Providers built with `shutdown_on_exit=False`; `atexit.register(shutdown_telemetry)` once per process.
 ## 6. Resource, sampling
 - [ ] 6.1 Tests for "Resource identifies the process" and "Sampling...".
 - [ ] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`

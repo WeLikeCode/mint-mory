@@ -51,12 +51,12 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 - **THEN** the `mintmory.cli.ingest` span has status ERROR
 
 ### Requirement: Indexing and conversion phases are traced
-`index-tree` SHALL record child spans `mintmory.index_tree.scan`, `mintmory.index_tree.prune` (with `--prune`) and `mintmory.index_tree.cochange` (when co-change runs), one `mintmory.convert` span per document conversion and one `mintmory.vision.caption` span per inline caption; `ingest` SHALL record one `mintmory.convert` span per conversion.
+`index-tree` SHALL record child spans `mintmory.index_tree.scan`, `mintmory.index_tree.prune` (with `--prune`) and `mintmory.index_tree.cochange` (when co-change runs), one `mintmory.convert` span per binary-document conversion (the `--content` pass through markitdown; the small plain-text pass records none) and one `mintmory.vision.caption` span per inline caption; `ingest` SHALL record one `mintmory.convert` span per converted file.
 
 #### Scenario: index-tree phases
 - **GIVEN** telemetry with an in-memory exporter and a folder with three text files
 - **WHEN** `mintmory index-tree --prune --cochange <folder>` runs
-- **THEN** the `mintmory.cli.index-tree` span has the children `mintmory.index_tree.scan`, `.prune` and `.cochange`
+- **THEN** the `mintmory.cli.index-tree` span has the children `mintmory.index_tree.scan`, `.prune` and `.cochange`, and no `mintmory.convert` span (the text files take the plain-text pass)
 
 #### Scenario: Conversion and caption spans
 - **GIVEN** `mintmory.core.conversion.extract_markdown` patched to return text, and `vision.captioner_from_settings` patched to return a fake captioner with `MINTMORY_VISION_PROVIDER=llm`

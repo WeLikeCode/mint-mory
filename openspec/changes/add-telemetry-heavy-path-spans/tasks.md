@@ -47,7 +47,8 @@ dependencies. Each test first, failing. Every helper is a cheap no-op when `tele
   `error.type` (class name) for `typer.Exit`/`SystemExit` with a non-zero code or any other exception; unset for code 0;
   re-raise. Apply to the commands of the spec; set the `index-tree` counts with `telemetry.set_attributes`.
 - [ ] 4.3 `index_tree`: `mintmory.index_tree.scan` around the per-entry loop, `.prune` inside `if prune:`, `.cochange`
-  inside the co-change branch, `mintmory.convert` per markitdown conversion (`mintmory.file.suffix`,
+  inside the co-change branch, `mintmory.convert` per binary conversion, i.e. the `extract_markdown` call when `want_binary` is true (the `want_text`
+  pass gets no span) (`mintmory.file.suffix`,
   `mintmory.file.size_bytes`, `mintmory.outcome`), `mintmory.vision.caption` per inline caption; `ingest`:
   `mintmory.convert` per conversion.
 
