@@ -1,7 +1,9 @@
 # Tasks: Deployment hardening (MM-44)
 
-Sections 1–4 shipped in 317e0bf (MM-44); the ticks below cite the evidence on
-`staging`. Section 5 is the gap found by the 2026-10-15 review: release tags never
+Sections 1–4 shipped in 317e0bf (MM-44) and are out of scope: do not run `docker`,
+`helm` or `kubeconform` for them (a review that shows every checkbox empty should rely
+on this sentence and on the evidence cited after each task). The work is section 5;
+task 4.1 is closed by 5.5's CI render. Section 5 is the gap found by the 2026-10-15 review: release tags never
 publish an image, the published tag scheme does not match the chart default, the
 oauth2-proxy pods are selected by the application selectors, and CI never renders
 `auth.mode=oauth2proxy`.
@@ -47,10 +49,10 @@ oauth2-proxy pods are selected by the application selectors, and CI never render
   (`README.md:159-201`, `templates/NOTES.txt:22-28`.)
 
 ## 4. Validation
-- [ ] 4.1 `helm lint`; `helm template` for auth.mode none/basic/oauth2proxy all render;
-  kubeconform each; oauth2proxy render shows Deployment+Service+Secret + auth-url/
-  auth-signin annotations + `/oauth2` path. (Done by hand in 317e0bf, but CI never
-  renders oauth2proxy: tick this when 5.5 is done.)
+- [ ] 4.1 CI renders and validates `auth.mode` none, basic and oauth2proxy (helm lint,
+  helm template, kubeconform in the `deploy-validate` job). Done by hand in 317e0bf;
+  CI never rendered oauth2proxy. Closed by 5.5: tick it with 5.5, with no local helm,
+  docker or kubeconform run.
 - [x] 4.2 `docker build --build-arg VARIANT=light` (frozen) + `/healthz` 200.
   (Reported in 317e0bf; the build runs in CI at `ci.yml:183-184`.)
 - [x] 4.3 Existing Python gates green (frozen sync). (`ci.yml:34-46`.)

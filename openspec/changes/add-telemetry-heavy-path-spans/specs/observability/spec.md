@@ -10,6 +10,19 @@ Each search SHALL record child spans `mintmory.search.fts`, `mintmory.search.sub
 - **WHEN** a search runs
 - **THEN** the exporter holds `mintmory.search.fts`, `mintmory.search.substring`, `mintmory.search.vector` and `mintmory.search.fusion` spans whose parent is the `mintmory.search` span, and the reader holds `mintmory.search.latency_ms` points for `fts`, `substring`, `vector`, `fusion` and `total`
 
+### Requirement: Search phases without work or with a failure
+`search()` always runs all four stages, so a stage with nothing to do (no query embedding, substring search off, no match) SHALL still record its span with `mintmory.result_count` = 0. A stage that raises SHALL end its span with status ERROR, still record its latency point, and re-raise the exception unchanged.
+
+#### Scenario: A stage with nothing to do
+- **GIVEN** telemetry initialised with in-memory exporters and a search without a query embedding
+- **WHEN** the search runs
+- **THEN** the `mintmory.search.vector` span exists with `mintmory.result_count` = 0
+
+#### Scenario: A failing stage
+- **GIVEN** telemetry initialised with in-memory exporters and `_fts_scores` patched to raise `RuntimeError`
+- **WHEN** a search runs
+- **THEN** the `RuntimeError` propagates, the `mintmory.search.fts` span has status ERROR, and a `phase=fts` latency point is recorded
+
 ### Requirement: Embedding spans and latency
 Every call to `embed` or `embed_batch` of an embedder in `embedder.py` SHALL record a `mintmory.embed` span with the attributes `mintmory.embed.provider`, `gen_ai.request.model` (when the embedder has a model), `mintmory.embed.batch_size` and `mintmory.embed.dim`, and the histogram `mintmory.embed.latency_ms` (unit `ms`) with `provider` and `model`.
 

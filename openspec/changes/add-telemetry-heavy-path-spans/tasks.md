@@ -14,7 +14,9 @@ Write each test first and see it fail. Every helper below must be a cheap no-op 
 - [ ] 1.2 Add `search_phase(name: str, *, span: bool = True)`, a context manager yielding an object with
   `set_count(n: int)`. When enabled it times the block with `time.perf_counter()`, opens the span
   `mintmory.search.<name>` (only when `span=True`), sets `mintmory.result_count` when `set_count` was called, and on
-  exit records `record_value("mintmory.search.latency_ms", ms, phase=name)`. Create histograms with `unit="ms"` (pass
+  exit records `record_value("mintmory.search.latency_ms", ms, phase=name)` in a `finally`, so a stage that raises
+  still records its point; the span then has status ERROR with the exception recorded, and the exception propagates
+  unchanged. Create histograms with `unit="ms"` (pass
   `unit` to `create_histogram` in `_instrument`).
 - [ ] 1.3 Add `run_in_context(fn)`: call `contextvars.copy_context()` on the calling thread and return a callable that
   runs `ctx.copy().run(fn, *args, **kwargs)`, so each call gets a fresh copy and one wrapped callable can run in
@@ -23,12 +25,13 @@ Write each test first and see it fail. Every helper below must be a cheap no-op 
 - [ ] 1.4 Add `set_attributes(**attrs)`: sets attributes on the current span when enabled (None values skipped).
 
 ## 2. Search phases (inside `search()`, not on the score methods)
-- [ ] 2.1 Test "A search shows its phases" for `SqliteBackend`, and a test that adding a note with anchoring
+- [ ] 2.1 Tests "A search shows its phases", "A stage with nothing to do" and "A failing stage" for `SqliteBackend`,
+  and a test that adding a note with anchoring
   (`anchor_candidates`) records no `mintmory.search.*` span and no latency point. Add the phase assertions to the
   Postgres conformance tests if they can run (they are skipped without a database).
 - [ ] 2.2 `_fts_scores`, `_trigram_scores` and `_vector_scores` are also called by `anchor_candidates`
   (`storage.py`, `storage_postgres.py`), so do not decorate them. In `search()` of both backends compute the three
-  score dicts into local variables, each inside `with telemetry.search_phase("fts") as ph: ... ph.set_count(len(scores))`
+  score dicts into local variables, each inside `with telemetry.search_phase("fts") as ph: ... ph.set_count(len(scores))` (also for an empty result, so the count is 0)
   (`"substring"` for the trigram scores, `"vector"` for the vector scores), then call `fuse_and_search` inside
   `with telemetry.search_phase("fusion") as ph:` with `ph.set_count(len(response.memories))`. Record
   `phase="total"` for the whole `search` call (`with telemetry.search_phase("total", span=False):` around the body,

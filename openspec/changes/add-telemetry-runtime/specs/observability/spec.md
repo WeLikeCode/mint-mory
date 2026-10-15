@@ -65,7 +65,7 @@ Export SHALL run off the calling thread with bounded queues and time out after `
 - **THEN** the receiver got a POST to `/v1/traces` containing that span
 
 ### Requirement: Resource identifies the process
-`service.name` SHALL be, in order: `OTEL_SERVICE_NAME`, `service.name` in `OTEL_RESOURCE_ATTRIBUTES`, `MINTMORY_OTEL_SERVICE_NAME`, the entry point's default (`mintmory-api`, `mintmory-mcp`, `mintmory-history-mcp`, `mintmory-cli`). MintMory SHALL add `service.namespace=mintmory`, `service.version` (installed `mintmory-core`) and a random `service.instance.id`; other `OTEL_RESOURCE_ATTRIBUTES` keys SHALL override these.
+`service.name` SHALL be, in order: `OTEL_SERVICE_NAME`, `service.name` in `OTEL_RESOURCE_ATTRIBUTES`, `MINTMORY_OTEL_SERVICE_NAME`, the entry point's default (`mintmory-api`, `mintmory-mcp`, `mintmory-history-mcp`, `mintmory-cli`). MintMory SHALL add `service.namespace=mintmory`, `service.version` (installed `mintmory-core`) and a random `service.instance.id`, which the same keys in `OTEL_RESOURCE_ATTRIBUTES` SHALL override.
 
 #### Scenario: Entry point default name
 - **GIVEN** no service-name variable
@@ -76,6 +76,11 @@ Export SHALL run off the calling thread with bounded queues and time out after `
 - **GIVEN** `OTEL_SERVICE_NAME=memo`, `MINTMORY_OTEL_SERVICE_NAME=other`, `OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=dev,service.namespace=team`
 - **WHEN** any entry point initialises telemetry
 - **THEN** spans carry `service.name=memo`, `deployment.environment.name=dev`, `service.namespace=team`
+
+#### Scenario: Resource attributes beat the MintMory name
+- **GIVEN** no `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES=service.name=attrs` and `MINTMORY_OTEL_SERVICE_NAME=other`
+- **WHEN** any entry point initialises telemetry
+- **THEN** spans carry `service.name=attrs`
 
 ### Requirement: Sampling and propagation follow the OpenTelemetry environment
 The tracer provider SHALL take its sampler from `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` (default `parentbased_always_on`) and the process SHALL use the propagators of `OTEL_PROPAGATORS` (default W3C `tracecontext`, `baggage`).

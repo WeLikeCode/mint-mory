@@ -31,6 +31,9 @@ Grafana dashboards, alerting, log collection, and any change to application tele
 - Changed: `packages/cli/src/mintmory/cli/main.py` (`doctor`), `packages/core/src/mintmory/core/telemetry.py` (a
   status function), `deploy/helm/mintmory/templates/configmap.yaml`, `values.yaml`, `values.schema.json`,
   `docs/OBSERVABILITY.md`, `README.md` (one pointer).
-- Depends on `add-telemetry-runtime` (the variables and modes it documents and reports). It edits Helm files that
+- Depends on `add-telemetry-runtime` (the variables and modes it documents and reports), and on
+  `add-telemetry-heavy-path-spans` and `add-telemetry-boundary-tracing`, whose spans and metrics
+  (`mintmory.search.*`, `mintmory_search_latency_ms`, `gen_ai.chat`, `traceparent`) the guide documents and which also
+  edit `docs/OBSERVABILITY.md` section 4. It edits Helm files that
   `deployment-hardening` does not (`configmap.yaml`, `values.yaml`, `values.schema.json`); rebase if that change merges
   first.
