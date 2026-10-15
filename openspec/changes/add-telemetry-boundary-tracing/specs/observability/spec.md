@@ -32,7 +32,7 @@ Each API request, except excluded paths, SHALL run in a SERVER span named `<METH
 - **THEN** both answer as without telemetry, `GET /stats` is not traced, the memory request is, and one WARNING names the bad pattern
 
 ### Requirement: Unmatched and failing HTTP requests
-A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx response or an unhandled exception SHALL set status ERROR and `error.type` (the status code, or the exception class name), never the exception message.
+A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx response or an unhandled exception SHALL set status ERROR and `error.type` (the status code, or the exception class name); the runtime's scrubber removes exception messages at export.
 
 #### Scenario: No route matched
 - **WHEN** `GET /no-such-path` is called
@@ -41,7 +41,7 @@ A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx respo
 #### Scenario: A route that raises
 - **GIVEN** a test route added to the app that raises `RuntimeError`
 - **WHEN** it is called with `TestClient(app, raise_server_exceptions=False)`
-- **THEN** its span has status ERROR and `error.type` = `RuntimeError`
+- **THEN** its span has status ERROR and `error.type` = `RuntimeError`, and no exported span, event or status description contains the exception's message
 
 ### Requirement: HTTP server duration metric
 The API SHALL record each traced request in the histogram `http.server.request.duration` (unit `s`, bucket boundaries 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5 and 10) with the attributes `http.request.method`, `http.route` and `http.response.status_code`.
@@ -60,9 +60,9 @@ Each MCP tool call in `mintmory-mcp` and `mintmory-history-mcp` SHALL be traced 
 - **THEN** exactly one span named `tools/call memory_search` with kind SERVER is exported, and the `mintmory.search` span of that call is its descendant
 
 #### Scenario: A failing tool is marked
-- **GIVEN** the store accessor the tool uses patched to raise `RuntimeError`
+- **GIVEN** the store accessor the tool uses patched to raise `RuntimeError("SENTINEL-77")`
 - **WHEN** the client calls `memory_stats`
-- **THEN** the `tools/call memory_stats` span has status ERROR
+- **THEN** the `tools/call memory_stats` span has status ERROR, and no exported span, event or status description contains `SENTINEL-77` (FastMCP's exception event keeps only `exception.type` after the runtime's scrubber)
 
 #### Scenario: History MCP tool is traced
 - **WHEN** a `fastmcp.Client` connected in memory to `mintmory-history-mcp` calls `history_stats`

@@ -10,8 +10,8 @@ dependencies. Each test first, failing. Every helper is a cheap no-op when `tele
 - [ ] 1.2 `search_phase(name, *, span=True)`: context manager yielding an object with `set_count(n)`; times the block
   (`time.perf_counter()`), opens `mintmory.search.<name>` when `span`, sets `mintmory.result_count`, records
   `mintmory.search.latency_ms` (`phase=name`, histogram `unit="ms"`, pass `unit` through `_instrument`) in a `finally`;
-  on an exception the span gets status ERROR and `error.type` = the class name (open it with
-  `record_exception=False, set_status_on_exception=False`; never record the message), and the exception propagates. `timed_phase(name)`: the same as a
+  on an exception the span gets status ERROR and `error.type` = the class name, and the exception propagates
+  (messages are scrubbed at export by part 1, for this span, the existing `traced`/`span` helpers and library spans). `timed_phase(name)`: the same as a
   decorator with `span=False`.
 - [ ] 1.3 `run_in_context(fn)`: `ctx = contextvars.copy_context()` on the calling thread, returns a callable running
   `ctx.copy().run(fn, *a, **kw)` (one `Context` cannot be entered by two threads at once).
@@ -44,8 +44,7 @@ dependencies. Each test first, failing. Every helper is a cheap no-op when `tele
   not ERROR.
 - [ ] 4.2 `telemetry.command_span(name)`: a decorator under `@app.command()` (keep `functools.wraps`; Typer follows
   `__wrapped__`) opening `mintmory.cli.<name>` with `record_exception=False, set_status_on_exception=False`; ERROR and
-  `error.type` (class name only, never the message) for `typer.Exit`/`SystemExit` with a non-zero code or any other
-  exception; unset for code 0;
+  `error.type` (class name) for `typer.Exit`/`SystemExit` with a non-zero code or any other exception; unset for code 0;
   re-raise. Apply to the commands of the spec; set the `index-tree` counts with `telemetry.set_attributes`.
 - [ ] 4.3 `index_tree`: `mintmory.index_tree.scan` around the per-entry loop, `.prune` inside `if prune:`, `.cochange`
   inside the co-change branch, `mintmory.convert` per markitdown conversion (`mintmory.file.suffix`,

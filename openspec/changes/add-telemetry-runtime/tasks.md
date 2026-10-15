@@ -50,6 +50,13 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 - [ ] 4.4 On creating an OTLP exporter, save and set `logging.getLogger("opentelemetry.exporter.otlp.proto.http")` to
   `CRITICAL` (children inherit it; a parent filter would not apply to them); `reset_telemetry()` restores it.
 
+## 4b. Export scrubber
+- [ ] 4b.1 Test "A library's exception is scrubbed" (and a MintMory span through `telemetry.span`).
+- [ ] 4b.2 A `_Scrubbing(SpanExporter)` wrapper used for every span exporter, configured or injected (inside the guard
+  for OTLP): `export` rebuilds each span as `ReadableSpan(...)` (same name, context, parent, resource, attributes, links,
+  kind, scope, times) with `exception` events reduced to `{"exception.type": ...}` and `Status(StatusCode.ERROR)`
+  without a description; other spans pass unchanged.
+
 ## 5. Bounded shutdown
 - [ ] 5.1 Tests for "Bounded flush on exit" (`otlp_receiver()`, `closed_port()`).
 - [ ] 5.2 `shutdown_telemetry(timeout_s=2.0)`: providers' `shutdown()` in a daemon thread, `join(timeout_s)`, then

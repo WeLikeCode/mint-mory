@@ -10,6 +10,7 @@ entry point reports the same service name, and the API never flushes on shutdown
 
 - The CLI initialises telemetry in a Typer callback (`mintmory-cli`), except `serve` and `mcp-serve`, which hand over to
   the API and MCP entry points.
+- This unit alone owns the API lifespan's `shutdown_telemetry()` call (part 1 only provides the function).
 - The API (`mintmory-api`), `mintmory-mcp` and `mintmory-history-mcp` pass their default service name; the API lifespan
   calls `shutdown_telemetry()` on stop.
 - The `deployment` requirement "Telemetry activation at API startup" is modified: "OTel stays off by default" now

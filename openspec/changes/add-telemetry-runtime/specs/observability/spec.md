@@ -68,7 +68,7 @@ Loading settings SHALL never raise for a bad `MINTMORY_OTEL_*` value: each bad v
 - **THEN** nothing raises, traces go to the console exporter over stderr, and one WARNING per bad value is logged
 
 ### Requirement: Bounded flush on exit
-`shutdown_telemetry(timeout_s=2.0)` SHALL flush and shut the providers down, return within `timeout_s` + 0.5 s whatever the collector state, and be safe to repeat. `init_telemetry` SHALL register it with `atexit` and create the providers with `shutdown_on_exit=False`. The API lifespan SHALL call it on stop.
+`shutdown_telemetry(timeout_s=2.0)` SHALL flush and shut the providers down, return within `timeout_s` + 0.5 s whatever the collector state, and be safe to repeat. `init_telemetry` SHALL register it with `atexit` and create the providers with `shutdown_on_exit=False`.
 
 #### Scenario: Exit is fast without a collector
 - **GIVEN** telemetry enabled with the endpoint at a closed local port and spans pending
@@ -83,19 +83,19 @@ Loading settings SHALL never raise for a bad `MINTMORY_OTEL_*` value: each bad v
 ### Requirement: Resource identifies the process
 `service.name` SHALL be, in order: `OTEL_SERVICE_NAME`, `service.name` in `OTEL_RESOURCE_ATTRIBUTES`, `MINTMORY_OTEL_SERVICE_NAME`, the entry point's default (`mintmory-api`, `mintmory-mcp`, `mintmory-history-mcp`, `mintmory-cli`). MintMory SHALL add `service.namespace=mintmory`, `service.version` (installed `mintmory-core`) and a random `service.instance.id`, which the same keys in `OTEL_RESOURCE_ATTRIBUTES` SHALL override.
 
-#### Scenario: Entry point default name
+#### Scenario: The caller's default name
 - **GIVEN** no service-name variable
-- **WHEN** the CLI initialises telemetry
-- **THEN** spans carry `service.name=mintmory-cli` and a non-empty `service.version`
+- **WHEN** `init_telemetry(default_service_name="mintmory-cli", span_exporter=...)` runs and a span is created
+- **THEN** the span carries `service.name=mintmory-cli` and a non-empty `service.version`
 
 #### Scenario: Standard variables win
 - **GIVEN** `OTEL_SERVICE_NAME=memo`, `MINTMORY_OTEL_SERVICE_NAME=other`, `OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=dev,service.namespace=team`
-- **WHEN** any entry point initialises telemetry
+- **WHEN** `init_telemetry(default_service_name="mintmory-cli", span_exporter=...)` runs
 - **THEN** spans carry `service.name=memo`, `deployment.environment.name=dev`, `service.namespace=team`
 
 #### Scenario: Resource attributes beat the MintMory name
 - **GIVEN** no `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES=service.name=attrs` and `MINTMORY_OTEL_SERVICE_NAME=other`
-- **WHEN** any entry point initialises telemetry
+- **WHEN** `init_telemetry(default_service_name="mintmory-cli", span_exporter=...)` runs
 - **THEN** spans carry `service.name=attrs`
 
 ### Requirement: Sampling and propagation follow the OpenTelemetry environment
@@ -105,6 +105,14 @@ The tracer provider SHALL take its sampler from `OTEL_TRACES_SAMPLER` / `OTEL_TR
 - **GIVEN** telemetry enabled with `OTEL_TRACES_SAMPLER=always_off`
 - **WHEN** spans are created
 - **THEN** none is exported
+
+### Requirement: Exported spans carry no exception message
+Every exporter, configured or injected, SHALL receive spans through a scrubber: in an `exception` event only `exception.type` is kept (`exception.message` and `exception.stacktrace` are dropped), and an ERROR status loses its description. This holds for MintMory's spans and for spans a library creates (FastMCP's).
+
+#### Scenario: A library's exception is scrubbed
+- **GIVEN** telemetry initialised with an in-memory exporter
+- **WHEN** a span from `opentelemetry.trace.get_tracer("x")` records `RuntimeError("SENTINEL-91c2")` and ends with status ERROR
+- **THEN** the exported span has an `exception` event with `exception.type=RuntimeError`, no attribute or status description contains the sentinel
 
 ### Requirement: Telemetry test seam
 `init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)` SHALL use an injected span exporter (through a synchronous processor) and metric reader instead of the configured exporters. Injection SHALL enable telemetry when the SDK imports, even with `MINTMORY_OTEL_ENABLED=false` or `OTEL_SDK_DISABLED=true`. `reset_telemetry()` SHALL clear all telemetry state.

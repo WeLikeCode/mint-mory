@@ -93,9 +93,11 @@ Write each test first and see it fail.
   the existing `otel.endpoint` and `otel.serviceName` behaviour.
 
 ## 4. Guide
-- [ ] 4.1 Test "Guide names every variable" (read `docs/OBSERVABILITY.md` and assert each name is present).
+- [ ] 4.1 Tests "Guide names every variable" and "Guide has its parts and links" (read the files and assert each name,
+  heading, command and link).
 - [ ] 4.2 Rewrite `docs/OBSERVABILITY.md` section 4.5 (and the summary at the top of section 4) as the user guide in the
-  spec: a table of the variables with default and precedence; modes (`auto` exports when a collector is configured or
+  spec, under the headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`: a table of the
+  variables with default and precedence; modes (`auto` exports when a collector is configured or
   answers on `localhost:4318`, `true`, `false`); the local stack; "finding a bottleneck" (Jaeger: search service and
   operation, sort by duration, open the slowest trace, read the `mintmory.search.*` and `gen_ai.chat` children;
   Prometheus: the phase query above); production (Helm values, sampling ratio, `OTEL_EXPORTER_OTLP_HEADERS` for an

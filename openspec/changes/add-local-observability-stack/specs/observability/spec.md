@@ -53,5 +53,9 @@
 `docs/OBSERVABILITY.md` section 4 SHALL describe the modes, every variable MintMory reads with its precedence, the local stack in three commands, how to find a slow phase in Jaeger and in Prometheus, and the production settings; `deploy/observability/README.md` SHALL give the quick start; `README.md` SHALL link to both.
 
 #### Scenario: Guide names every variable
-- **WHEN** the guide is read
-- **THEN** it names `MINTMORY_OTEL_ENABLED`, `MINTMORY_OTEL_EXPORTER`, `MINTMORY_OTEL_EXPORT_TIMEOUT_S`, `MINTMORY_OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_TRACES_SAMPLER`
+- **WHEN** `docs/OBSERVABILITY.md` section 4 is read
+- **THEN** it names `MINTMORY_OTEL_ENABLED`, `MINTMORY_OTEL_EXPORTER`, `MINTMORY_OTEL_EXPORT_TIMEOUT_S`, `MINTMORY_OTEL_SERVICE_NAME`, `OTEL_SDK_DISABLED`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT`, `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG`, `OTEL_PROPAGATORS` and `OTEL_PYTHON_EXCLUDED_URLS`
+
+#### Scenario: Guide has its parts and links
+- **WHEN** the guide, `deploy/observability/README.md` and `README.md` are read
+- **THEN** section 4 has the headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`; the guide and the stack README contain `docker compose -f deploy/observability/compose.yaml up -d`; the guide contains `mintmory_search_latency_ms_bucket`; and `README.md` links to `docs/OBSERVABILITY.md` and `deploy/observability/README.md`
