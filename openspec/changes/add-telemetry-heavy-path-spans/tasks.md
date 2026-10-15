@@ -55,7 +55,7 @@ dependencies. Each test first, failing. Every helper is a cheap no-op when `tele
 ## 5. Worker threads, counters, privacy
 - [ ] 5.1 Test "Threads stay in the trace" (fixtures of `test_history_ingest.py`; assert `report.errors == 0`).
 - [ ] 5.2 `history/ingest.py` `backfill` and `sync`: wrap once, `prepare = telemetry.run_in_context(_prepare_session)`,
-  submit `prepare`; spans `mintmory.history.backfill` / `.sync` with the report counts. `dreaming.py`: map
+  submit `prepare` (the `mintmory.cli.history.*` root spans of 4.2 cover the commands; no extra history span). `dreaming.py`: map
   `telemetry.run_in_context(lambda sel: summarizer(sel.concept, sel.contents))`.
 - [ ] 5.3 Test "Counter by category"; put `@telemetry.counts_added` on both backends' `add_memory`.
 - [ ] 5.4 Tests "No content leaks into telemetry" and "Notes, LLM calls, dreams and indexed files leak nothing" (walk

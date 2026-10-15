@@ -9,8 +9,11 @@ checked against the installed packages (FastAPI 0.137.1, Starlette 1.3.1, anyio 
 
 ## 1. Telemetry helpers (`packages/core/src/mintmory/core/telemetry.py`)
 - [ ] 1.1 Tests for the helpers below, on and off.
-- [ ] 1.2 Add a keyword `kind: str = "internal"` (`"internal"`, `"server"`, `"client"`) and `context: Any = None` to
-  `span()`, mapped to `SpanKind` and passed to `start_as_current_span`. Add `inject_trace_headers(headers: dict[str,
+- [ ] 1.2 `span()` keeps yielding the SDK span when enabled and `_NoopSpan` when not; add `update_name(name)` and
+  `set_status_error(error_type)` to `_NoopSpan` (no-ops) and a helper `telemetry.mark_error(span, error_type)` that sets
+  status ERROR and `error.type` on a real span (so callers never import `opentelemetry.trace`). Add keyword-only
+  `kind: str = "internal"` (`"internal"`, `"server"`, `"client"`) and `context: Any = None` to `span()` (attributes
+  named `kind` or `context` are set with `set_attributes` instead), mapped to `SpanKind` and passed to `start_as_current_span`. Add `inject_trace_headers(headers: dict[str,
   str]) -> dict[str, str]`: when enabled, `opentelemetry.propagate.inject(headers)`; always returns `headers`. Add
   `extract_context(carrier: Mapping[str, str]) -> Any`: `opentelemetry.propagate.extract(carrier)` when enabled, else
   `None`. Let `_instrument` pass `explicit_bucket_boundaries_advisory` to `create_histogram` when given.

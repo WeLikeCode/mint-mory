@@ -61,8 +61,9 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 
 ## 5. Bounded shutdown
 - [ ] 5.1 Tests for "Bounded flush on exit" (`otlp_receiver()`, `closed_port()`).
-- [ ] 5.2 `shutdown_telemetry(timeout_s=2.0)`: providers' `shutdown()` in a daemon thread, `join(timeout_s)`, then the
-  same state clearing as `reset_telemetry()` (globals released), so a second app start in one process can init again. Providers built with `shutdown_on_exit=False`; `atexit.register(shutdown_telemetry)` once per process.
+- [ ] 5.2 `shutdown_telemetry(timeout_s=2.0)` is the one owner of teardown, in this order: providers' `shutdown()` in a
+  daemon thread with `join(timeout_s)`; clear the module state; `_release_globals()` (the API `Once` reset of 8.2).
+  `reset_telemetry()` is `shutdown_telemetry(0.5)` plus restoring the exporter logger level, nothing else. Providers built with `shutdown_on_exit=False`; `atexit.register(shutdown_telemetry)` once per process.
 ## 6. Resource, sampling
 - [ ] 6.1 Tests for "Resource identifies the process" and "Sampling...".
 - [ ] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`
@@ -81,10 +82,9 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 - [ ] 8.1 Test for "Re-initialisation in one process".
 - [ ] 8.2 Signature `init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None,
   metric_reader=None) -> bool`. Module `_tracer_provider`/`_meter_provider` give `_tracer`/`_meter` and become global on every successful init.
-  `reset_telemetry()` resets the API globals as OpenTelemetry's test utilities do (`from opentelemetry.util._once import Once`;
+  `_release_globals()` resets the API globals as OpenTelemetry's test utilities do (`from opentelemetry.util._once import Once`;
   `trace._TRACER_PROVIDER_SET_ONCE = Once()`; `trace._TRACER_PROVIDER = None`; same with
-  `metrics._internal._METER_PROVIDER_SET_ONCE` / `_METER_PROVIDER`), calls `shutdown_telemetry(0.5)` and clears module
-  state. Injected `span_exporter` via `SimpleSpanProcessor`; injected `metric_reader` replaces the periodic one; injection
+  `metrics._internal._METER_PROVIDER_SET_ONCE` / `_METER_PROVIDER`); only `shutdown_telemetry` calls it. Injected `span_exporter` via `SimpleSpanProcessor`; injected `metric_reader` replaces the periodic one; injection
   enables telemetry even when `_resolve_state` says `off` (tests run with the conftest's `false`).
 
 ## 9. Checks

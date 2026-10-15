@@ -6,8 +6,8 @@
 The CLI SHALL initialise telemetry in a Typer callback before any command except `serve` (uvicorn loads `mintmory.api.app:app`, whose lifespan initialises) and `mcp-serve` (it calls `mintmory.mcp.server.main()`). The API lifespan, `mintmory-mcp` and `mintmory-history-mcp` SHALL each call `init_telemetry` once with their default service name. (`init_telemetry` itself, from `add-telemetry-runtime`, makes a repeated call change nothing.)
 
 #### Scenario: CLI command is traced
-- **GIVEN** a test OTLP receiver in `OTEL_EXPORTER_OTLP_ENDPOINT` and `MINTMORY_OTEL_ENABLED=true`
-- **WHEN** `mintmory add` runs through the Typer test runner and telemetry shuts down
+- **GIVEN** a test OTLP receiver in `OTEL_EXPORTER_OTLP_ENDPOINT`, `MINTMORY_OTEL_ENABLED=true`, and the `cli_db` fixture of `packages/cli/tests/test_cli.py` (`MINTMORY_DB` in a temp folder; the default hashing embedder, no network, no LLM)
+- **WHEN** `mintmory add "hello"` runs through the Typer test runner (the existing `add` command; its store call is `@telemetry.traced("mintmory.add_memory")`) and telemetry shuts down
 - **THEN** a `mintmory.add_memory` span with `service.name=mintmory-cli` reaches the receiver
 
 #### Scenario: History MCP server initialises telemetry

@@ -73,6 +73,10 @@ Each MCP tool call in `mintmory-mcp` and `mintmory-history-mcp` SHALL be traced 
 - **WHEN** a `fastmcp.Client` connected in memory to `mintmory-history-mcp` calls `history_stats`
 - **THEN** one `tools/call history_stats` span with kind SERVER is exported
 
+#### Scenario: Tool arguments never reach telemetry
+- **WHEN** the client calls `memory_search` with the query `SENTINEL-ARG-4f` and `memory_note` with the text `SENTINEL-ARG-9a`
+- **THEN** no exported span attribute, event or status description contains either sentinel (FastMCP 3.4.2 records the method, server, component, tool name and auth/session ids, never arguments)
+
 #### Scenario: Context in `_meta` is continued
 - **WHEN** the client sends the call through the MCP session, `client.session.call_tool("memory_stats", {}, meta={"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"})` (`fastmcp.Client.call_tool` would replace `traceparent` with its own span's)
 - **THEN** the `tools/call memory_stats` span has trace id `4bf92f3577b34da6a3ce929d0e0e4736` and parent span id `00f067aa0ba902b7`

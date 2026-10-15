@@ -36,7 +36,11 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 
 #### Scenario: Hashing embedder is traced
 - **WHEN** `HashingEmbedder().embed_batch(["a", "b"])` runs with telemetry on
-- **THEN** one `mintmory.embed` span with `mintmory.embed.batch_size` = 2 and one latency point exist
+- **THEN** one `mintmory.embed` span with `mintmory.embed.batch_size` = 2 and `mintmory.embed.dim` = the embedder's dimension, and one latency point exist
+
+#### Scenario: Network embedders name their model
+- **WHEN** `OllamaEmbedder` embeds one text against a local test HTTP server, and an `OpenAIEmbedder` built with `OpenAIEmbedder.__new__` and a stub client embeds one text
+- **THEN** each records one `mintmory.embed` span with `mintmory.embed.provider`, `gen_ai.request.model` and `mintmory.embed.dim`, and `LocalEmbedder.embed` and `.embed_batch` carry the same decorator (`__wrapped__`)
 
 ### Requirement: CLI commands are traced end to end
 `add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), ending with status ERROR when the command raises or exits non-zero, and never for exit code 0. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed` from the counters of the same names that `index_tree` already keeps.
@@ -44,7 +48,7 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 #### Scenario: Command spans and counts
 - **GIVEN** telemetry with an in-memory exporter and a folder with two text files
 - **WHEN** `mintmory index-tree <folder>`, `mintmory search hello` and `mintmory dream` run through the Typer test runner
-- **THEN** `mintmory.cli.index-tree` (with `mintmory.files.scanned` = 2 and `mintmory.files.added` = 2), `mintmory.cli.search` and `mintmory.cli.dream` spans are exported, none with status ERROR
+- **THEN** `mintmory.cli.index-tree` (with `mintmory.files.scanned` = 2 and `mintmory.files.added` = 2), `mintmory.cli.search` and `mintmory.cli.dream` spans are exported, none with status ERROR; and `mintmory history sync` over an empty session folder (the fixtures of `packages/cli/tests/test_history_cli.py`) exports a `mintmory.cli.history.sync` span
 
 #### Scenario: A failing command is marked
 - **WHEN** `mintmory ingest` runs on a path that does not exist (Typer does not validate it: the body finds no files and raises `typer.Exit(code=1)`)
@@ -60,8 +64,8 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 
 #### Scenario: Conversion and caption spans
 - **GIVEN** `mintmory.core.conversion.extract_markdown` patched to return text, and `vision.captioner_from_settings` patched to return a fake captioner with `MINTMORY_VISION_PROVIDER=llm`
-- **WHEN** `mintmory ingest report.pdf` runs, and `mintmory index-tree --vision <folder with one PNG>` runs
-- **THEN** one `mintmory.convert` span (`mintmory.file.suffix` = `.pdf`) is a child of `mintmory.cli.ingest`, and one `mintmory.vision.caption` span is a descendant of `mintmory.cli.index-tree`
+- **WHEN** `mintmory ingest report.pdf` runs, `mintmory index-tree --content --content-types pdf <folder with report.pdf>` runs, and `mintmory index-tree --vision <folder with one PNG>` runs
+- **THEN** one `mintmory.convert` span (`mintmory.file.suffix` = `.pdf`) is a child of `mintmory.cli.ingest`, one is a descendant of the content run's `mintmory.index_tree.scan`, and one `mintmory.vision.caption` span is a descendant of the vision run's `mintmory.cli.index-tree`
 
 ### Requirement: Worker threads keep the trace
 Work handed to thread pools in a traced operation (session preparation in history backfill and sync, the dream's concurrent summaries) SHALL run in a fresh copy of the caller's context per task.
