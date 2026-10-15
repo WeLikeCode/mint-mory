@@ -18,7 +18,7 @@ gates:
   typecheck:
   - .venv/bin/mypy packages
   test:
-    command: .venv/bin/python -m pytest -q --junitxml=.l4-out/junit.xml   # pyproject addopts keep the 80% coverage gate
+    command: .venv/bin/pytest -q --junitxml=.l4-out/junit.xml   # the pytest script, not `python -m pytest`: the working directory is not put first on sys.path; addopts keep the 80% coverage gate
 profiles:
   deepseek:                 # OpenCode Go, the key in OPENCODE_API_KEY
     adapter: opencode
