@@ -46,7 +46,9 @@
         {
           "id": "openspec:add-local-observability-stack",
           "depends_on": [
-            "openspec:add-telemetry-runtime"
+            "openspec:add-telemetry-runtime",
+            "openspec:add-telemetry-heavy-path-spans",
+            "openspec:add-telemetry-boundary-tracing"
           ]
         }
       ]
