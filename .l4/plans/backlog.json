@@ -15,14 +15,6 @@
         {
           "id": "openspec:add-llm-vision-provider",
           "depends_on": []
-        },
-        {
-          "id": "openspec:add-recurrent-tree-indexing",
-          "depends_on": []
-        },
-        {
-          "id": "openspec:deployment-hardening",
-          "depends_on": []
         }
       ]
     }

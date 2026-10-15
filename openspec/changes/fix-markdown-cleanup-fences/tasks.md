@@ -1,0 +1,53 @@
+# Tasks — fix-markdown-cleanup-fences
+
+Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests in
+`packages/core/tests/test_conversion.py`. Line numbers are as of `staging` a08aee3.
+
+## 1. Failing tests first
+- [ ] 1.1 In `test_conversion.py`, after `test_clean_markdown_is_idempotent` (:97-107),
+  add one test per scenario of `specs/ingestion/spec.md`, with the exact inputs and
+  expected strings written there (Python string literals; the ``` fences are plain
+  characters inside the strings):
+  - `test_clean_markdown_keeps_fenced_blocks_byte_identical` (fails today)
+  - `test_clean_markdown_normalises_crlf_inside_fence` (fails today: the trailing
+    spaces are stripped)
+  - `test_clean_markdown_fence_grammar` (fails today on the first, second and third
+    inputs)
+  - `test_clean_markdown_unterminated_fence_runs_to_end` (fails today)
+  - `test_clean_markdown_comment_split_by_fence_is_kept` (fails today: the regex
+    removes from `<!--` to `-->` across the fence)
+  - `test_clean_markdown_collapses_blank_run_before_fence` (passes today, guard)
+  - `test_clean_markdown_is_idempotent_with_fences` (loop over the inputs above;
+    assert `clean_markdown(clean_markdown(s)) == clean_markdown(s)`)
+  Run `.venv/bin/pytest -q --no-cov packages/core/tests/test_conversion.py -k clean_markdown`.
+
+## 2. Fix
+- [ ] 2.1 In `conversion.py` add a module-level regex
+  `_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")` and a private helper
+  `_fenced_line_mask(lines: list[str]) -> list[bool]` that marks, for each line,
+  whether it is part of a fenced block: a line matching `_FENCE_OPEN_RE` opens a
+  block unless the run is backticks and group 2 contains a backtick; the block
+  closes at the first later line matching
+  `^ {0,3}` + the same character repeated at least `len(run)` times + `[ \t]*$`
+  (build it with `re.escape`); the opening line, the closing line and every line
+  between are marked; an unclosed block runs to the last line. Scanning continues
+  after the closing line.
+- [ ] 2.2 Rewrite `clean_markdown(text: str) -> str` (:102-114):
+  1. `text = text.replace("\r\n", "\n").replace("\r", "\n")`;
+  2. `lines = text.split("\n")`; `mask = _fenced_line_mask(lines)`;
+  3. walk the lines: a marked line is appended to the output unchanged; each
+     maximal run of unmarked lines is joined with `"\n"`, passed through
+     `_HTML_COMMENT_RE.sub("", ...)`, split again, each line `rstrip()`ed, and
+     consecutive empty lines in that run reduced to one before being appended;
+  4. `return "\n".join(output).strip("\n")`.
+  Keep `_BLANK_RUN_RE` only if still used (ruff F841/F401 otherwise; it is a module
+  constant, so remove it if unused). Update the docstring and the module docstring
+  sentence (:10-12) to say fenced code blocks are copied unchanged.
+- [ ] 2.3 Do not change `extract_markdown`, the suffix tables or the call sites.
+
+## 3. Gates
+- [ ] 3.1 The existing `test_conversion.py` tests and the ingest/index-tree CLI tests
+  in `packages/cli/tests/test_cli.py` pass unedited.
+- [ ] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate), and
+  `npx --yes @fission-ai/openspec@1.14.1 validate fix-markdown-cleanup-fences --strict`.
