@@ -52,8 +52,18 @@ The CLI commands `add`, `search`, `ingest`, `index-tree`, `dream`, `vision-run`,
 - **WHEN** `mintmory index-tree --prune <folder>` runs through the Typer test runner
 - **THEN** the `mintmory.cli.index-tree` span has the children `mintmory.index_tree.scan` and `mintmory.index_tree.prune`
 
+#### Scenario: A conversion is traced
+- **GIVEN** telemetry initialised with an in-memory exporter and `mintmory.core.conversion.extract_markdown` patched to return text
+- **WHEN** `mintmory ingest report.pdf` runs through the Typer test runner
+- **THEN** one `mintmory.convert` span with `mintmory.file.suffix` = `.pdf` is a child of the `mintmory.cli.ingest` span
+
 ### Requirement: Worker threads keep the trace
 Work that MintMory hands to thread pools during a traced operation (session preparation in the history backfill and sync, and the dream's concurrent summary calls) SHALL run in a fresh copy of the caller's context per task, so spans created there are children of the caller's span.
+
+#### Scenario: Dream summaries stay in the trace
+- **GIVEN** telemetry initialised with an in-memory exporter, summary concurrency 2 and a fake summarizer that opens a span
+- **WHEN** a full dream summarises two concepts
+- **THEN** both summarizer spans have the trace id of the dream's `mintmory.dream.full` span
 
 #### Scenario: Backfill threads stay in the trace
 - **GIVEN** telemetry initialised with an in-memory exporter and a history backfill over two sessions with more than one worker

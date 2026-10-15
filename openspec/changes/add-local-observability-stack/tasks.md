@@ -76,9 +76,10 @@ Write each test first and see it fail.
   `telemetry._endpoint_reachable` to return False (do not change `_DEFAULT_ENDPOINT`: the row must still name
   `http://localhost:4318`), remove `MINTMORY_OTEL_ENABLED` with `monkeypatch.delenv` (the root `conftest.py` sets it to
   `false`), and set `monkeypatch.setenv("COLUMNS", "200")` so Rich does not wrap the table in `CliRunner`'s 80 columns.
-- [ ] 2.2 Add `telemetry.status(settings) -> dict[str, str]` returning `mode`, `state` (from part 1's
-  `_resolve_state`: `export` is shown as `exporting`), `endpoint`, `reachable` (`yes`/`no`, from
-  `_endpoint_reachable`) and `service_name`, without initialising anything. Add a `telemetry` row to the `doctor`
+- [ ] 2.2 Add `telemetry.status(settings, default_service_name="mintmory-cli") -> dict[str, str]` returning `mode`,
+  `state` (part 1's `_resolve_state`; `export` is shown as `exporting`), `endpoint` (part 1's `_traces_endpoint()`),
+  `reachable` (`yes`/`no`, `_endpoint_reachable`) and `service_name` (part 1's `_service_name(settings,
+  default_service_name)`), without initialising anything. Add a `telemetry` row to the `doctor`
   table built from it. Never read or print `OTEL_EXPORTER_OTLP_HEADERS`.
 
 ## 3. Helm (`deploy/helm/mintmory/`)

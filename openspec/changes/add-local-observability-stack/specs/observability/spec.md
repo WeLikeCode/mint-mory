@@ -26,7 +26,7 @@
 - **THEN** `mintmory-api` has `profiles: [api]`, a `build` context at the repository root, and the two environment variables above
 
 ### Requirement: Telemetry status in doctor
-`mintmory doctor` SHALL print a `telemetry` row with the mode (`auto`, `true`, `false`), the state (`exporting`, `off`, `no collector`, or `SDK missing`), the trace endpoint, whether a TCP connection to it succeeds within 100 ms, and the service name. It SHALL NOT print header values or other secrets.
+`mintmory doctor` SHALL print a `telemetry` row with the mode, the state (`exporting`, `off`, `no collector`, `SDK missing`), the trace endpoint and the service name as part 1 resolves them for the CLI (default `mintmory-cli`), and whether a TCP connection to the endpoint succeeds within 100 ms. It SHALL NOT print header values or other secrets.
 
 #### Scenario: Doctor without a collector
 - **GIVEN** `MINTMORY_OTEL_ENABLED` is unset and nothing listens on the default endpoint
@@ -40,6 +40,10 @@
 
 ### Requirement: Helm telemetry settings
 The chart SHALL render `MINTMORY_OTEL_ENABLED: "false"` when `otel.enabled` is false. When it is true, the chart SHALL also render `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` and `OTEL_RESOURCE_ATTRIBUTES` from `otel.sampler`, `otel.samplerArg` and `otel.resourceAttributes` when they are set, and `values.schema.json` SHALL describe the three values.
+
+#### Scenario: Sampler values are rendered
+- **WHEN** the configmap template is read
+- **THEN** inside the `otel.enabled` branch it renders `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` and `OTEL_RESOURCE_ATTRIBUTES` from `otel.sampler`, `otel.samplerArg` and `otel.resourceAttributes`, each only when set
 
 #### Scenario: Disabled means disabled
 - **WHEN** the configmap template is rendered with the default values

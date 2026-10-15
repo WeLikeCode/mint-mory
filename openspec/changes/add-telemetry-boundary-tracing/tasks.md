@@ -17,11 +17,11 @@ checked against the installed packages (FastAPI 0.137.1, Starlette 1.3.1, anyio 
 
 ## 2. HTTP server middleware (`packages/api/src/mintmory/api/telemetry_middleware.py`)
 - [ ] 2.1 Tests (in `packages/api/tests/test_telemetry_http.py`): every scenario of "HTTP server spans continue the
-  caller's trace" and "HTTP server duration metric", with `fastapi.testclient.TestClient(app)` inside a `with`
+  caller's trace", "Excluded, unmatched and failing HTTP requests" and "HTTP server duration metric", with `fastapi.testclient.TestClient(app)` inside a `with`
   block so the lifespan runs, and one test for a route that raises (status ERROR, `error.type` set).
 - [ ] 2.2 Write a pure ASGI middleware class (`__init__(self, app)`, `async __call__(self, scope, receive, send)`):
-  pass non-`http` scopes and excluded paths straight through (`/healthz`, `/readyz`, plus the comma-separated regexes
-  of `OTEL_PYTHON_EXCLUDED_URLS`); otherwise extract the context from the request headers (decode the ASGI byte pairs
+  pass non-`http` scopes and excluded paths straight through (`/healthz`, `/readyz`, or `re.search(regex, path)` for a
+  comma-separated regex of `OTEL_PYTHON_EXCLUDED_URLS`, read when the middleware is created); otherwise extract the context from the request headers (decode the ASGI byte pairs
   to a lower-case `dict[str, str]`), open `telemetry.span(method, kind="server", context=ctx)`, wrap `send` to capture
   the status code from `http.response.start`, `await self.app(...)`, then, when `scope.get("route")` is not None
   (FastAPI sets it after routing; it is None for unmatched paths), rename the span with

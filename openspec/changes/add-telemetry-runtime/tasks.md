@@ -24,7 +24,8 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
   to its host and port, closed at once, False on `OSError`); `_resolve_state(settings)` returning `off` (`false`, or
   `OTEL_SDK_DISABLED` in "true"/"1"), `sdk missing` (`importlib.util.find_spec("opentelemetry.sdk")` is None), `export`
   (`true`; or `auto` with `OTEL_EXPORTER_OTLP_ENDPOINT`/`_TRACES_ENDPOINT`/`_METRICS_ENDPOINT` set, no probe; or `auto`
-  and the default endpoint reachable) or `no collector`. Part 4 reuses it. `sdk missing` with an endpoint variable set:
+  and the default endpoint reachable) or `no collector`. Also `_traces_endpoint()` (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+  as is, else `OTEL_EXPORTER_OTLP_ENDPOINT` or `_DEFAULT_ENDPOINT` plus `/v1/traces`). Part 4 reuses both. `sdk missing` with an endpoint variable set:
   one WARNING with `pip install 'mintmory-core[otel]'`. Replace the existing `structlog` call.
 - [ ] 3.3 Per signal: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` (`otlp`, `console`, `none`), else
   `settings.exporter`. With an endpoint variable set, build `OTLPSpanExporter`/`OTLPMetricExporter` without `endpoint`
@@ -54,7 +55,8 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 ## 6. Resource, sampling
 - [ ] 6.1 Tests for "Resource identifies the process" and "Sampling...".
 - [ ] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`
-  (`k=v`, values `urllib.parse.unquote`d); `service.name` by the spec's order; defaults `service.namespace`,
+  (`k=v`, values `urllib.parse.unquote`d); `service.name` by the spec's order, in a helper
+  `_service_name(settings, default_service_name)` that part 4 reuses; defaults `service.namespace`,
   `service.version` (`importlib.metadata.version("mintmory-core")`, else `unknown`), `service.instance.id`
   (`uuid4().hex`); overlay parsed keys; set `service.name`. No `sampler` argument to `TracerProvider`.
 

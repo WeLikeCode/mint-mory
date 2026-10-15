@@ -16,22 +16,12 @@ for add, search, search-around, dream and `gen_ai.chat`. Gaps on `staging`:
 
 ## What changes
 
-- `MINTMORY_OTEL_ENABLED` = `auto` (new default) | `true` | `false`. `auto` exports only when the SDK is installed and
-  an OTLP endpoint is configured or answers on `localhost:4318`; otherwise the no-op shim runs and the SDK is not
-  imported. `OTEL_SDK_DISABLED=true` always wins.
-- Default exporter OTLP/HTTP to the standard `OTEL_EXPORTER_OTLP_*` endpoint; `OTEL_TRACES_EXPORTER` /
-  `OTEL_METRICS_EXPORTER` per signal; console exporters on stderr.
-- Background export with a 3 s timeout (`MINTMORY_OTEL_EXPORT_TIMEOUT_S`), failures logged once per streak, a bounded
-  `shutdown_telemetry()` registered with `atexit`.
-- Resource: standard `service.name` precedence, then a per-entry-point default; `service.namespace`,
-  `service.version`, `service.instance.id`; `OTEL_RESOURCE_ATTRIBUTES` merged. Sampler and propagators from the
-  standard environment.
-- Every entry point initialises once. MintMory's providers become the global ones, so FastMCP's own tool-call spans
-  reach the same exporters.
-- Test seam (`span_exporter=`, `metric_reader=`, `reset_telemetry()`); the root `conftest.py` keeps the existing
-  suite at `MINTMORY_OTEL_ENABLED=false`.
-- `deployment` "Telemetry activation at API startup" is modified: "OTel stays off by default" now means `auto` with no
-  collector, and the API flushes with a bounded shutdown.
+See `specs/`: enablement modes (`auto` default), OTLP/HTTP by default with per-signal standard variables and console
+on stderr, non-blocking export with failures logged once, a bounded `atexit` shutdown, the resource and sampler from
+the standard environment, one init per entry point with MintMory's providers made global (FastMCP's tool spans then
+reach the same exporters), a test seam, and the root `conftest.py` pinning the existing suite to
+`MINTMORY_OTEL_ENABLED=false`. The `deployment` requirement "Telemetry activation at API startup" is modified
+accordingly.
 
 ## Non-goals
 
