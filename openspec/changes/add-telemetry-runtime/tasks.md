@@ -13,7 +13,7 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 
 ## 2. Settings (`config.py`, `OTelSettings`)
 - [ ] 2.1 Tests, then: `enabled: Literal["auto", "true", "false"] = "auto"` with a `field_validator(mode="before")`
-  normalising booleans and case; `exporter = "otlp"`; `service_name: str | None = None`;
+  normalising booleans and case and mapping any other value to `"auto"` with one WARNING; `exporter = "otlp"`; `service_name: str | None = None`;
   `export_timeout_s: float = Field(default=3.0, gt=0)`.
 
 ## 3. Enablement and exporters (`telemetry.py`)
@@ -28,7 +28,9 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
   as is, else `OTEL_EXPORTER_OTLP_ENDPOINT` or `_DEFAULT_ENDPOINT` plus `/v1/traces`). Part 4 reuses both. `sdk missing` with an endpoint variable set:
   one WARNING with `pip install 'mintmory-core[otel]'`. Replace the existing `structlog` call.
 - [ ] 3.3 Per signal: `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` (`otlp`, `console`, `none`), else
-  `settings.exporter`. With an endpoint variable set, build `OTLPSpanExporter`/`OTLPMetricExporter` without `endpoint`
+  `settings.exporter`; a list uses its first known item; an unknown value falls back to `settings.exporter`, and an
+  `OTEL_EXPORTER_OTLP_PROTOCOL` other than `http/protobuf` keeps HTTP/protobuf, each with one WARNING (the SDK already
+  falls back for a bad sampler). With an endpoint variable set, build `OTLPSpanExporter`/`OTLPMetricExporter` without `endpoint`
   (the SDK reads it and appends `/v1/traces`, `/v1/metrics`); otherwise pass `_DEFAULT_ENDPOINT` plus that path.
   `ConsoleSpanExporter(out=sys.stderr)`, `ConsoleMetricExporter(out=sys.stderr)` (both default to stdout).
 
@@ -50,8 +52,6 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 - [ ] 5.1 Tests for "Bounded flush on exit" (`otlp_receiver()`, `closed_port()`).
 - [ ] 5.2 `shutdown_telemetry(timeout_s=2.0)`: providers' `shutdown()` in a daemon thread, `join(timeout_s)`, then
   disabled. Providers built with `shutdown_on_exit=False`; `atexit.register(shutdown_telemetry)` once per process.
-- [ ] 5.3 `api/app.py` lifespan: `shutdown_telemetry()` after `yield`, before closing the store.
-
 ## 6. Resource, sampling
 - [ ] 6.1 Tests for "Resource identifies the process" and "Sampling...".
 - [ ] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`
@@ -60,22 +60,16 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
   `service.version` (`importlib.metadata.version("mintmory-core")`, else `unknown`), `service.instance.id`
   (`uuid4().hex`); overlay the parsed keys; finally put the computed `service.name` (which already honours the parsed one). No `sampler` argument to `TracerProvider`.
 
-## 7. Entry points
-- [ ] 7.1 Tests for "Every entry point initialises telemetry once" (CLI via `CliRunner` with `otlp_receiver()` and
-  `MINTMORY_OTEL_ENABLED=true`; history MCP `main()` with `init_telemetry` and `run` patched).
-- [ ] 7.2 Fix broken tests without weakening them: `packages/mcp/tests/test_telemetry_init.py` fake takes
-  `(settings=None, **kwargs)` and asserts `kwargs["default_service_name"] == "mintmory-mcp"`;
-  `packages/api/tests/test_health_and_otel.py` line 78 uses `OTelSettings(enabled="false")`, drops the wrong comment
-  that CI lacks the SDK, and the exporter-type test (lines 101-141) checks `captured[-1]._inner` and calls
-  `telemetry.reset_telemetry()` instead of its `_reset()`.
-- [ ] 7.3 `init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)`.
-  CLI `@app.callback()` with `mintmory-cli`, skipped when `ctx.invoked_subcommand` is `serve` or `mcp-serve`; API
-  `mintmory-api`; `server.py` `mintmory-mcp`; `history_server.py` imports `init_telemetry` at module level and calls it
-  with `mintmory-history-mcp` in `main()` before running.
+## 7. Existing tests this change breaks
+- [ ] 7.1 `packages/api/tests/test_health_and_otel.py`: the test at line 78 uses `OTelSettings(enabled="false")`; drop
+  its comment that CI lacks the SDK (the gate installs `otel`); the exporter-type test (lines 101-141) checks
+  `captured[-1]._inner` (the guard wraps the exporter) and calls `telemetry.reset_telemetry()` instead of its `_reset()`.
+  The entry points' own wiring and the MCP test are `add-telemetry-entry-points`.
 
 ## 8. Test seam and global provider
 - [ ] 8.1 Test for "Re-initialisation in one process".
-- [ ] 8.2 Module `_tracer_provider`/`_meter_provider` give `_tracer`/`_meter` and become global on every successful init.
+- [ ] 8.2 Signature `init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None,
+  metric_reader=None) -> bool`. Module `_tracer_provider`/`_meter_provider` give `_tracer`/`_meter` and become global on every successful init.
   `reset_telemetry()` resets the API globals as OpenTelemetry's test utilities do (`from opentelemetry.util._once import Once`;
   `trace._TRACER_PROVIDER_SET_ONCE = Once()`; `trace._TRACER_PROVIDER = None`; same with
   `metrics._internal._METER_PROVIDER_SET_ONCE` / `_METER_PROVIDER`), calls `shutdown_telemetry(0.5)` and clears module

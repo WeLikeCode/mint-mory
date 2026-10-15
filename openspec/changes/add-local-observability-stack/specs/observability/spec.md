@@ -19,11 +19,11 @@
 - **THEN** it exits with 0
 
 ### Requirement: MintMory API service in the local stack
-`compose.yaml` SHALL define a service `mintmory-api` under the profile `api` that builds the repository's `Dockerfile`, publishes the API on `127.0.0.1:8080` by default, stores its database in a named volume, and sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` and `MINTMORY_OTEL_ENABLED=true`.
+`compose.yaml` SHALL define a service `mintmory-api` under the profile `api` that builds the repository's `Dockerfile` (which already installs the `otel` extra in both variants), publishes the API on `127.0.0.1:8080` by default, stores its database in a named volume, and sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` and `MINTMORY_OTEL_ENABLED=true`.
 
 #### Scenario: API profile is wired to the collector
 - **WHEN** the compose file is parsed
-- **THEN** `mintmory-api` has `profiles: [api]`, a `build` context at the repository root, and the two environment variables above
+- **THEN** `mintmory-api` has `profiles: [api]`, a `build` context at the repository root, and the two environment variables above, and every `uv sync` line of the `Dockerfile` contains `--extra otel`
 
 ### Requirement: Telemetry status in doctor
 `mintmory doctor` SHALL print a `telemetry` row with the mode, the state (`exporting`, `off`, `no collector`, `SDK missing`), the trace endpoint and the service name as part 1 resolves them for the CLI (default `mintmory-cli`), and whether a TCP connection to the endpoint succeeds within 100 ms. It SHALL NOT print header values or other secrets.

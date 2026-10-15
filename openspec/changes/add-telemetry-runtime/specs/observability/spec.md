@@ -51,6 +51,14 @@ Export SHALL run off the calling thread with bounded queues and time out after `
 - **WHEN** three export cycles fail
 - **THEN** `mintmory.telemetry` logs exactly one WARNING about trace export and no `opentelemetry` logger emits WARNING or above
 
+### Requirement: Invalid telemetry configuration never stops MintMory
+Loading settings and `init_telemetry` SHALL never raise for a bad telemetry value; each bad value SHALL log one WARNING and fall back: an unknown `MINTMORY_OTEL_ENABLED` to `auto`; an unknown `OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` to the first known item of its comma-separated list, else `MINTMORY_OTEL_EXPORTER`; an `OTEL_EXPORTER_OTLP_PROTOCOL` other than `http/protobuf` to HTTP/protobuf; an unknown sampler or argument to the SDK's own fallback.
+
+#### Scenario: Bad values fall back
+- **GIVEN** `MINTMORY_OTEL_ENABLED=maybe`, `OTEL_TRACES_EXPORTER=jaeger,console`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` and `OTEL_TRACES_SAMPLER=nonsense`
+- **WHEN** settings load and `init_telemetry` runs with `_endpoint_reachable` patched to True
+- **THEN** nothing raises, the mode is `auto`, traces go to the console exporter over stderr, and one WARNING per bad value is logged
+
 ### Requirement: Bounded flush on exit
 `shutdown_telemetry(timeout_s=2.0)` SHALL flush and shut the providers down, return within `timeout_s` + 0.5 s whatever the collector state, and be safe to repeat. `init_telemetry` SHALL register it with `atexit` and create the providers with `shutdown_on_exit=False`. The API lifespan SHALL call it on stop.
 
@@ -89,18 +97,6 @@ The tracer provider SHALL take its sampler from `OTEL_TRACES_SAMPLER` / `OTEL_TR
 - **GIVEN** telemetry enabled with `OTEL_TRACES_SAMPLER=always_off`
 - **WHEN** spans are created
 - **THEN** none is exported
-
-### Requirement: Every entry point initialises telemetry once
-The CLI SHALL initialise telemetry in a Typer callback before any command except `serve` (uvicorn loads `mintmory.api.app:app`, whose lifespan initialises) and `mcp-serve` (it calls `mintmory.mcp.server.main()`). The API lifespan, `mintmory-mcp` and `mintmory-history-mcp` SHALL each call `init_telemetry` once with their default service name. After a successful init, later calls SHALL change nothing and return True; a call returning False SHALL leave no state.
-
-#### Scenario: CLI command is traced
-- **GIVEN** a test OTLP receiver in `OTEL_EXPORTER_OTLP_ENDPOINT` and `MINTMORY_OTEL_ENABLED=true`
-- **WHEN** `mintmory add` runs through the Typer test runner and telemetry shuts down
-- **THEN** a `mintmory.add_memory` span with `service.name=mintmory-cli` reaches the receiver
-
-#### Scenario: History MCP server initialises telemetry
-- **WHEN** `mintmory-history-mcp`'s `main()` starts
-- **THEN** `init_telemetry` was called once, before the server runs, with `default_service_name="mintmory-history-mcp"`
 
 ### Requirement: Telemetry test seam and global provider
 `init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)` SHALL use an injected span exporter (synchronous processor) and metric reader instead of the configured exporters. Injection SHALL enable telemetry when the SDK imports, even with `MINTMORY_OTEL_ENABLED=false` or `OTEL_SDK_DISABLED=true`. Each successful init SHALL make its providers global, so library spans (FastMCP's) reach the same exporters. `reset_telemetry()` SHALL clear all of this.

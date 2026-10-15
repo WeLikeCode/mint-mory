@@ -25,7 +25,8 @@ dependencies. Each test first, failing. Every helper is a cheap no-op when `tele
 - [ ] 2.2 In `hybrid_search.py` add `collect_scores(*, fts_fn, trigram_fn, vector_fn)` that calls each inside
   `search_phase("fts"|"substring"|"vector")` and `set_count(len(result))` (0 for empty) and returns the three dicts.
   Both backends' `search` call it with lambdas over their `_fts_scores`, `_trigram_scores`, `_vector_scores` (do not
-  decorate those: `anchor_candidates` also calls them). Inside `fuse_and_search` open `search_phase("fusion")` around
+  decorate those: `anchor_candidates` calls them directly, not through `collect_scores`, so note anchoring records no
+  phase; `search_around` runs no score stage). Inside `fuse_and_search` open `search_phase("fusion")` around
   the body and `set_count(len(response.memories))`. Decorate both backends' `search` with `@telemetry.timed_phase("total")`
   under the existing `@telemetry.traced("mintmory.search")`, and both `search_around` with `@telemetry.timed_phase("graph")`.
 

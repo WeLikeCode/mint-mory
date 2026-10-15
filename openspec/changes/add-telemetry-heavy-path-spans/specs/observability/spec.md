@@ -10,6 +10,10 @@ Each search SHALL record child spans `mintmory.search.fts`, `.substring`, `.vect
 - **WHEN** a search runs
 - **THEN** the four phase spans have the `mintmory.search` span as parent, and latency points exist for `fts`, `substring`, `vector`, `fusion` and `total`
 
+#### Scenario: Search-around alone records only its graph point
+- **WHEN** `search_around` is called directly (it runs no score stage)
+- **THEN** one `phase=graph` point is recorded and no `mintmory.search.fts`, `.substring`, `.vector` or `.fusion` span
+
 #### Scenario: The Postgres backend uses the shared path
 - **GIVEN** a `PostgresBackend` built without a database (its pool is created lazily) whose data-access methods are patched
 - **WHEN** its `search` runs with telemetry on
