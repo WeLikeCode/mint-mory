@@ -25,6 +25,13 @@ profiles:
     model: opencode-go/deepseek-v4.1-flash
     vendor: deepseek
     auth: api_key
+  jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
+    backend: system-one
+    engine: jev
+    base_url: https://api.typesafe.ai
+    api_key_env: TYPESAFE_API_KEY
+    model: jev-1.13.0       # pinned: thresholds are tuned to a version
+    vendor: typesafe
   claude-judge:             # Claude Code, the token in CLAUDE_CODE_OAUTH_TOKEN
     adapter: claude-code
     auth: subscription
@@ -34,6 +41,8 @@ roles:
   - deepseek
   judges:
   - claude-judge
+  s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
+  - jev
 forge:
   type: github
   token_env: GITHUB_TOKEN
