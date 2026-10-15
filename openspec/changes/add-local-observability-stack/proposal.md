@@ -28,6 +28,9 @@ Grafana dashboards, alerting, log collection, and any change to application tele
 ## Impact
 
 - New: `deploy/observability/compose.yaml`, `otel-collector.yaml`, `prometheus.yml`, `.env.example`, `README.md`.
+- Unchanged, verified on `staging`: the `Dockerfile` already runs `uv sync --frozen --no-dev --extra otel` (light, line 48)
+  and `... --extra otel --extra local` (full, line 46); a test pins it, and if it ever fails the fix is to restore
+  `--extra otel` on those lines.
 - Changed: `packages/cli/src/mintmory/cli/main.py` (`doctor`), `packages/core/src/mintmory/core/telemetry.py` (a
   status function), `deploy/helm/mintmory/templates/configmap.yaml`, `values.yaml`, `values.schema.json`,
   `docs/OBSERVABILITY.md`, `README.md` (one pointer).

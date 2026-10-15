@@ -58,7 +58,8 @@ dependencies. Each test first, failing. Every helper is a cheap no-op when `tele
   submit `prepare`; spans `mintmory.history.backfill` / `.sync` with the report counts. `dreaming.py`: map
   `telemetry.run_in_context(lambda sel: summarizer(sel.concept, sel.contents))`.
 - [ ] 5.3 Test "Counter by category"; put `@telemetry.counts_added` on both backends' `add_memory`.
-- [ ] 5.4 Test "No content leaks into telemetry" (walk span attributes, event attributes, metric point attributes);
+- [ ] 5.4 Tests "No content leaks into telemetry" and "Notes, LLM calls, dreams and indexed files leak nothing" (walk
+  span attributes, event attributes, status descriptions, metric point attributes);
   review the attributes of this change and the existing `gen_ai.chat` and `dreaming.py` spans; drop any that carry text.
 
 ## 6. Checks

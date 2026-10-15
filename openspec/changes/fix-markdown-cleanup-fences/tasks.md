@@ -39,7 +39,8 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
      maximal run of unmarked lines is joined with `"\n"`, passed through
      `_HTML_COMMENT_RE.sub("", ...)`, split again, each line `rstrip()`ed, and
      consecutive empty lines in that run reduced to one before being appended;
-  4. `return "\n".join(output).strip("\n")`.
+  4. strip leading and trailing empty lines of `output` only while they are unmarked (outside a fence; a fenced
+     line is never removed), then `return "\n".join(output)`.
   Put steps 2 to 4 in a helper `_clean_pass(text: str) -> str`; `clean_markdown`
   normalises line endings (step 1), then calls `_clean_pass` until the result stops
   changing (`while (new := _clean_pass(text)) != text: text = new`, then return it).

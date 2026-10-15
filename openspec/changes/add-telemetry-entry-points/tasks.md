@@ -13,8 +13,9 @@ Requires `add-telemetry-runtime`. No new dependencies. Each test first, failing;
   `history backfill` it is `history`, which is traced).
 - [ ] 1.3 `api/app.py` lifespan: `init_telemetry(settings.otel, default_service_name="mintmory-api")`; after `yield`,
   `shutdown_telemetry()` before closing the store. `mcp/server.py` `main()`: `default_service_name="mintmory-mcp"`.
-  `history_server.py`: import `init_telemetry` at module level (so tests can patch it) and call it with
-  `"mintmory-history-mcp"` in `main()` before the server runs.
+  `history_server.py`: import `init_telemetry` at module level (so tests can patch it) and call
+  `init_telemetry(load_settings().otel, default_service_name="mintmory-history-mcp")` in `main()` before the server
+  runs (keyword argument: the first positional parameter is the settings).
 - [ ] 1.4 `packages/mcp/tests/test_telemetry_init.py`: its fake `_fake_init_telemetry(settings=None)` becomes
   `(settings=None, **kwargs)` and the test also asserts `kwargs["default_service_name"] == "mintmory-mcp"`.
 

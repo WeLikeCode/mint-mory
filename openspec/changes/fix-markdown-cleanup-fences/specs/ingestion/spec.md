@@ -32,6 +32,10 @@ text stops changing (a comment removal can expose a new fence line).
 - **WHEN** `clean_markdown("a <!-- open\n```\nx\n```\nclose --> b")` runs
 - **THEN** it returns the input unchanged (the comment's start and end are separated by a fence).
 
+#### Scenario: An unterminated fence keeps its trailing blank lines
+- **WHEN** `clean_markdown("a\n```\nx\n\n\n")` runs
+- **THEN** it returns the input unchanged (the leading and trailing blank-line strip of the whole result applies only to blank lines outside fences)
+
 #### Scenario: Blank runs before a fence still collapse
 - **WHEN** `clean_markdown("text\n\n\n\n```\ny\n```")` runs
 - **THEN** it returns `"text\n\n```\ny\n```"`.

@@ -103,7 +103,11 @@ Loading settings SHALL never raise for a bad `MINTMORY_OTEL_*` value: each bad v
 - **THEN** spans carry `service.name=attrs`
 
 ### Requirement: Sampling and propagation follow the OpenTelemetry environment
-The tracer provider SHALL take its sampler from `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` (default `parentbased_always_on`) and the process SHALL use the propagators of `OTEL_PROPAGATORS` (default W3C `tracecontext`, `baggage`).
+The tracer provider SHALL take its sampler from `OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG` (default `parentbased_always_on`). MintMory SHALL NOT replace the API's global propagator, which reads `OTEL_PROPAGATORS` (default W3C `tracecontext`, `baggage`).
+
+#### Scenario: Context propagates by default
+- **WHEN** telemetry is initialised with an in-memory exporter and `opentelemetry.propagate.inject(carrier)` runs inside a span
+- **THEN** `carrier["traceparent"]` names that span's trace and span ids
 
 #### Scenario: Sampling switched off
 - **GIVEN** telemetry enabled with `OTEL_TRACES_SAMPLER=always_off`

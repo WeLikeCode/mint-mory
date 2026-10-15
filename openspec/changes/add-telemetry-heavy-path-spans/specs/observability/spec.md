@@ -79,11 +79,16 @@ Adding a memory SHALL increment `mintmory.memories.added` with `category`, throu
 - **THEN** the counter reports 2 for `category=fact` and 1 for `category=skill`, and `PostgresBackend.add_memory` carries the same decorator
 
 ### Requirement: Telemetry carries no content
-Span attributes, span events and metric attributes SHALL NOT contain memory text, note text, query text, prompts, completions, file contents or header values. A failed span SHALL set status ERROR and `error.type` (the exception class name); exception messages and tracebacks are removed at export by the runtime's scrubber (`add-telemetry-runtime`), for every span.
+Span attributes, span events and metric attributes SHALL NOT contain memory text, note text, query text, prompts, completions, file contents, concept names or header values. A failed span SHALL set status ERROR and `error.type` (the exception class name); exception messages and tracebacks are removed at export by the runtime's scrubber (`add-telemetry-runtime`), for every span.
 
 #### Scenario: No content leaks into telemetry
 - **WHEN** a memory with text `SENTINEL-CONTENT-7f3a` is added, a search for `SENTINEL-QUERY-91c2` runs and a light dream runs, with telemetry on
 - **THEN** no exported span, event or metric attribute value contains either sentinel
+
+#### Scenario: Notes, LLM calls, dreams and indexed files leak nothing
+- **GIVEN** telemetry on, a fake LLM endpoint that answers `SENTINEL-OUT-2b` and a fake summarizer
+- **WHEN** a note with `SENTINEL-NOTE-5d` is added, a full dream summarises a concept whose memories contain `SENTINEL-DREAM-8e` (its LLM prompt therefore contains it), and `index-tree` indexes a text file containing `SENTINEL-FILE-3c`
+- **THEN** no exported span, event, status description or metric attribute contains any of the four sentinels
 
 #### Scenario: A failure does not leak its message
 - **GIVEN** `_fts_scores` patched to raise `RuntimeError("no such column: SENTINEL-QUERY-91c2")`

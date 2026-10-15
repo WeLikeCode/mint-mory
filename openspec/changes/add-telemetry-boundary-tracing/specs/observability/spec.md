@@ -37,7 +37,7 @@ Each API request, except excluded paths, SHALL run in a SERVER span named `<METH
 - **THEN** both answer as without telemetry, `GET /stats` is not traced, the memory request is, and one WARNING names the bad pattern
 
 ### Requirement: Unmatched and failing HTTP requests
-A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx response or an unhandled exception SHALL set status ERROR and `error.type` (the status code, or the exception class name); the runtime's scrubber removes exception messages at export.
+A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx response or an unhandled exception SHALL set status ERROR and `error.type` (the status code, or the exception class name); an unhandled exception records `http.response.status_code` = 500 on the span and the duration point. The runtime's scrubber removes exception messages at export.
 
 #### Scenario: No route matched
 - **WHEN** `GET /no-such-path` is called
@@ -46,7 +46,7 @@ A request that matches no route SHALL be traced as `<METHOD>` alone. A 5xx respo
 #### Scenario: A route that raises
 - **GIVEN** a test route added to the app that raises `RuntimeError`
 - **WHEN** it is called with `TestClient(app, raise_server_exceptions=False)`
-- **THEN** its span has status ERROR and `error.type` = `RuntimeError`, and no exported span, event or status description contains the exception's message
+- **THEN** its span has status ERROR, `error.type` = `RuntimeError` and `http.response.status_code` = 500, the duration histogram has a point with status 500, and no exported span, event or status description contains the exception's message
 
 ### Requirement: HTTP server duration metric
 The API SHALL record each traced request in the histogram `http.server.request.duration` (unit `s`, bucket boundaries 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5 and 10) with the attributes `http.request.method`, `http.route` and `http.response.status_code`.
