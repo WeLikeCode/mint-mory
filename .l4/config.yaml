@@ -1,0 +1,49 @@
+# L4 harness settings for MintMory (docs: the harness's docs/SPEC.md section 3.2, docs/quickstart.md).
+# The harness itself is not in this repository: the copied setup action (.github/actions/l4/) fetches the pinned
+# release at run time with a read-only deploy key (the environment secret L4_HARNESS_SSH_KEY). Move the pin with
+# `l4 upgrade --harness-ref vX.Y.Z`.
+version: 1
+harness:
+  delivery: action
+spec:
+  frameworks:
+  - openspec
+gates:
+  # the same commands as .github/workflows/ci.yml (job "lint · types · tests")
+  setup:
+  - uv sync --frozen --extra cochange --extra otel --extra postgres
+  lint:
+  - .venv/bin/ruff check --extend-exclude .l4 .
+  - .venv/bin/ruff format --check .
+  typecheck:
+  - .venv/bin/mypy packages
+  test:
+    command: .venv/bin/python -m pytest -q --junitxml=.l4-out/junit.xml   # pyproject addopts keep the 80% coverage gate
+profiles:
+  deepseek:                 # OpenCode Go, the key in OPENCODE_API_KEY
+    adapter: opencode
+    model: opencode-go/deepseek-v4.1-flash
+    vendor: deepseek
+    auth: api_key
+  claude-judge:             # Claude Code, the token in CLAUDE_CODE_OAUTH_TOKEN
+    adapter: claude-code
+    auth: subscription
+    vendor: anthropic
+roles:
+  implementer:
+  - deepseek
+  judges:
+  - claude-judge
+forge:
+  type: github
+  token_env: GITHUB_TOKEN
+  base_branch: staging      # every unit is cut from staging and merged into it; a person promotes staging to main
+  merge_policy: auto        # only units of an active `merge: auto` delivery plan are merged by L4; other PRs a person merges
+ci:
+  platform: github
+  runner_tags: []
+  self_provision: true
+  continuation: dispatch
+  time_budget: 21m
+  soft_deadline_margin: 20m
+  upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable

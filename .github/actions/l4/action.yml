@@ -1,0 +1,256 @@
+# The L4 harness as a composite action (adoption-kit L4-ACT-001..003; spike evidence in docs/live/action/spike).
+#
+# Sources:
+#   action      the harness is this action's own repository, which the runner downloaded with the action. A private
+#               repository shares it with its owner's other PRIVATE repositories (Settings > Actions > Access), so no key
+#               is needed; GitHub never lets a public repository use it.
+#   repository  the harness is fetched by commit over ssh with a read-only deploy key (public or other-owner callers).
+#
+# Two caches (a composite action has no post step, so only the first is saved here):
+#   harness  the installed tool, uv's Pythons and the l4/uv/uvx links, keyed l4-harness-<os>-<arch>-<image>-py<python>-
+#            <source>-<hash>. Restored and saved by this action.
+#   clis     the agent CLIs and bwrap, at the paths `l4 doctor --ci --fix` installs into, keyed
+#            l4-clis-<os>-<arch>-<image>-<hash of the catalog's pins and of the agent CLIs the config needs> (never the
+#            harness). Restored here when the key
+#            has no hit; the WORKFLOW saves it after `l4 doctor --ci --fix`, with actions/cache/save and the outputs
+#            clis-cache-key and clis-cache-paths, when clis-cache-hit is not 'true'.
+name: L4 harness
+description: >-
+  Install the L4 harness at a pinned source, restore its caches, run the runner setup and put l4 on PATH. The agent-CLI
+  cache is restored here and saved by the workflow after `l4 doctor --ci --fix` (actions/cache/save with the outputs
+  clis-cache-key and clis-cache-paths, when clis-cache-hit is not 'true').
+inputs:
+  source:
+    description: auto (action when this action's repository holds the harness, else repository), action or repository.
+    default: auto
+  repository:
+    description: For source repository, the harness URL, ssh://git@github.com/OWNER/REPO.git.
+    default: ""
+  commit:
+    description: For source repository, the harness commit (40 hex).
+    default: ""
+  ssh-key:
+    description: For an ssh repository, the private half of a read-only deploy key (pass a secret).
+    default: ""
+  python:
+    description: The Python the harness runs on.
+    default: "3.12"
+  uv-version:
+    description: The uv installed when the runner has none (kept equal to the harness catalog's pin by a unit test).
+    default: "0.12.22"
+  self-provision:
+    description: >-
+      The runner setup switch (L4_SELF_PROVISION): auto (on for a GitHub-hosted runner), true or false.
+    default: auto
+  clis:
+    description: auto (restore the agent-CLI cache) or none (skip it).
+    default: auto
+  command:
+    description: An optional single l4 command (its arguments, for example `--version`), run after the setup.
+    default: ""
+outputs:
+  source:
+    description: The source used, action or repository.
+    value: ${{ steps.src.outputs.mode }}
+  harness-cache-hit:
+    description: true when the installed harness came from the cache, else false.
+    value: ${{ steps.restore.outputs.cache-hit == 'true' }}
+  clis-cache-hit:
+    description: true when the agent-CLI cache was restored, else false (also when clis is none).
+    value: ${{ steps.clis.outputs.cache-hit == 'true' }}
+  clis-cache-key:
+    description: The agent-CLI cache key, for the workflow's actions/cache/save step.
+    value: ${{ steps.clikey.outputs.key }}
+  clis-cache-paths:
+    description: >-
+      The agent-CLI cache paths (multi-line; empty when clis is none), for the workflow's actions/cache/save step. The
+      workflow never repeats them: a cache is versioned by its exact path list, so a copy would drift from the restore.
+    value: ${{ steps.clipaths.outputs.paths }}
+  version:
+    description: The installed harness version.
+    value: ${{ steps.ver.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: l4 source
+      id: src
+      shell: bash
+      env:
+        INPUT_SOURCE: ${{ inputs.source }}
+        INPUT_COMMIT: ${{ inputs.commit }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_PYTHON: ${{ inputs.python }}
+        INPUT_UV_VERSION: ${{ inputs.uv-version }}
+        INPUT_SELF_PROVISION: ${{ inputs.self-provision }}
+        INPUT_CLIS: ${{ inputs.clis }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        # Every check here runs before any download, and no message repeats an input value.
+        s=$(date +%s.%N)
+        root=$(cd "$GITHUB_ACTION_PATH/../../.." && pwd)
+        [[ "$INPUT_PYTHON" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || { echo "::error::python must look like 3.12"; exit 2; }
+        [[ "$INPUT_UV_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::uv-version must look like 0.12.22"; exit 2; }
+        case "$INPUT_CLIS" in auto|none) ;; *) echo "::error::clis must be auto or none"; exit 2 ;; esac
+        case "$INPUT_SELF_PROVISION" in
+          auto) if [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; then provision=true; else provision=auto; fi ;;
+          true|false) provision=$INPUT_SELF_PROVISION ;;
+          *) echo "::error::self-provision must be auto, true or false"; exit 2 ;;
+        esac
+        mode=$INPUT_SOURCE
+        if [ "$mode" = auto ]; then
+          if [ -f "$root/pyproject.toml" ] && [ -d "$root/src/l4" ]; then mode=action; else mode=repository; fi
+        fi
+        case "$mode" in
+          action)
+            [ -d "$root/src/l4" ] || { echo "::error::source action, but the action's repository holds no harness; check the harness repository's Actions access setting, or use source repository"; exit 2; }
+            key=$(cd "$root" && find src pyproject.toml uv.lock README.md -type f ! -path '*/__pycache__/*' 2>/dev/null \
+                  | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-24)
+            echo "dir=$root" >> "$GITHUB_OUTPUT"
+            echo "[l4-action] the action's repository: $(find "$root" -type f | wc -l) files, $(du -sh "$root" | cut -f1)"
+            ;;
+          repository)
+            [[ "$INPUT_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::commit must be 40 hex digits"; exit 2; }
+            [ -n "$INPUT_REPOSITORY" ] || { echo "::error::repository is required for source repository"; exit 2; }
+            key=$INPUT_COMMIT
+            ;;
+          *) echo "::error::source must be auto, action or repository"; exit 2 ;;
+        esac
+        # The commit the ledger names: the pinned commit of `uses: ...@<sha>` or the commit input; a branch or a tag is
+        # no commit, so none is exported then (the installed copy has no commit in direct_url.json).
+        commit=
+        if [ "$mode" = repository ]; then commit=$INPUT_COMMIT
+        elif [[ "$ACTION_REF" =~ ^[0-9a-f]{40}$ ]]; then commit=$ACTION_REF; fi
+        [ -z "$commit" ] || echo "L4_HARNESS_COMMIT=$commit" >> "$GITHUB_ENV"
+        {
+          echo "mode=$mode"
+          echo "provision=$provision"
+          echo "key=l4-harness-$RUNNER_OS-$RUNNER_ARCH-${ImageOS:-image}-py$INPUT_PYTHON-$mode-$key"
+        } >> "$GITHUB_OUTPUT"
+        echo "[l4-action] source $mode, key $key ($(awk -v s="$s" -v e="$(date +%s.%N)" 'BEGIN { printf "%.2f", e - s }') s)"
+    - name: restore installed harness
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.local/share/uv/tools/l4harness
+          ~/.local/share/uv/python
+          ~/.local/bin/l4
+          ~/.local/bin/uv
+          ~/.local/bin/uvx
+        key: ${{ steps.src.outputs.key }}
+    - name: install harness
+      id: install
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        MODE: ${{ steps.src.outputs.mode }}
+        DIR: ${{ steps.src.outputs.dir }}
+        INPUT_COMMIT: ${{ inputs.commit }}
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_SSH_KEY: ${{ inputs.ssh-key }}
+        INPUT_PYTHON: ${{ inputs.python }}
+        UV_VERSION: ${{ inputs.uv-version }}
+      run: |
+        s=$(date +%s.%N)
+        # the deploy key file goes away however this step ends, a failed install included
+        trap 'rm -f "$RUNNER_TEMP/l4-harness-key" "$RUNNER_TEMP/l4-known-hosts"' EXIT
+        export PATH="$HOME/.local/bin:$PATH"
+        if ! command -v uv >/dev/null 2>&1; then
+          curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | env UV_NO_MODIFY_PATH=1 sh >/dev/null
+          echo "[l4-action] uv $UV_VERSION installed ($(awk -v s="$s" -v e="$(date +%s.%N)" 'BEGIN { printf "%.2f", e - s }') s)"
+        fi
+        u=$(date +%s.%N)
+        if [ "$MODE" = action ]; then
+          src="$RUNNER_TEMP/l4-harness-src"   # a copy: the build may write next to the sources
+          rm -rf "$src" && mkdir -p "$src"
+          (cd "$DIR" && tar cf - --exclude=__pycache__ src pyproject.toml uv.lock README.md 2>/dev/null) | (cd "$src" && tar xf -)
+          uv tool install --quiet --python "$INPUT_PYTHON" "$src"
+        else
+          if [ -n "$INPUT_SSH_KEY" ]; then
+            umask 077
+            printf '%s\n' "$INPUT_SSH_KEY" > "$RUNNER_TEMP/l4-harness-key"
+            printf '%s\n' \
+              'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+              'github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=' \
+              'github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=' > "$RUNNER_TEMP/l4-known-hosts"
+            export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/l4-harness-key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/l4-known-hosts -o StrictHostKeyChecking=yes"
+          fi
+          uv tool install --quiet --python "$INPUT_PYTHON" "git+$INPUT_REPOSITORY@$INPUT_COMMIT"
+        fi
+        echo "[l4-action] harness installed ($(awk -v s="$u" -v e="$(date +%s.%N)" 'BEGIN { printf "%.2f", e - s }') s)"
+    - name: save installed harness
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/.local/share/uv/tools/l4harness
+          ~/.local/share/uv/python
+          ~/.local/bin/l4
+          ~/.local/bin/uv
+          ~/.local/bin/uvx
+        key: ${{ steps.src.outputs.key }}
+    - name: l4 on PATH
+      id: ver
+      shell: bash
+      run: |
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        version=$("$HOME/.local/bin/l4" --version | awk '{ print $NF }')
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "[l4-action] l4 $version"
+    - name: agent CLI cache key
+      id: clikey
+      if: inputs.clis != 'none'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        # the suffix is a hash of the catalog's pins and of the agent CLIs the config in the workspace needs, made by the
+        # installed harness (the pins alone without a config); the harness itself is no input
+        suffix=$("$HOME/.local/bin/l4" ci cache-key clis)
+        echo "key=l4-clis-$RUNNER_OS-$RUNNER_ARCH-${ImageOS:-image}-$suffix" >> "$GITHUB_OUTPUT"
+    - name: agent CLI cache paths
+      id: clipaths
+      if: inputs.clis != 'none'
+      shell: bash
+      run: |
+        # the one place the list is written: restored below and output for the workflow's save step
+        cat >> "$GITHUB_OUTPUT" <<'L4_EOF'
+        paths<<L4_CLI_PATHS
+        ~/.local/bin
+        !~/.local/bin/uv
+        !~/.local/bin/uvx
+        !~/.local/bin/l4
+        ~/.local/share/l4
+        ~/.local/share/claude
+        ~/.cache/l4/installers
+        L4_CLI_PATHS
+        L4_EOF
+    - name: restore agent CLI cache
+      id: clis
+      if: inputs.clis != 'none'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.clipaths.outputs.paths }}
+        key: ${{ steps.clikey.outputs.key }}
+    - name: runner setup
+      id: setup
+      shell: bash
+      env:
+        PROVISION: ${{ steps.src.outputs.provision }}
+      run: |
+        # the harness's own l4-setup.sh (L4-PRV-020..022), rendered by the installed harness for both sources
+        set -o pipefail
+        s=$(date +%s.%N)
+        export PATH="$HOME/.local/bin:$PATH"
+        echo "L4_SELF_PROVISION=$PROVISION" >> "$GITHUB_ENV"   # `l4 doctor --ci --fix` reads the same switch
+        l4 ci render-setup | L4_SELF_PROVISION="$PROVISION" bash
+        echo "[l4-action] runner setup ($(awk -v s="$s" -v e="$(date +%s.%N)" 'BEGIN { printf "%.2f", e - s }') s)"
+    - name: l4 command
+      if: inputs.command != ''
+      shell: bash
+      env:
+        INPUT_COMMAND: ${{ inputs.command }}
+      run: |
+        s=$(date +%s.%N)
+        # shellcheck disable=SC2086  # the command is a list of words on purpose
+        "$HOME/.local/bin/l4" $INPUT_COMMAND
+        echo "[l4-action] command done ($(awk -v s="$s" -v e="$(date +%s.%N)" 'BEGIN { printf "%.2f", e - s }') s)"
