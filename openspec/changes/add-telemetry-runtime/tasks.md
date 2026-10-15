@@ -55,10 +55,10 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 ## 6. Resource, sampling
 - [ ] 6.1 Tests for "Resource identifies the process" and "Sampling...".
 - [ ] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`
-  (`k=v`, values `urllib.parse.unquote`d); `service.name` by the spec's order, in a helper
+  (`k=v`, values `urllib.parse.unquote`d); `service.name` computed by the spec's order (the parsed value ranks second), in a helper
   `_service_name(settings, default_service_name)` that part 4 reuses; defaults `service.namespace`,
   `service.version` (`importlib.metadata.version("mintmory-core")`, else `unknown`), `service.instance.id`
-  (`uuid4().hex`); overlay parsed keys; set `service.name`. No `sampler` argument to `TracerProvider`.
+  (`uuid4().hex`); overlay the parsed keys; finally put the computed `service.name` (which already honours the parsed one). No `sampler` argument to `TracerProvider`.
 
 ## 7. Entry points
 - [ ] 7.1 Tests for "Every entry point initialises telemetry once" (CLI via `CliRunner` with `otlp_receiver()` and

@@ -35,7 +35,7 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 - **THEN** one `mintmory.embed` span with `mintmory.embed.batch_size` = 2 and one latency point exist
 
 ### Requirement: CLI commands are traced end to end
-`add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), ending with status ERROR when the command raises or exits non-zero, and never for exit code 0. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed`.
+`add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), ending with status ERROR when the command raises or exits non-zero, and never for exit code 0. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed` from the counters of the same names that `index_tree` already keeps.
 
 #### Scenario: Command spans and counts
 - **GIVEN** telemetry with an in-memory exporter and a folder with two text files
