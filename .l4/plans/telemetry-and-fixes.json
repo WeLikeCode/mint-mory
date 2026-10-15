@@ -5,7 +5,7 @@
   "merge": "auto",
   "limits": {
     "max_unit_attempts": 2,
-    "max_runs": 50,
+    "max_runs": 55,
     "max_cost_usd": 30
   },
   "external_dependencies": [],
@@ -29,6 +29,12 @@
           "depends_on": []
         },
         {
+          "id": "openspec:add-telemetry-entry-points",
+          "depends_on": [
+            "openspec:add-telemetry-runtime"
+          ]
+        },
+        {
           "id": "openspec:add-telemetry-heavy-path-spans",
           "depends_on": [
             "openspec:add-telemetry-runtime",
@@ -47,6 +53,7 @@
           "id": "openspec:add-local-observability-stack",
           "depends_on": [
             "openspec:add-telemetry-runtime",
+            "openspec:add-telemetry-entry-points",
             "openspec:add-telemetry-heavy-path-spans",
             "openspec:add-telemetry-boundary-tracing"
           ]
