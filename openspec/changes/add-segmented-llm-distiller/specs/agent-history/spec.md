@@ -46,7 +46,7 @@ When `MINTMORY_LLM_*` is configured, the system SHALL distill each segment via a
 LLM into a title, kind, summary, outcome, and a `next_context` handed to the
 following segment's prompt. The distiller SHALL be built ONLY when the provider is
 set AND the LLM `base_url` is local — a non-local (cloud) endpoint SHALL require an
-explicit opt-in (`--allow-cloud-llm` / `MINTMORY_HISTORY_ALLOW_CLOUD_LLM`);
+explicit opt-in (`--allow-cloud-llm` / `MINTMORY_HISTORY_SEG_ALLOW_CLOUD_LLM`);
 otherwise the system SHALL fall back to deterministic per-segment summaries.
 With `provider=none` the system SHALL produce deterministic per-segment summaries
 with **zero LLM calls** (offline). Any LLM error, empty, or malformed-JSON result

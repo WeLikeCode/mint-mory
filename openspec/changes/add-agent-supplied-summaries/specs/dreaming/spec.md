@@ -106,7 +106,6 @@ HTTP `GET /summaries` / `GET /summaries/{concept}`) SHALL be unchanged.
   stdin (no positional text, no `--file`)
 - **THEN** the piped text is stored as the `oauth` summary.
 
-## MODIFIED Requirements
 
 ### Requirement: L3 concept summaries are generated for well-evidenced concepts
 The dreaming summary step (`generate_summaries`) SHALL, for each entity appearing

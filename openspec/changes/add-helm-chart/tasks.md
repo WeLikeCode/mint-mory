@@ -41,3 +41,9 @@
   accepts output; `docker build` (light) succeeds.
 - [x] Existing Python gates unchanged/green.
 - [x] `openspec validate add-helm-chart --strict`.
+
+## Notes on what shipped
+- CI validates the rendered manifests with kubeconform (offline schema validation)
+  instead of `kubectl apply --dry-run=client` (see `.github/workflows/ci.yml`).
+- `backup-cronjob.yaml` was deliberately not shipped (see `values.yaml`); the spec
+  never required it.

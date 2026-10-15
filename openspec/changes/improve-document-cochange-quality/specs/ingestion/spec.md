@@ -136,6 +136,6 @@ folder + content) and explicitly NOT a version-controlled commit, AND SHALL disp
 the change-set kind (`cold_full_index` versus `incremental`) so users do not mistake
 a cold-index co-location grouping for an atomic or incremental edit change-set.
 
-#### Scenario: Output states the limit and the kind
+#### Scenario: Output states the limit
 - **WHEN** `docs changed-with <path>` prints peers
 - **THEN** the output includes a label indicating the grouping is observed co-change (not a version-controlled commit), shows the change-set kind, and shows each peer's edge strength and observed time.

@@ -42,7 +42,6 @@ pairs, and note-vs-note pairs stay flagged without drifting counts.
 - **THEN** both remain `flagged_for_review`, neither is superseded, and the pair
   is not counted as resolved.
 
-## MODIFIED Requirements
 
 ### Requirement: Stale feedback on a note flags it instead of penalising it
 A `stale` feedback vote SHALL behave as today for non-note memories (increment

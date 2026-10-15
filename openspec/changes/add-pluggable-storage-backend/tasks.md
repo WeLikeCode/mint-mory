@@ -78,7 +78,7 @@ code lands here. Each phase becomes its own OpenSpec change when scheduled.
   (advisory-lock leak → `pg_advisory_xact_lock`; to_thread offload; real lost-update soak assertion;
   mixed-dim test now runs on PG; dead `_passes_filter` removed). A `list_notes[postgres]` blip seen by
   one reviewer was parallel-reviewer TRUNCATE contention — clean sequential re-run: 0 failures.*
-- [ ] 4.6 (Phase 2 follow-up, tracked) cochange MCP/CLI `cast(SqliteBackend, ...)` needs a runtime
+- [ ] 4.6 (moves to its own change: it is a live bug in postgres mode, the two MCP co-change tools raise AttributeError; not part of this change's archive) (Phase 2 follow-up, tracked) cochange MCP/CLI `cast(SqliteBackend, ...)` needs a runtime
   guard once postgres is a real runtime option; HNSW ANN index is a later perf change with its own recall test.
 
 ## 5. Phase 3 — Migration tooling — ✅ SHIPPED as MM-49

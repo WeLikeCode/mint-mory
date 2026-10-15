@@ -38,7 +38,7 @@ Informed by an Opus max-thinking brainstorm + analysis of how **mempalace**
   enters the prompt** (MM-27 boundary), output redacted again before persist. The
   distiller is built only when `MINTMORY_LLM_*` is configured AND the base_url is
   local — a non-localhost (cloud) endpoint requires an explicit opt-in
-  (`--allow-cloud-llm` / `MINTMORY_HISTORY_ALLOW_CLOUD_LLM=true`); otherwise it
+  (`--allow-cloud-llm` / `MINTMORY_HISTORY_SEG_ALLOW_CLOUD_LLM=true`); otherwise it
   falls back to deterministic (nothing leaves the box).
 - **Idempotency & cost:** upsert by `segment_id`; archive orphaned tail segments
   on shrink (no hard delete); content-hash cache; `--max-llm-calls` budget and

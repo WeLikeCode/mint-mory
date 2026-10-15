@@ -20,10 +20,10 @@ is a single SQLite file, the chart SHALL deploy exactly one replica, SHALL use t
 `Recreate` update strategy (never RollingUpdate), and SHALL mount a `ReadWriteOnce`
 PersistentVolumeClaim at `/data`. The chart SHALL configure a liveness probe against
 `/healthz` and a readiness probe against `/readyz`. The chart SHALL NOT render more
-than one replica or a rolling update under any values.
+than one replica or a rolling update when `storage.backend` is `sqlite` (the default).
 
 #### Scenario: The rendered Deployment is single-writer safe
-- **WHEN** the chart is rendered with any values
+- **WHEN** the chart is rendered with `storage.backend` set to `sqlite` (the default)
 - **THEN** the Deployment has one replica, `strategy.type: Recreate`, a ReadWriteOnce PVC mounted at `/data`, `MINTMORY_DB=/data/memories.db`, and liveness/readiness probes on `/healthz` and `/readyz`.
 
 ### Requirement: Configuration and secrets separation
@@ -52,7 +52,7 @@ features SHALL be values-driven and default to off.
 
 ### Requirement: Deployment artifacts are validated in CI
 CI SHALL validate the deployment artifacts without a live cluster: `helm lint`,
-`helm template` for both tiers, a client-side `kubectl apply --dry-run` of the
+`helm template` for both tiers, offline schema validation (kubeconform) of the
 rendered manifests, and a build-smoke of the light container image (no registry
 publish).
 

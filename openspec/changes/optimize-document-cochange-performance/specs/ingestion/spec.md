@@ -24,11 +24,13 @@ disabled, the pass SHALL run a single global clustering over all changed files
 - **THEN** all changed files are clustered in a single global pass.
 
 ### Requirement: Vectorized co-change distance with numerical parity
-The co-change pass SHALL compute the per-block composite distance matrix using
-vectorized array operations rather than a per-pair Python loop, and the result MUST
-equal the prior scalar composition of the modified-time, folder-path, and content
-terms within a small floating-point tolerance, so that a single global block
-reproduces the prior clustering result.
+The co-change pass SHALL compute the modified-time term of the per-block composite
+distance matrix with vectorized array operations. The folder-path and content terms
+MAY use bounded per-block loops so that the result stays exact: the composite
+distance MUST equal the prior scalar composition of the modified-time, folder-path,
+and content terms within a small floating-point tolerance (1e-9), so that a single
+global block reproduces the prior clustering result. The speed-up comes from
+blocking, not from vectorizing every term.
 
 #### Scenario: Vectorized distance matches the scalar oracle
 - **GIVEN** a block of changed files with mixed folders, modified-times, and embeddings (some missing)
@@ -51,28 +53,33 @@ clustering paths so no clustering pass allocates an unbounded distance matrix.
 
 ### Requirement: Observed co-change via clustering of changed files
 The co-change pass SHALL group the files whose content changed in an `index-tree`
-run (added or updated) into change-sets by clustering them with HDBSCAN over a
-composite distance combining modified-time proximity, folder-path distance, and
-content-embedding similarity. To remain tractable on large corpora, the pass SHALL
-partition the changed files into per-folder, per-time-bucket clustering blocks (when
-`cochange_block_by_folder` is enabled) and SHALL compute each block distance matrix
-with vectorized array operations, subject to a per-block partition-size ceiling.
-Each cluster SHALL receive a deterministic `changeset_id`; its members SHALL carry
-`metadata.changeset_id` and `metadata.changeset_observed_at`, and SHALL be linked
-pairwise in `concept_links` with `relates_to` edges (`entity = "changeset:<id>"`,
-`strength` from the cluster membership probability) plus `before` edges in
-modified-time order. A file that does not join any cluster (HDBSCAN noise,
-`min_cluster_size = 2`) SHALL NOT be placed in a change-set and SHALL receive no
-co-change edges. Re-running with no new content changes SHALL NOT create new
-change-sets or duplicate edges (idempotent).
+run (added or updated, excluding co-change-excluded suffixes) into change-sets by
+clustering them with HDBSCAN over a composite distance combining modified-time
+proximity, folder-path distance, and content-embedding similarity — or, per the
+small-batch and all-noise fallback requirement, by deterministic
+connected-components clustering — then applying the time-gap split and the
+cluster-size cap. To remain tractable on large corpora, the pass SHALL partition the
+changed files into per-folder, per-time-bucket clustering blocks (when
+`cochange_block_by_folder` is enabled) and SHALL cluster each block independently,
+computing the time term of each block distance matrix with vectorized array
+operations, subject to a per-block partition-size ceiling. Each surviving cluster SHALL receive a
+deterministic `changeset_id`; its members SHALL carry `metadata.changeset_id`,
+`metadata.changeset_observed_at`, and `metadata.changeset_kind`, and SHALL be
+linked pairwise in `concept_links` with `relates_to` edges (`entity =
+"changeset:<id>"`, `strength` from the cluster membership probability) plus
+`before` edges in modified-time order. A file that does not join any surviving
+cluster (HDBSCAN noise, a dropped gap-split fragment, or a dropped oversized
+cluster) SHALL NOT be placed in a change-set and SHALL receive no co-change edges.
+Re-running with no new content changes SHALL NOT create new change-sets or
+duplicate edges (idempotent).
 
 #### Scenario: Two distinct edit bursts yield two change-sets
 - **GIVEN** four files where two changed close in time within one folder and two changed close in time within another folder
 - **WHEN** `index-tree --cochange` runs
-- **THEN** two change-sets are produced, each with a deterministic `changeset_id`, its members carry that id, and the members are linked by `relates_to` (entity `changeset:<id>`) and `before` edges.
+- **THEN** two change-sets are produced, each with a deterministic `changeset_id`, its members carry that id and a `changeset_kind`, and the members are linked by `relates_to` (entity `changeset:<id>`) and `before` edges.
 
 #### Scenario: A lone changed file is not co-change
-- **GIVEN** a run in which exactly one file changed
+- **GIVEN** a run in which exactly one knowledge file changed
 - **WHEN** the co-change pass runs
 - **THEN** no change-set is created and the file gets no `changeset_id` and no co-change edges.
 

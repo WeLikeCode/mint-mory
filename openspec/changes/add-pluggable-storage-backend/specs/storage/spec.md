@@ -80,15 +80,16 @@ REST API can run as N stateless replicas. It SHALL reproduce the conformance sui
 behaviour using a vector-similarity index (exact scan, semantics-equivalent to today;
 approximate ANN indexing optional and separately validated), a full-text index for
 lexical search, and a substring index — the specific Postgres extensions are a Phase 2
-decision (see design §8), not fixed by this contract. Schema changes SHALL be applied by
-a real migration tool at deploy time (not per-replica at startup), and read-modify-write
-operations SHALL be concurrency-safe against lost updates.
+decision (see design §8), not fixed by this contract. The schema SHALL be created by idempotent
+DDL at startup, serialized across replicas by a transaction-scoped PostgreSQL advisory
+lock (`pg_advisory_xact_lock`) so that concurrently starting replicas do not race, and
+read-modify-write operations SHALL be concurrency-safe against lost updates.
 
 #### Scenario: Multiple API replicas share one Postgres
 - **GIVEN** `MINTMORY_STORAGE_BACKEND=postgres` and several API replicas
 - **WHEN** they concurrently add, update, and search memories
-- **THEN** all operations succeed with no data-integrity errors, and schema migrations
-  are applied once at deploy time rather than raced by each replica at startup.
+- **THEN** all operations succeed with no data-integrity errors, and the startup
+  DDL runs under the advisory lock so replicas starting together do not race.
 
 #### Scenario: Readiness degrades safely on database outage
 - **GIVEN** the Postgres backend
@@ -113,7 +114,8 @@ When configured for an external multi-writer backend, the Helm chart SHALL relax
 SQLite single-writer constraints — allowing more than one replica, `RollingUpdate`, and
 no persistent volume — while retaining all single-writer constraints when the backend is
 SQLite. The chart SHALL default to a bring-your-own database DSN held in a Secret and
-SHALL run schema migrations as a deploy-time job rather than in application startup.
+SHALL NOT run a separate deploy-time migration job: the schema is applied by the
+application's startup DDL under the advisory lock.
 
 #### Scenario: Postgres mode enables multi-replica rolling updates
 - **GIVEN** the chart with `storage.backend: postgres` and a DSN secret
