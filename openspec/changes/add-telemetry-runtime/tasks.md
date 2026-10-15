@@ -13,8 +13,10 @@ never `structlog` (unconfigured structlog prints to stdout, the MCP stdio stream
 
 ## 2. Settings (`config.py`, `OTelSettings`)
 - [ ] 2.1 Tests, then: `enabled: Literal["auto", "true", "false"] = "auto"` with a `field_validator(mode="before")`
-  normalising booleans and case and mapping any other value to `"auto"` with one WARNING; `exporter = "otlp"`; `service_name: str | None = None`;
-  `export_timeout_s: float = Field(default=3.0, gt=0)`.
+  normalising booleans and case and mapping any other value to `"auto"` with one WARNING; `exporter: str = "otlp"`
+  with a `mode="before"` validator mapping anything but `otlp`/`console`/`none` to `"otlp"` with one WARNING;
+  `service_name: str | None = None`; `export_timeout_s: float = 3.0` with a `mode="before"` validator mapping a
+  non-numeric or non-positive value to 3.0 with one WARNING (no `gt=0`: a ValidationError would stop the CLI).
 
 ## 3. Enablement and exporters (`telemetry.py`)
 - [ ] 3.1 Tests for the scenarios of "Telemetry enablement modes" (patch `telemetry._endpoint_reachable`; run "Auto with

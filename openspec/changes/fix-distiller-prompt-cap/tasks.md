@@ -14,6 +14,8 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   - `test_elide_drop_path_counts_markers` (fails today: 12,205)
   - `test_elide_many_gaps_stays_within_cap` (fails today: 15,733)
   - `test_elide_first_and_last_over_cap_are_shortened` (fails today: 4,020 and 2,007)
+  - `test_elide_first_and_last_over_cap_with_middle_turns` (the four-turn scenario: exercises the `n > 2` marker
+    branch of 2.5)
   - `test_elide_within_cap_is_unchanged` (passes today, guard)
   Run `.venv/bin/pytest -q --no-cov packages/core/tests/test_history_distill_phase2.py -k elide`;
   the first four must fail.

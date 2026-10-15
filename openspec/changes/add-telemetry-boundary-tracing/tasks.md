@@ -22,7 +22,8 @@ checked against the installed packages (FastAPI 0.137.1, Starlette 1.3.1, anyio 
 - [ ] 2.2 Write a pure ASGI middleware class (`__init__(self, app)`, `async __call__(self, scope, receive, send)`):
   pass non-`http` scopes and excluded paths straight through (`/healthz`, `/readyz`, or `re.search(regex, path)` for a
   comma-separated regex of `OTEL_PYTHON_EXCLUDED_URLS`, read from `os.environ` on each request, with the compiled
-  patterns cached per variable value, because Starlette builds the middleware stack once and tests set the variable
+  patterns cached per variable value (an item `re.compile` rejects is skipped with one WARNING per distinct value,
+  never an error for the request); the span never records an exception message, only `error.type`, because Starlette builds the middleware stack once and tests set the variable
   after importing the module-level `app`); otherwise extract the context from the request headers (decode the ASGI byte pairs
   to a lower-case `dict[str, str]`), open `telemetry.span(method, kind="server", context=ctx)`, wrap `send` to capture
   the status code from `http.response.start`, `await self.app(...)`, then, when `scope.get("route")` is not None

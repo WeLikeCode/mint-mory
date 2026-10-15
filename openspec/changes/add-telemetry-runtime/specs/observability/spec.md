@@ -51,13 +51,21 @@ Export SHALL run off the calling thread with bounded queues and time out after `
 - **WHEN** three export cycles fail
 - **THEN** `mintmory.telemetry` logs exactly one WARNING about trace export and no `opentelemetry` logger emits WARNING or above
 
-### Requirement: Invalid telemetry configuration never stops MintMory
-Loading settings and `init_telemetry` SHALL never raise for a bad telemetry value; each bad value SHALL log one WARNING and fall back: an unknown `MINTMORY_OTEL_ENABLED` to `auto`; an unknown `OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` to the first known item of its comma-separated list, else `MINTMORY_OTEL_EXPORTER`; an `OTEL_EXPORTER_OTLP_PROTOCOL` other than `http/protobuf` to HTTP/protobuf; an unknown sampler or argument to the SDK's own fallback.
+### Requirement: Invalid MintMory telemetry settings fall back
+Loading settings SHALL never raise for a bad `MINTMORY_OTEL_*` value: each bad value SHALL log one WARNING and fall back, an unknown `MINTMORY_OTEL_ENABLED` to `auto`, an unknown `MINTMORY_OTEL_EXPORTER` to `otlp`, and a non-numeric or non-positive `MINTMORY_OTEL_EXPORT_TIMEOUT_S` to 3.
 
-#### Scenario: Bad values fall back
-- **GIVEN** `MINTMORY_OTEL_ENABLED=maybe`, `OTEL_TRACES_EXPORTER=jaeger,console`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` and `OTEL_TRACES_SAMPLER=nonsense`
-- **WHEN** settings load and `init_telemetry` runs with `_endpoint_reachable` patched to True
-- **THEN** nothing raises, the mode is `auto`, traces go to the console exporter over stderr, and one WARNING per bad value is logged
+#### Scenario: Bad MintMory values fall back
+- **GIVEN** `MINTMORY_OTEL_ENABLED=maybe`, `MINTMORY_OTEL_EXPORTER=jaeger` and `MINTMORY_OTEL_EXPORT_TIMEOUT_S=abc`
+- **WHEN** settings load
+- **THEN** nothing raises, the mode is `auto`, the exporter setting is `otlp`, the timeout is 3, and three WARNINGs are logged
+
+### Requirement: Invalid standard OpenTelemetry variables fall back
+`init_telemetry` SHALL never raise for a bad standard variable: an unknown `OTEL_TRACES_EXPORTER` or `OTEL_METRICS_EXPORTER` SHALL fall back to the first known item of its comma-separated list, else to `MINTMORY_OTEL_EXPORTER`; an `OTEL_EXPORTER_OTLP_PROTOCOL` other than `http/protobuf` to HTTP/protobuf; an unknown sampler or argument to the SDK's own fallback; each with one WARNING.
+
+#### Scenario: Bad standard values fall back
+- **GIVEN** `OTEL_TRACES_EXPORTER=jaeger,console`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` and `OTEL_TRACES_SAMPLER=nonsense`, with `_endpoint_reachable` patched to True
+- **WHEN** `init_telemetry` runs
+- **THEN** nothing raises, traces go to the console exporter over stderr, and one WARNING per bad value is logged
 
 ### Requirement: Bounded flush on exit
 `shutdown_telemetry(timeout_s=2.0)` SHALL flush and shut the providers down, return within `timeout_s` + 0.5 s whatever the collector state, and be safe to repeat. `init_telemetry` SHALL register it with `atexit` and create the providers with `shutdown_on_exit=False`. The API lifespan SHALL call it on stop.
@@ -98,13 +106,21 @@ The tracer provider SHALL take its sampler from `OTEL_TRACES_SAMPLER` / `OTEL_TR
 - **WHEN** spans are created
 - **THEN** none is exported
 
-### Requirement: Telemetry test seam and global provider
-`init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)` SHALL use an injected span exporter (synchronous processor) and metric reader instead of the configured exporters. Injection SHALL enable telemetry when the SDK imports, even with `MINTMORY_OTEL_ENABLED=false` or `OTEL_SDK_DISABLED=true`. Each successful init SHALL make its providers global, so library spans (FastMCP's) reach the same exporters. `reset_telemetry()` SHALL clear all of this.
+### Requirement: Telemetry test seam
+`init_telemetry(settings=None, *, default_service_name="mintmory", span_exporter=None, metric_reader=None)` SHALL use an injected span exporter (through a synchronous processor) and metric reader instead of the configured exporters. Injection SHALL enable telemetry when the SDK imports, even with `MINTMORY_OTEL_ENABLED=false` or `OTEL_SDK_DISABLED=true`. `reset_telemetry()` SHALL clear all telemetry state.
 
 #### Scenario: Injection beats the suite's off default
 - **GIVEN** `MINTMORY_OTEL_ENABLED=false` (the root `conftest.py` default)
 - **WHEN** `init_telemetry(span_exporter=InMemorySpanExporter())` runs and a span is created
 - **THEN** it returns True and the span is in that exporter
+
+### Requirement: Global providers and repeated init
+Each successful init SHALL make its providers the global ones, so library spans (FastMCP's) reach the same exporters. After a successful init, a later `init_telemetry` SHALL change nothing and return True; a call returning False SHALL leave no state.
+
+#### Scenario: A second init changes nothing
+- **GIVEN** telemetry initialised with an in-memory exporter
+- **WHEN** `init_telemetry` is called again with other settings
+- **THEN** it returns True and spans still go to the first exporter
 
 #### Scenario: Re-initialisation in one process
 - **GIVEN** telemetry initialised with one in-memory exporter, then reset

@@ -79,8 +79,13 @@ Adding a memory SHALL increment `mintmory.memories.added` with `category`, throu
 - **THEN** the counter reports 2 for `category=fact` and 1 for `category=skill`, and `PostgresBackend.add_memory` carries the same decorator
 
 ### Requirement: Telemetry carries no content
-Span attributes, span events and metric attributes SHALL NOT contain memory text, note text, query text, prompts, completions, file contents or HTTP header values; counts, sizes, categories, phases, outcomes, suffixes, provider and model names, and memory ids are allowed.
+Span attributes, span events and metric attributes SHALL NOT contain memory text, note text, query text, prompts, completions, file contents or header values. A failed span SHALL carry only status ERROR and `error.type` (the exception class name), never the exception message or traceback.
 
 #### Scenario: No content leaks into telemetry
 - **WHEN** a memory with text `SENTINEL-CONTENT-7f3a` is added, a search for `SENTINEL-QUERY-91c2` runs and a light dream runs, with telemetry on
 - **THEN** no exported span, event or metric attribute value contains either sentinel
+
+#### Scenario: A failure does not leak its message
+- **GIVEN** `_fts_scores` patched to raise `RuntimeError("no such column: SENTINEL-QUERY-91c2")`
+- **WHEN** a search runs with telemetry on and the error propagates
+- **THEN** the `mintmory.search.fts` span has status ERROR and `error.type` = `RuntimeError`, and no span attribute or event contains the sentinel

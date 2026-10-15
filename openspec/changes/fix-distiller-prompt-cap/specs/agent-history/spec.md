@@ -30,6 +30,11 @@ when they alone do not fit.
 - **WHEN** `_elide_transcript` runs on each
 - **THEN** each result has at most 500 characters and starts with `[USER] u`; the two-turn result also contains `[ASSISTANT] a`.
 
+#### Scenario: Turns between an oversized first and last turn become one marker
+- **GIVEN** `[("user", "u" * 2000), ("assistant", "a" * 500), ("user", "u" * 500), ("assistant", "a" * 2000)]` with `max_prompt_chars=500`
+- **WHEN** `_elide_transcript` runs
+- **THEN** the result has at most 500 characters, its first line starts with `[USER] u`, it contains the line `… [2 turns elided] …`, and its last line starts with `[ASSISTANT] a`
+
 #### Scenario: Text within the cap is unchanged
 - **GIVEN** `[("user", "hi"), ("assistant", "ok")]` with `max_prompt_chars=12000`
 - **WHEN** `_elide_transcript` runs
