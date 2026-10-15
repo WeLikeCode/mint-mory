@@ -69,7 +69,9 @@
         },
         {
           "id": "openspec:add-recurrent-tree-indexing",
-          "depends_on": []
+          "depends_on": [
+            "openspec:fix-cochange-tools-on-postgres"
+          ]
         },
         {
           "id": "openspec:deployment-hardening",
