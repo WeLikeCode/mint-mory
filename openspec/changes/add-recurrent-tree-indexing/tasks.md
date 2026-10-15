@@ -9,7 +9,7 @@ a08aee3.
 - [x] 1.2 Metadata + folder-context file records with a bounded sibling sample — `tree_index.py` (`render_file_record` :203); tests `test_tree_index.py:109-138`.
 - [x] 1.3 Per-path manifest — `packages/core/src/mintmory/core/schema.sql:136-149` (`index_manifest`) and `packages/core/src/mintmory/core/storage.py:630-697` (`manifest_get/upsert/paths/delete`).
 - [x] 1.4 `mintmory index-tree`: skip unchanged, replace changed in place, `--force`, `--prune` — `cli/main.py` (`index_tree` :454, unchanged check :648-660, replace :832-834, prune :874-881); tests `packages/cli/tests/test_cli.py:594-695`.
-- [x] 1.5 Opt-in binary content pass bounded by `--max-download-mb` and `--content-types` — `cli/main.py:470-479` (options) and :688-724 (budget); verified live in `results.md` (no automated budget-cutoff test).
+- [x] 1.5 Opt-in binary content pass bounded by `--max-download-mb` and `--content-types` — `cli/main.py:470-479` (options) and :688-724 (budget); verified live in `docs/research/recurrent-tree-indexing/results.md` (no automated budget-cutoff test).
 - [x] 1.6 Include/exclude globs and the collection tag; artifacts excluded only through `--exclude` (no default denylist) — `cli/main.py:542-543`, `tree_index.py:24-28`; tests `test_tree_index.py:65-91`, `test_cli.py:657-676`.
 - [x] 1.7 Inline text-content pass for small plain-text files, on by default (added by improve-search-recall) — `cli/main.py:462-469` and :613-617; tests `test_cli.py:698-729`.
 

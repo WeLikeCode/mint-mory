@@ -7,7 +7,8 @@
 its closing fence, both fence lines included) unchanged, after the document-wide
 `\r\n`/`\r` → `\n` normalisation: no HTML-comment removal, trailing-whitespace strip
 or blank-line collapse inside it. Outside fences the cleanup SHALL be exactly as
-today, and the function SHALL stay idempotent.
+today. The function SHALL stay idempotent: it SHALL repeat the cleanup pass until the
+text stops changing (a comment removal can expose a new fence line).
 
 #### Scenario: Fenced content is kept, the prose around it is cleaned
 - **GIVEN** the input `"Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n~~~\na\n\n\n\nb  \n~~~\n"`
@@ -34,6 +35,10 @@ today, and the function SHALL stay idempotent.
 #### Scenario: Blank runs before a fence still collapse
 - **WHEN** `clean_markdown("text\n\n\n\n```\ny\n```")` runs
 - **THEN** it returns `"text\n\n```\ny\n```"`.
+
+#### Scenario: A removed comment that exposes a fence line
+- **WHEN** `clean_markdown("<!-- c -->```\n<!-- x -->\n\n\n\ny  ")` runs
+- **THEN** it returns `"```\n\ny"` (the first pass removes both comments and leaves the line "```"; the second pass reads it as an unterminated fence and changes nothing), and `clean_markdown` of that result returns it unchanged.
 
 #### Scenario: Idempotent with fences, unchanged without
 - **WHEN** `clean_markdown` is applied twice to each input of the scenarios above

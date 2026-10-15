@@ -17,7 +17,9 @@ Additive infra/CI + chart options. No Python app code changes.
 
 ## 2. GHCR publish (`publish-image` CI job)
 
-New job in `ci.yml`, separate from `gates`/`deploy-validate`:
+New job in `ci.yml`, separate from `gates`/`deploy-validate`. `ci.yml`'s `on.push` has
+`branches: [main]` **and** `tags: ["v*"]`: with a branch filter only, GitHub never runs
+the workflow for a tag push, so a release would publish nothing (the gap tasks 5.2-5.3 close).
 ```yaml
 publish-image:
   name: Publish light image to GHCR
@@ -36,8 +38,10 @@ publish-image:
         tags: |
           type=ref,event=branch                        # main
           type=sha,prefix=sha-                         # sha-<short>
-          type=ref,event=tag                           # v0.1.0-beta.2
+          type=semver,pattern={{version}}              # tag v0.1.0 -> image 0.1.0 (= chart appVersion)
           type=raw,value=latest,enable={{is_default_branch}}
+        flavor: |
+          latest=false                                 # a release tag is not also tagged latest
     - uses: docker/build-push-action@v6
       with:
         context: .
@@ -52,6 +56,8 @@ publish-image:
   `docker build --build-arg VARIANT=full`, not in CI).
 - `needs: [gates, deploy-validate]` → never publish a broken image.
 - `if: push` → PRs validate but don't publish (avoids pushing from forks / on PRs).
+- Image tags: a `v*` release publishes `X.Y.Z`, equal to the chart's `appVersion`, so a
+  default `helm install` finds its image; `latest` only follows `main`.
 - First push under the org creates the package via `GITHUB_TOKEN`; the package is
   linked to the repo. If the org restricts `GITHUB_TOKEN` package creation, the job
   errors clearly (documented in the README as a one-time org setting).

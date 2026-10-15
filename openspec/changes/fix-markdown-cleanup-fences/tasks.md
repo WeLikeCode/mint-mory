@@ -40,6 +40,13 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
      `_HTML_COMMENT_RE.sub("", ...)`, split again, each line `rstrip()`ed, and
      consecutive empty lines in that run reduced to one before being appended;
   4. `return "\n".join(output).strip("\n")`.
+  Put steps 2 to 4 in a helper `_clean_pass(text: str) -> str`; `clean_markdown`
+  normalises line endings (step 1), then calls `_clean_pass` until the result stops
+  changing (`while (new := _clean_pass(text)) != text: text = new`, then return it).
+  Every pass that changes the text makes it shorter, so the loop ends. This keeps
+  the function idempotent when removing a comment exposes a fence line (the
+  scenario "A removed comment that exposes a fence line"); add that input to the
+  idempotency test of task 1.1.
   Keep `_BLANK_RUN_RE` only if still used (ruff F841/F401 otherwise; it is a module
   constant, so remove it if unused). Update the docstring and the module docstring
   sentence (:10-12) to say fenced code blocks are copied unchanged.
