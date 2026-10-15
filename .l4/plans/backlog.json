@@ -17,10 +17,6 @@
           "depends_on": []
         },
         {
-          "id": "openspec:add-mcp-code-execution-mode",
-          "depends_on": []
-        },
-        {
           "id": "openspec:add-recurrent-tree-indexing",
           "depends_on": []
         },
