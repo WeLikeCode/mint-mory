@@ -14,10 +14,11 @@ context, so the LLM calls made there start new, unconnected traces.
 
 - Search: child spans `mintmory.search.fts`, `mintmory.search.substring`, `mintmory.search.vector` and
   `mintmory.search.fusion` in both storage backends, and the histogram `mintmory.search.latency_ms` with the
-  attribute `phase` (`fts`, `substring`, `vector`, `fusion`, `graph`, `total`). They are measured inside `search()`,
-  so note anchoring, which reuses the score functions, does not count as search.
+  attribute `phase` (`fts`, `substring`, `vector`, `fusion`, `graph`, `total`). They are measured in code shared by
+  both backends (`hybrid_search.collect_scores`), so the SQLite tests exercise the Postgres path too, and note
+  anchoring, which reuses the score functions, does not count as search.
 - Embeddings: a `mintmory.embed` span and the histogram `mintmory.embed.latency_ms` for every embedder call.
-- Long CLI commands get a root span (`mintmory.cli.<command>`) with their outcome counts; `index-tree` gets phase
+- Long CLI commands get a root span (`mintmory.cli.<command>`), `index-tree` with its outcome counts; `index-tree` gets phase
   spans (`scan`, `prune`, `cochange`) and spans for each document conversion and image caption; `ingest` gets a span
   per conversion; the history backfill and sync, and the dream's concurrent summaries, keep the trace context in
   their worker threads (a fresh context copy per task).

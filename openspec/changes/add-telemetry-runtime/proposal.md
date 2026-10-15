@@ -31,4 +31,4 @@ OTLP logs, gRPC, database-driver spans, new dependencies, new spans or metrics (
 
 `telemetry.py`, `config.py` (`OTelSettings`), the CLI callback, `api/app.py`, `mcp/server.py`, `history_server.py`,
 the root `conftest.py`, and the existing telemetry tests named in the tasks. With no collector and no configuration
-nothing changes; with a collector on `localhost:4318`, MintMory exports without configuration.
+the shim stays a no-op, as today (only the default values of `enabled` and `exporter` change); with a collector on `localhost:4318`, MintMory exports without configuration.

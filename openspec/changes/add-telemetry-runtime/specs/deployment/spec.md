@@ -17,7 +17,7 @@ lifespan SHALL flush them with a bounded shutdown when the application stops.
 - **THEN** telemetry activation is a no-op and instrumentation remains a zero-cost shim.
 
 #### Scenario: OTel activates when enabled
-- **GIVEN** `MINTMORY_OTEL_ENABLED` is true and the OTel SDK is installed
+- **GIVEN** `MINTMORY_OTEL_ENABLED=true` (the `true` mode; a boolean true is normalised to it) and the OTel SDK is installed
 - **WHEN** the API starts
 - **THEN** telemetry is active and the API's spans and metrics are emitted through the configured exporter.
 
