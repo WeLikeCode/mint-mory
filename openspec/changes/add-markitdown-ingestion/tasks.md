@@ -41,4 +41,4 @@ Disjoint file ownership so the work parallelises cleanly (one owner per file).
       - [minor] `doctor` reports `len(CONVERTIBLE_SUFFIXES)` (18), not all 24 supported.
       - [minor] empty-conversion "produced no extractable text" note (not silently counted).
       - [minor] tests: assert `converter:"text"` metadata; assert doctor not-installed branch + hint.
-- [ ] 8.3 Commit (ready; awaiting go-ahead).
+- [x] 8.3 Commit (ready; awaiting go-ahead).
