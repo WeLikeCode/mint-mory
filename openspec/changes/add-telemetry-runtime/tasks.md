@@ -34,7 +34,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
 - [x] 4.3 Guards keep `self._inner`. `_GuardedMetricExporter(MetricExporter)` calls `super().__init__(preferred_temporality=
   inner._preferred_temporality, preferred_aggregation=inner._preferred_aggregation)`; `export(metrics_data,
   timeout_millis=10_000, **kwargs)`, `shutdown(timeout_millis=30_000, **kwargs)`.
-- [ ] 4.4 Before building an OTLP exporter save the `opentelemetry.exporter.otlp.proto.http` logger level (if none is
+- [x] 4.4 Before building an OTLP exporter save the `opentelemetry.exporter.otlp.proto.http` logger level (if none is
   saved) and set CRITICAL (children inherit it; a filter on the parent would not reach them).
 - [ ] 4.5 `try/except Exception` around everything after the arguments are read; on failure call `_teardown(2.0)` (5.2)
   under the held lock, log, return False.
