@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
 | Q-003 | accepted | 1.2 | technical | packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze |
 | Q-004 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
-| Q-005 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
+| Q-005 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -117,7 +117,7 @@ reject Two spec violations in the production code, both reproduced by a reviewer
 
 ## Q-005: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 6, verifier
@@ -133,3 +133,4 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why; end
 
 ### Answer
 <!-- write below this line -->
+accept An independent reviewer read the full production diff (telemetry.py, config.py; the judge saw only its start) against every requirement of the spec and reproduced each promise: off unless configured, auto finds a live Jaeger and exports traces, exception text scrubbed, console output on stderr only, no blocking beyond the spec's 2 s exit cap, both round-3 bugs fixed (init without opentelemetry, the metric guard wired). Its two minor findings came back as FB-003 and FB-004, done by fix unit 2 and re-checked on this head: three concurrent-init races install one global provider, and every boolean spelling of MINTMORY_OTEL_ENABLED maps as before. Accepted as minor, not fixed here: mark_error imports opentelemetry on a no-op span, unknown-exporter warnings for a valid list and while off, a host tracer provider set before init.
