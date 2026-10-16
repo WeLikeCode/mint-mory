@@ -56,3 +56,9 @@ ci:
   time_budget: 21m
   soft_deadline_margin: 20m
   upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
+yolo:
+  review:
+    max_dependency_chars: 24000   # add-telemetry-runtime is a prerequisite of four units and is just over the default 20000
+  hold:                     # no agent work for these until a plan lists them (L4 0.4.1 yolo.hold; replaces the backlog plan)
+  - openspec:add-image-understanding
+  - openspec:add-llm-vision-provider
