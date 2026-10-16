@@ -77,3 +77,4 @@
 {"at":"2026-10-16T17:26:44Z","run":"r-20261016T1726Z-3acd","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T17:38:23Z","attempt":1,"cost_usd":3.099898,"runs":10,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T17:38:23Z","detail":"task 1.2: max_task_attempts (3) reached in green; last failure: green broke existing tests: packages.api.tests.test_health_and_otel::test_telemetry_metric_exporter_matches_configured_exporter","reason":"unit_halted","type":"plan.stopped","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T17:43:37Z","by":"ciprian@spotus.space","extend":{},"reason":"fix unit task 1.2 retried with a note naming the accepted test edit","type":"plan.resumed"}
