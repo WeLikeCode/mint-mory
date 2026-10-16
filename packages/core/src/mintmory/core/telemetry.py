@@ -165,4 +165,9 @@ def record_value(name: str, value: float, **attrs: Any) -> None:
 
 
 def reset_telemetry() -> None:
-    raise NotImplementedError
+    """Test-only: drop the module state so each test starts from the no-op shim."""
+    global _enabled, _tracer, _meter
+    _enabled = False
+    _tracer = None
+    _meter = None
+    _instruments.clear()

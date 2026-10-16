@@ -6,7 +6,7 @@ only inside `init_telemetry` and what it enables. Log via `logging.getLogger("mi
 never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Each test first, failing.
 
 ## 1. Root `conftest.py`
-- [ ] 1.1 `os.environ.setdefault("MINTMORY_OTEL_ENABLED", "false")` beside the busy-timeout line; autouse reset fixture.
+- [x] 1.1 `os.environ.setdefault("MINTMORY_OTEL_ENABLED", "false")` beside the busy-timeout line; autouse reset fixture.
 - [ ] 1.2 Fixtures of the spec: `otlp_receiver` is a `ThreadingHTTPServer` in a daemon thread, shut down at teardown;
   `spans()` decodes with `trace_service_pb2.ExportTraceServiceRequest`, imported inside the method.
 
