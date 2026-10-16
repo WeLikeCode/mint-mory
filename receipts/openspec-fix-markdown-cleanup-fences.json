@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-16T04:48:54Z",
+  "integrated_revision": "e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd",
+  "merge_commit": "e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 4,
+  "receipt_id": "telemetry-and-fixes/openspec:fix-markdown-cleanup-fences/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd",
+  "spec_digest": "f4a469b13c47f143",
+  "target": "staging",
+  "unit_id": "openspec:fix-markdown-cleanup-fences"
+}
