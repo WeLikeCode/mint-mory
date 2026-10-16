@@ -293,35 +293,60 @@ class _GuardedSpanExporter:
         return bool(self._inner.force_flush(timeout_millis))
 
 
-class _GuardedMetricExporter:
-    """Wraps a metric exporter so a failing export never raises and never floods the log."""
+def _build_guarded_metric_exporter() -> type:
+    """The metric guard class, built on first use so importing the SDK base stays lazy.
 
-    def __init__(self, inner: Any) -> None:
-        self._inner = inner
-        self._failing = False
+    ``_GuardedMetricExporter`` must be a ``MetricExporter`` for a
+    ``PeriodicExportingMetricReader`` to read its ``_preferred_temporality`` /
+    ``_preferred_aggregation``, but importing ``opentelemetry.sdk`` at module load would defeat
+    the no-op shim's zero import cost. Module-level ``__getattr__`` builds it once instead.
+    """
+    from opentelemetry.sdk.metrics.export import MetricExporter
 
-    def export(self, metrics_data: Any, timeout_millis: float = 10_000, **kwargs: Any) -> Any:
-        from opentelemetry.sdk.metrics.export import MetricExportResult
+    class _GuardedMetricExporter(MetricExporter):
+        """Wraps a metric exporter so a failing export never raises and never floods the log."""
 
-        try:
-            result = self._inner.export(metrics_data, timeout_millis, **kwargs)
-        except Exception:  # noqa: BLE001 - the guard's whole point is to swallow it
-            result = MetricExportResult.FAILURE
-        if result == MetricExportResult.FAILURE:
-            if not self._failing:
-                self._failing = True
-                _log_export_failure("metric")
-            return MetricExportResult.FAILURE
-        if self._failing:
+        def __init__(self, inner: Any) -> None:
+            super().__init__(
+                preferred_temporality=getattr(inner, "_preferred_temporality", None),
+                preferred_aggregation=getattr(inner, "_preferred_aggregation", None),
+            )
+            self._inner = inner
             self._failing = False
-            _LOGGER.info("telemetry: metric export recovered")
-        return result
 
-    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
-        self._inner.shutdown(timeout_millis, **kwargs)
+        def export(self, metrics_data: Any, timeout_millis: float = 10_000, **kwargs: Any) -> Any:
+            from opentelemetry.sdk.metrics.export import MetricExportResult
 
-    def force_flush(self, timeout_millis: float = 10_000) -> bool:
-        return bool(self._inner.force_flush(timeout_millis))
+            try:
+                result = self._inner.export(metrics_data, timeout_millis, **kwargs)
+            except Exception:  # noqa: BLE001 - the guard's whole point is to swallow it
+                result = MetricExportResult.FAILURE
+            if result == MetricExportResult.FAILURE:
+                if not self._failing:
+                    self._failing = True
+                    _log_export_failure("metric")
+                return MetricExportResult.FAILURE
+            if self._failing:
+                self._failing = False
+                _LOGGER.info("telemetry: metric export recovered")
+            return result
+
+        def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
+            self._inner.shutdown(timeout_millis, **kwargs)
+
+        def force_flush(self, timeout_millis: float = 10_000) -> bool:
+            return bool(self._inner.force_flush(timeout_millis))
+
+    return _GuardedMetricExporter
+
+
+def __getattr__(name: str) -> Any:
+    """Build ``_GuardedMetricExporter`` on first access, so the SDK import stays lazy."""
+    if name == "_GuardedMetricExporter":
+        exporter_class = _build_guarded_metric_exporter()
+        globals()[name] = exporter_class
+        return exporter_class
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _build_tracer_provider(
