@@ -564,6 +564,8 @@ def init_telemetry(
             return False
 
     with _shutdown_lock:
+        if _enabled:
+            return True
         try:
             return _activate(
                 settings,
