@@ -76,6 +76,6 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
 ## 3. Gates
 - [x] 3.1 The existing `test_conversion.py` tests and the ingest/index-tree CLI tests
   in `packages/cli/tests/test_cli.py` pass unedited.
-- [ ] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+- [x] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate), and
   `npx --yes @fission-ai/openspec@1.14.1 validate fix-markdown-cleanup-fences --strict`.
