@@ -38,3 +38,4 @@
 {"at":"2026-10-16T04:49:29Z","batch":"warm-up","profile":"none","revision":"7942c5591c0bcd29f2f50fabefeea04ea99fe9f9","type":"batch.accepted"}
 {"at":"2026-10-16T04:49:56Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T04:49:56Z","run":"r-20261016T0449Z-8f57","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T05:09:26Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-runtime"}
