@@ -707,3 +707,7 @@ def _traces_endpoint() -> str:
         return traces_endpoint
     shared_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip() or _DEFAULT_ENDPOINT
     return f"{shared_endpoint}/v1/traces"
+
+
+def mark_error(span: Any, error_type: str) -> None:
+    raise NotImplementedError
