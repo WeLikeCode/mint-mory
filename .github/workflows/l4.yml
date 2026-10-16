@@ -5,8 +5,9 @@
 # "nothing to do" before any lease, worktree or probe when there are none. It starts on a push to the base branch (a
 # merge), on a push to the unit-branch prefix (a human's answer or spec edit), on a schedule and by hand. There is no
 # pull_request trigger, so a fork never runs it (L4-CI-003). A push whose message has an `L4-Run: ` trailer is the
-# harness's own and starts nothing, except on the base branch. Checkout keeps no credentials: the harness hands git the
-# token per command (L4-SEC-005).
+# harness's own and starts nothing, except on the base branch; with the workflow's own `GITHUB_TOKEN` no harness push
+# starts a run on any branch (GitHub's rule), the base branch included. Checkout keeps no credentials: the harness
+# hands git the token per command (L4-SEC-005).
 name: l4
 on:
   push:
@@ -38,6 +39,7 @@ jobs:
       L4_BASE_BRANCH: "staging"
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,7 +62,7 @@ jobs:
         with:
           source: "repository"
           repository: "ssh://git@github.com/ciprianiacobescu/l4.git"
-          commit: "996b00b1f3372157a3557c2a8174b9d1af08b98f"
+          commit: "fd9d6299303015bba188a3970f7f32b2915ec591"
           ssh-key: ${{ secrets.L4_HARNESS_SSH_KEY }}
           self-provision: ${{ vars.L4_SELF_PROVISION || 'true' }}
       - name: doctor
