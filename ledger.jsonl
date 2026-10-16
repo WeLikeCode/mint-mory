@@ -31,3 +31,4 @@
 {"at":"2026-10-16T03:57:14Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:fix-markdown-cleanup-fences"}
 {"at":"2026-10-16T03:57:14Z","run":"r-20261016T0357Z-f572","type":"unit.dispatched","unit":"openspec:fix-markdown-cleanup-fences"}
 {"at":"2026-10-16T04:47:30Z","head":"e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd","pr":4,"target_before":"af23b1b30712c77ec962d8a03569194345468f2e","type":"unit.merge_requested","unit":"openspec:fix-markdown-cleanup-fences"}
+{"at":"2026-10-16T04:47:34Z","head":"e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd","merge_commit":"e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd","pr":4,"type":"unit.merged","unit":"openspec:fix-markdown-cleanup-fences"}
