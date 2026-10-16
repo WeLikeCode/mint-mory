@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard |
+| Q-001 | accepted | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard |
 <!-- l4:index:end -->
 
 ---
