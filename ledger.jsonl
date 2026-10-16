@@ -52,3 +52,4 @@
 {"at":"2026-10-16T09:20:42Z","run":"r-20261016T0920Z-ec4a","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T11:03:28Z","attempt":1,"cost_usd":0.796336,"runs":4,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T11:03:28Z","detail":"task 4.1: max_task_attempts (3) reached in red; last failure: new tests fail with an error that is neither an assertion nor NotImplementedError: packages.core.tests.test_telemetry_resilience::test_another_settings_group_is_invalid (TypeError: init_telemetry() got an unexpected keyword argument 'defa","reason":"unit_halted","type":"plan.stopped","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T11:06:26Z","by":"ciprian@spotus.space","extend":{},"reason":"unit add-telemetry-runtime retried after max_task_attempts in task 4.1 red (implementer did not write the guarded stub L4 asked for)","type":"plan.resumed"}
