@@ -58,7 +58,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
 
 ## 6. Resource, sampling
 - [x] 6.1 Tests for "Resource identifies the process" and "Sampling...".
-- [ ] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`
+- [x] 6.2 Explicit `Resource.create` attributes beat the environment, so compute them: parse `OTEL_RESOURCE_ATTRIBUTES`
   (`k=v`, values `urllib.parse.unquote`d); `_service_name(settings, default_service_name)` (part 4 reuses it);
   `service.version` from `importlib.metadata.version("mintmory-core")`, else `unknown`; `service.instance.id` =
   `uuid4().hex`; overlay the parsed keys, then the computed `service.name`. No `sampler` argument to `TracerProvider`.
