@@ -262,6 +262,64 @@ def _otlp_exporter_kwargs(settings: OTelSettings, signal: str) -> dict[str, Any]
     return kwargs
 
 
+def _scrub_span(span: Any) -> Any:
+    """Rebuild a finished span with exception messages and ERROR descriptions dropped.
+
+    Exception events keep only ``exception.type``; an ERROR status loses its description. Every
+    other field is carried over untouched, for MintMory's spans and library spans alike.
+    """
+    from opentelemetry.sdk.trace import Event, ReadableSpan
+    from opentelemetry.trace import Status, StatusCode
+
+    events: list[Any] = []
+    for event in span.events:
+        if event.name == "exception":
+            attributes = {
+                key: value
+                for key, value in dict(event.attributes or {}).items()
+                if key == "exception.type"
+            }
+            events.append(Event(name=event.name, attributes=attributes, timestamp=event.timestamp))
+        else:
+            events.append(event)
+
+    status = span.status
+    if status is not None and status.status_code == StatusCode.ERROR:
+        status = Status(StatusCode.ERROR)
+
+    return ReadableSpan(
+        name=span.name,
+        context=span.context,
+        parent=span.parent,
+        resource=span.resource,
+        attributes=span.attributes,
+        events=events,
+        links=span.links,
+        kind=span.kind,
+        instrumentation_info=span._instrumentation_info,
+        status=status,
+        start_time=span.start_time,
+        end_time=span.end_time,
+        instrumentation_scope=span.instrumentation_scope,
+    )
+
+
+class _Scrubbing:
+    """Outermost span-exporter wrapper: scrubs every span before the real exporter sees it."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def export(self, spans: Any) -> Any:
+        return self._inner.export([_scrub_span(span) for span in spans])
+
+    def shutdown(self) -> None:
+        self._inner.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
+        return bool(self._inner.force_flush(timeout_millis))
+
+
 class _GuardedSpanExporter:
     """Wraps a span exporter so a failing export never raises and never floods the log."""
 
@@ -359,8 +417,9 @@ def _build_tracer_provider(
     from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
 
     if injected_exporter is not None:
+        scrubbed: Any = _Scrubbing(injected_exporter)
         provider = TracerProvider(resource=resource, shutdown_on_exit=False)
-        provider.add_span_processor(SimpleSpanProcessor(injected_exporter))
+        provider.add_span_processor(SimpleSpanProcessor(scrubbed))
         return provider
     if exporter_kind == "otlp":
         _mute_exporter_logger()
@@ -371,7 +430,7 @@ def _build_tracer_provider(
         from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 
         exporter = ConsoleSpanExporter(out=sys.stderr)
-    guarded: Any = _GuardedSpanExporter(exporter)
+    guarded: Any = _Scrubbing(_GuardedSpanExporter(exporter))
     provider = TracerProvider(resource=resource, shutdown_on_exit=False)
     provider.add_span_processor(BatchSpanProcessor(guarded))
     return provider

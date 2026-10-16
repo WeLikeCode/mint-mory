@@ -40,7 +40,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   under the held lock, log, return False.
 
 ## 4b. Export scrubber
-- [ ] 4b.1 Test "A library's exception is scrubbed", plus a MintMory span through `telemetry.span`.
+- [x] 4b.1 Test "A library's exception is scrubbed", plus a MintMory span through `telemetry.span`.
 - [ ] 4b.2 `_Scrubbing(SpanExporter)` outermost on every span exporter (OTLP behind the guard, console, injected);
   `export` rebuilds each span as `ReadableSpan(...)` with the same fields, `exception` events reduced to
   `exception.type` and an ERROR status without description.
