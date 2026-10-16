@@ -65,3 +65,4 @@
 {"at":"2026-10-16T14:41:35Z","by":"ciprian@spotus.space","extend":{},"reason":"add-telemetry-runtime retried after max_task_attempts in task 6.1 red (2 invalid results without summary, 1 non-discriminating)","type":"plan.resumed"}
 {"at":"2026-10-16T14:42:09Z","attempt":1,"cost_usd":1.798135,"runs":7,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T14:42:09Z","run":"r-20261016T1442Z-fd5b","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T16:34:42Z","detail":"awaiting_human: no new answers (verdicts open: Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-runtime"}
