@@ -74,7 +74,7 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
 - [x] 2.3 Do not change `extract_markdown`, the suffix tables or the call sites.
 
 ## 3. Gates
-- [ ] 3.1 The existing `test_conversion.py` tests and the ingest/index-tree CLI tests
+- [x] 3.1 The existing `test_conversion.py` tests and the ingest/index-tree CLI tests
   in `packages/cli/tests/test_cli.py` pass unedited.
 - [ ] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate), and
