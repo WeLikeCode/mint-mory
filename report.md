@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at d78fa717d96b7e16e50d41fabdc06a75034471ad
+- Target: staging at cbc196ba65882aef229321f0f1a4adbe2ba728e8
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-16T11:03:28Z
-- Stopped: unit_halted (openspec:add-telemetry-runtime): task 4.1: max_task_attempts (3) reached in red; last failure: new tests fail with an error that is neither an assertion nor NotImplementedError: packages.core.tests.test_telemetry_resilience::test_another_settings_group_is_invalid (TypeError: init_telemetry() got an unexpected keyword argument 'defa
+- Written: 2026-10-16T12:14:17Z
+- Stopped: unit_halted (openspec:add-telemetry-runtime): task 4.4: max_task_attempts (3) reached in red; last failure: not discriminating: C-1d2bd9a4 (its tests still pass, or fail by an error rather than an assertion, when the functions they use answer the zero value; none of its new tests fails by assertion against the unit base code)
 
 ## Units
 
@@ -22,7 +22,7 @@
 - Pull request: <forge>/WeLikeCode/mint-mory/pull/6
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.80, 4 run(s), 1 attempt(s)
+- Usage: $1.14, 5 run(s), 1 attempt(s)
 - Accepted review findings (accepted by ciprian@spotus.space (agent): Resolve both findings while writing the tests. F-1619b9: a shared standard variable is validated once, where it is read: one WARNING per bad variable on mintmory.telemetry, never one per signal; OTEL_EXPORTER_OTLP_PROTOCOL is checked once when any signal uses OTLP, so 'Bad standard values fall back' expects exactly two WARNINGs (OTEL_TRACES_EXPORTER and OTEL_EXPORTER_OTLP_PROTOCOL). F-0ad188: _Scrubbing keeps the exporter it wraps in _inner, as _GuardedSpanExporter does; the exporter-type test follows _inner until an object has none and asserts the innermost exporter's type (the OTLP HTTP span exporter).):
   - F-1619b9 [testability/major] Scenario 'Bad standard values fall back' needs exactly two WARNINGs on `mintmory.telemetry`: `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_PROTOCOL`. In that scenario traces use console. Metrics use the default `otlp` exporter, because `MINTMORY_OTEL_EXPORTER` is unset. The spec does not say whether the protocol is checked for each signal or only for a signal that uses OTLP. It also does not say whether one invalid shared variable warns once or once per signal. Checking per signal gives three WARNINGs and the assertion fails. The implementer has to guess the rule.: no answer recorded
   - F-0ad188 [interfaces/major] Task 7.1 says the exporter-type test checks `captured[-1]._inner`. Task 4b.2 makes `_Scrubbing` the outermost wrapper on every span exporter, and task 4.3 puts the OTLP exporter behind `_GuardedSpanExporter._inner`. So the exporter handed to the processor is `_Scrubbing`, and one `_inner` hop reaches the guard, not the OTLP exporter. The spec does not say whether `_Scrubbing` keeps an `_inner` attribute. It also does not say which object `captured` holds or how many hops the test follows. The edit to the existing test therefore cannot be implemented as written.: no answer recorded
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $12.15
+- Cost: $12.50
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 5
+- Runs that dispatched a unit: 6
