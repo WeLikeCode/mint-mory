@@ -88,8 +88,12 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   `_resolve_state(settings)` (`off` | `sdk missing` | `export` | `no collector`, mapped per the spec),
   `_traces_endpoint()` (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as is, else `OTEL_EXPORTER_OTLP_ENDPOINT` or
   `http://localhost:4318` plus `/v1/traces`), `_endpoint_reachable(url)` and `_service_name(settings,
-  default_service_name)`. `reachable`: `parts = urlsplit(endpoint)`; `invalid` if `parts.hostname` is None or reading
-  `parts.port` raises `ValueError`; else `yes`/`no`. It initialises nothing and never reads `OTEL_EXPORTER_OTLP_HEADERS`.
+  default_service_name)`. `endpoint` and `reachable`: inside `try/except ValueError`,
+  `parts = urlsplit(_traces_endpoint())` and read `parts.port`; invalid (`ValueError`, or `parts.hostname` is None) gives `endpoint="<invalid>"`, `reachable="invalid"`;
+  else `endpoint = urlunsplit((parts.scheme, parts.netloc.rpartition("@")[2], parts.path, "", ""))` (userinfo, query
+  and fragment dropped; not rebuilt from `.hostname`, which lower-cases and drops IPv6 brackets) and `reachable` from
+  `_endpoint_reachable(endpoint)`. The raw value is never returned. It initialises nothing and never reads
+  `OTEL_EXPORTER_OTLP_HEADERS`.
 - [ ] 2.3 In `doctor`, after the `conversion` row: `table.add_row("telemetry", text)` where `text` is
   `", ".join(f"{k}={v}" for k, v in status(...).items())`, inside `try/except Exception as exc` giving
   `f"status unavailable ({type(exc).__name__})"`. The row never touches `healthy` (exit code unchanged).

@@ -6,9 +6,11 @@
   before `TestClient`/`fastmcp.Client` and asserts inside the `with` block, so the lifespan's `init_telemetry` (a no-op
   after that) and the `shutdown_telemetry()` entry-points adds at exit cannot affect it; the MCP tests never call
   `main()`; in `app.py` the two units edit separate hunks (`lifespan` vs after the CORS block).
-- **Server span flags off**: in OpenTelemetry 1.42.1, `start_as_current_span` wraps the span in `use_span`
-  (`opentelemetry/trace/__init__.py`), whose `except Exception` records the message and sets `Status(ERROR,
-  "<Class>: <message>")`; `Span.set_status` keeps only an OK status, so that would replace `mark_error`'s.
+- **Server span flags off**, through the `span()` options `add-telemetry-heavy-path-spans` delivers (its
+  `command_span` needs the same flags and runs first, so `span()` changes there, once): in OpenTelemetry 1.42.1,
+  `start_as_current_span` wraps the span in `use_span` (`opentelemetry/trace/__init__.py`), whose `except Exception`
+  records the message and sets `Status(ERROR, "<Class>: <message>")`; `Span.set_status` keeps only an OK status, so
+  that would replace `mark_error`'s.
 - **`asyncio.CancelledError` is not an error** (the client went away). It is a `BaseException`, caught neither by
   `use_span` nor by the middleware's `except Exception`.
 - **No status sent**: after an `Exception` the middleware records 500, which Starlette's outer `ServerErrorMiddleware`

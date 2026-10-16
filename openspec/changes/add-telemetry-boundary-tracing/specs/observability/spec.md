@@ -6,14 +6,6 @@ MintMory's observability: OpenTelemetry traces and metrics from every entry poin
 
 ## ADDED Requirements
 
-### Requirement: Span options for boundary spans
-`telemetry.span` SHALL have the signature `span(name, *, kind="internal", context=None, record_exception=True, set_status_on_exception=True, **attrs)` and pass `kind` (`"internal"`, `"server"`, `"client"`, mapped to `SpanKind`; any other value maps to INTERNAL), `context` and both flags to the tracer's `start_as_current_span`. The defaults are the SDK's, so existing callers (`dreaming.py`, `llm.py`, `traced`) keep their behaviour. With telemetry off it SHALL yield `_NoopSpan`, which gains a no-op `update_name(name)`.
-
-#### Scenario: Options reach the span
-- **GIVEN** telemetry initialised with an injected in-memory span exporter
-- **WHEN** `with telemetry.span("a", kind="server"): pass` and `with telemetry.span("d", kind="bogus"): pass` run, then inside `pytest.raises(RuntimeError)` `with telemetry.span("b", record_exception=False, set_status_on_exception=False): raise RuntimeError("SENTINEL-12")` and the same with defaults as span `c`
-- **THEN** `a` has kind SERVER and `d` kind INTERNAL; `b` has status UNSET and no event; `c` has status ERROR with an empty description (scrubbed) and one `exception` event whose only attribute is `exception.type=RuntimeError`; with telemetry not initialised, `with telemetry.span("a", kind="server", record_exception=False) as sp: sp.update_name("b")` raises nothing and `sp` is a `_NoopSpan`
-
 ### Requirement: HTTP server spans continue the caller's trace
 Each API request, except excluded paths, SHALL run in a SERVER span named `<METHOD> <route template>` that continues the W3C context of the request headers (ASGI header bytes decoded as latin-1, names lower-cased), with `http.request.method`, `http.route` and `http.response.status_code`, and without `url.path`, `url.query` or any other raw path value. API scenarios run under `TestClient` with telemetry initialised with an in-memory span exporter and metric reader (setup in task 2.1).
 
@@ -28,7 +20,7 @@ Each API request, except excluded paths, SHALL run in a SERVER span named `<METH
 - **THEN** the span is named `GET /memories/{memory_id}`, `http.route` is `/memories/{memory_id}`, it has no `url.path` or `url.query` attribute, and no attribute value contains `<id>`
 
 ### Requirement: How the middleware ends the server span
-`TelemetryMiddleware` (`api/telemetry_middleware.py`, pure ASGI) SHALL be the outermost user middleware (the last `app.add_middleware` call, after `CORSMiddleware`) and, for a traced request, open `telemetry.span(<METHOD>, kind="server", context=telemetry.extract_context(headers), record_exception=False, set_status_on_exception=False)` around `await self.app(scope, receive, wrapped_send)`, where `wrapped_send` keeps the status of the first `http.response.start` message and forwards every message unchanged. When the app returns or raises:
+`TelemetryMiddleware` (`api/telemetry_middleware.py`, pure ASGI) SHALL be the outermost user middleware (the last `app.add_middleware` call, after `CORSMiddleware`) and, for a traced request, open `telemetry.span(<METHOD>, kind="server", context=telemetry.extract_context(headers), record_exception=False, set_status_on_exception=False)` around `await self.app(scope, receive, wrapped_send)`, where `wrapped_send` keeps the status of the first `http.response.start` message and forwards every message unchanged. These `span()` options and `_NoopSpan.update_name` are delivered by the prerequisite `add-telemetry-heavy-path-spans` (requirement "Span kind, parent context and exception options"); this unit does not change `span()`. When the app returns or raises:
 - Name: when `scope.get("route")` is not None the span is renamed `<METHOD> <route.path>` and gets `http.route`; else it keeps `<METHOD>` and has no `http.route`. FastAPI 0.137.1 `APIRoute.matches` (`fastapi/routing.py`) sets `scope["route"]` on a full or partial match, so a method mismatch (405) has a route; a 404, and a CORS preflight answered by `CORSMiddleware`, have none.
 - Status: `http.response.status_code` is the sent status; if none was sent and the app raised an `Exception`, 500 (Starlette's outer `ServerErrorMiddleware` sends it); if none was sent otherwise, the attribute is absent.
 - Marking, with runtime's `telemetry.mark_error(span, error_type)`: an `Exception` marks with its class name and the same object is re-raised; else a sent status of 500 or more marks with the status as a string; `asyncio.CancelledError` (client gone) or another `BaseException` leaves the span unmarked and is re-raised.

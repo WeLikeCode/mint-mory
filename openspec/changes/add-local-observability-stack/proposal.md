@@ -15,8 +15,8 @@ default it would no longer switch telemetry off; it also cannot set sampling.
   serves metrics to Prometheus. Ports, bind address and image tags are variables with defaults, documented in an
   `.env.example`. An optional profile `api` builds and runs the MintMory API from the repository's `Dockerfile`,
   wired to the collector. All images are pinned to exact versions.
-- `mintmory doctor` prints a telemetry row: mode, state, endpoint, whether the endpoint answers (or is invalid),
-  service name; the row never fails `doctor`.
+- `mintmory doctor` prints a telemetry row: mode, state, endpoint (without userinfo, query string or fragment),
+  whether the endpoint answers (or is invalid), service name; the row never fails `doctor`.
 - Helm: `otel.enabled: false` renders `MINTMORY_OTEL_ENABLED: "false"`; `otel.sampler`, `otel.samplerArg` and
   `otel.resourceAttributes` set the standard variables.
 - `docs/OBSERVABILITY.md` section 4 becomes the user guide: modes, variables and their precedence, the local stack in

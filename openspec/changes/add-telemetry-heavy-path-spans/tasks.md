@@ -7,15 +7,22 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 `telemetry.is_enabled()` is False and wraps its metric and attribute calls in `try/except Exception`.
 
 ## 1. Helpers (`telemetry.py`)
-- [ ] 1.1 Tests for the helpers on and off, `run_in_context` with four threads at once.
-- [ ] 1.2 `search_phase(name, *, span=True)`: context manager yielding an object with `set_count(n)`; times the block
+- [ ] 1.1 Tests for "Span kind, parent context and exception options", the helpers on and off, `run_in_context`
+  with four threads at once.
+- [ ] 1.2 `span()` options (here because `command_span` needs the flags; `add-telemetry-boundary-tracing` uses all
+  four): `span(name, *, kind="internal", context=None, record_exception=True, set_status_on_exception=True, **attrs)`,
+  `kind` typed `Literal["internal", "server", "client"]` and mapped by `{"internal": SpanKind.INTERNAL, "server":
+  SpanKind.SERVER, "client": SpanKind.CLIENT}.get(kind, SpanKind.INTERNAL)`; all four passed to
+  `_tracer.start_as_current_span`. No `staging` caller passes an attribute with these names (`step=` in
+  `dreaming.py`, `gen_ai.*`/`prompt_chars` in `llm.py`). `_NoopSpan.update_name(name)`: a no-op.
+- [ ] 1.3 `search_phase(name, *, span=True)`: context manager yielding an object with `set_count(n)`; times the block
   (`time.perf_counter()`), opens `mintmory.search.<name>` when `span`, sets `mintmory.result_count`, records
   `mintmory.search.latency_ms` (`phase=name`, histogram `unit="ms"`, pass `unit` through `_instrument`) in a `finally`;
   on an exception calls `mark_error(span, type(exc).__name__)` and re-raises. `timed_phase(name)`: the same as a
   decorator with `span=False`.
-- [ ] 1.3 `run_in_context(fn)`: `ctx = contextvars.copy_context()` on the calling thread, returns a callable running
+- [ ] 1.4 `run_in_context(fn)`: `ctx = contextvars.copy_context()` on the calling thread, returns a callable running
   `ctx.copy().run(fn, *a, **kw)` (one `Context` cannot be entered by two threads at once).
-- [ ] 1.4 `set_attributes(**attrs)` on the current span; `counts_added(fn)`: after `fn` returns a record, calls
+- [ ] 1.5 `set_attributes(**attrs)` on the current span; `counts_added(fn)`: after `fn` returns a record, calls
   `add_count("mintmory.memories.added", category=record.category.value)` and sets
   `fn.__mintmory_counter__ = "mintmory.memories.added"` on the wrapper.
 
@@ -41,10 +48,11 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 
 ## 4. CLI (`cli/main.py`)
 - [ ] 4.1 Tests for "CLI commands are traced end to end" and "Indexing and conversion phases are traced" (every
-  scenario), plus: `mintmory add` gives `mintmory.cli.add` with `mintmory.add_memory` as child; exit code 0 is not ERROR.
-  The co-change scenarios need no `importorskip("sklearn")` (fallback path).
+  scenario, "Exit code 0 is not an error" included), plus: `mintmory add` gives `mintmory.cli.add` with
+  `mintmory.add_memory` as child. The co-change scenarios need no `importorskip("sklearn")` (fallback path).
 - [ ] 4.2 `telemetry.command_span(name)`: a decorator under `@app.command()` (keep `functools.wraps`; Typer follows
-  `__wrapped__`) opening `mintmory.cli.<name>` with `record_exception=False, set_status_on_exception=False`;
+  `__wrapped__`) opening `mintmory.cli.<name>` through `telemetry.span(..., record_exception=False,
+  set_status_on_exception=False)` (task 1.2; `typer.Exit` is a `RuntimeError`, so the defaults would mark exit 0);
   `mark_error(span, type(exc).__name__)` for `typer.Exit`/`SystemExit` with a non-zero code or any other exception;
   re-raise. Set the `index-tree` counts with `telemetry.set_attributes`.
 - [ ] 4.3 `index_tree` (locate by name; `add-recurrent-tree-indexing` adds `text_candidate` but keeps `text_eligible`,

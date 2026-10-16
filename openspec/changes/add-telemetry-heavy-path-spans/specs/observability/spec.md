@@ -6,6 +6,14 @@ MintMory's observability: OpenTelemetry traces and metrics from every entry poin
 
 ## ADDED Requirements
 
+### Requirement: Span kind, parent context and exception options
+`telemetry.span` SHALL have the signature `span(name, *, kind="internal", context=None, record_exception=True, set_status_on_exception=True, **attrs)` and pass `kind` (`"internal"`, `"server"`, `"client"`, mapped to `SpanKind`; any other value maps to INTERNAL), `context` and both flags to the tracer's `start_as_current_span`. The defaults are the SDK's, so existing callers (`dreaming.py`, `llm.py`, `traced`) keep their behaviour. With telemetry off it SHALL yield `_NoopSpan`, which gains a no-op `update_name(name)`. This unit's `command_span` uses the two flags; `add-telemetry-boundary-tracing`, which depends on this unit, uses all four options and `update_name` for its server and client spans and does not change `span()`.
+
+#### Scenario: Options reach the span
+- **GIVEN** telemetry initialised with an injected in-memory span exporter
+- **WHEN** `with telemetry.span("a", kind="server"): pass` and `with telemetry.span("d", kind="bogus"): pass` run, then inside `pytest.raises(RuntimeError)` `with telemetry.span("b", record_exception=False, set_status_on_exception=False): raise RuntimeError("SENTINEL-12")` and the same with defaults as span `c`
+- **THEN** `a` has kind SERVER and `d` kind INTERNAL; `b` has status UNSET and no event; `c` has status ERROR with an empty description (scrubbed) and one `exception` event whose only attribute is `exception.type=RuntimeError`; with telemetry not initialised, `with telemetry.span("a", kind="server", record_exception=False) as sp: sp.update_name("b")` raises nothing and `sp` is a `_NoopSpan`
+
 ### Requirement: Search phase spans and latency
 Each search SHALL record child spans `mintmory.search.fts`, `.substring`, `.vector` and `.fusion` under `mintmory.search`, each with `mintmory.result_count`, and the histogram `mintmory.search.latency_ms` (unit `ms`) with `phase` = `fts`, `substring`, `vector`, `fusion`, `graph` (every search-around) or `total`. This SHALL live in code shared by both storage backends (`hybrid_search.py` and `telemetry.py`). Note anchoring SHALL NOT record search phases.
 
@@ -52,7 +60,7 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 - **THEN** each records one `mintmory.embed` span with `mintmory.embed.provider` (`ollama`, `openai`), `gen_ai.request.model` and `mintmory.embed.dim`, and `LocalEmbedder.embed` and `.embed_batch` carry the same decorator (`__wrapped__`)
 
 ### Requirement: CLI commands are traced end to end
-`add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), marked with `mark_error` when the command raises or exits non-zero, never for exit code 0. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed` from the counters `index_tree` already keeps (`scanned`, `added`, `updated`, `unchanged`, `failed`).
+`add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), marked with `mark_error` when the command raises or exits non-zero, never for exit code 0. `telemetry.command_span(name)` SHALL open that span with `record_exception=False, set_status_on_exception=False` and mark it only through `mark_error`: `typer.Exit` is a `RuntimeError` subclass (Typer 0.26.7), so the SDK default would mark an exit with code 0 as ERROR. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed` from the counters `index_tree` already keeps (`scanned`, `added`, `updated`, `unchanged`, `failed`).
 
 #### Scenario: Command spans and counts
 - **GIVEN** telemetry with an in-memory exporter and a folder with two text files
@@ -62,6 +70,11 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 #### Scenario: A failing command is marked
 - **WHEN** `mintmory ingest` runs on a path that does not exist (Typer does not validate it: the body finds no files and raises `typer.Exit(code=1)`)
 - **THEN** the `mintmory.cli.ingest` span has status ERROR and `error.type=Exit`
+
+#### Scenario: Exit code 0 is not an error
+- **GIVEN** telemetry with an in-memory exporter, a function decorated with `telemetry.command_span("probe-ok")` raising `typer.Exit(code=0)` and one decorated with `telemetry.command_span("probe-fail")` raising `typer.Exit(code=1)`
+- **WHEN** each is called inside `pytest.raises(typer.Exit)`
+- **THEN** span `mintmory.cli.probe-ok` has status UNSET and no event; `mintmory.cli.probe-fail` has status ERROR, `error.type=Exit` and no event
 
 ### Requirement: Indexing and conversion phases are traced
 Under `mintmory.cli.index-tree`, `index-tree` SHALL record `mintmory.index_tree.scan` around the walk over the roots (including the per-file co-change embeddings), `mintmory.index_tree.prune` around the `--prune` pass, and `mintmory.index_tree.cochange` around the post-walk co-change block, which runs only when co-change is on and at least two files were added or updated (`if run_cochange and len(changed_docs) >= 2:`); that span SHALL carry `mintmory.outcome=ok` and `mintmory.cochange.changesets` (the count `apply_changesets` returns), or `mintmory.outcome=unavailable` when `CoChangeUnavailable` is caught (no ERROR). Inside the walk it SHALL record one `mintmory.convert` span per binary conversion (the `extract_markdown` call when `want_binary` is true; the plain-text pass, `text_eligible` without `want_binary`, records none) and one `mintmory.vision.caption` span around each `captioner.describe(...)` call of the raster branch, which runs only when `vision.captioner_from_settings` returns a captioner (`MINTMORY_VISION_PROVIDER=llm`); SVG text and rasters queued for the agent record none. `ingest` SHALL record one `mintmory.convert` span per `extract_markdown` call. Both span kinds carry `mintmory.file.suffix`, `mintmory.file.size_bytes` and `mintmory.outcome` (`ok`, or `failed` on the `ConversionError` / `VisionError` the commands catch and count).

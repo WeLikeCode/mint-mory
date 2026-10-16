@@ -5,6 +5,11 @@
 - **The doctor row never fails `doctor`.** `doctor` is the command a user runs when something is wrong, so a bad
   `OTEL_EXPORTER_OTLP_ENDPOINT` (no host, port out of range) is reported as `reachable=invalid`, and any other error
   as `status unavailable (<class>)`; the exit code depends only on the existing checks.
+- **The endpoint is printed without its secrets, not masked.** A collector token can sit in the userinfo or the
+  query string, so both go, with the fragment; scheme, host, port and path are what a user compares with the collector.
+  An invalid value prints `<invalid>`: it cannot be split reliably and may still hold a credential
+  (`http://user:token@host:99999`). A credential with an unencoded `/`, `?` or `#` is not userinfo under RFC 3986 and
+  splits elsewhere; the OTLP exporter would misread that value the same way.
 - **One status cell of `key=value` pairs**, because the doctor table has two columns (`check`, `status`); tests match
   the exact text with `COLUMNS=200`.
 - **`SDK missing` is the display form of runtime's `sdk missing`** (and `exporting` of `export`), so the row reads as

@@ -9,8 +9,10 @@ gateway cannot join MintMory's trace, and `gen_ai.chat` is not a client span.
 
 ## What changes
 
-- `telemetry.span()` gains keyword-only `kind`, `context`, `record_exception`, `set_status_on_exception`; header
-  helpers and `record_histogram` are added.
+- `telemetry.py` gains the header helpers and `record_histogram`. The `span()` options this unit uses (`kind`,
+  `context`, `record_exception`, `set_status_on_exception`) and `_NoopSpan.update_name` are delivered by its
+  prerequisite `add-telemetry-heavy-path-spans`, whose `command_span` needs them first; this unit does not change
+  `span()`.
 - An ASGI middleware: one SERVER span per request, named by route template, continuing the caller's W3C context, with a
   defined outcome for every way a request ends, and the histogram `http.server.request.duration`; its own failures
   never change a response. Health endpoints are not traced.
@@ -28,4 +30,4 @@ request or tool arguments.
 
 New `api/telemetry_middleware.py`; `app.py`, `llm.py`, `embedder.py`, `telemetry.py`; new API and MCP tests. Depends on
 `add-telemetry-runtime` (seam, global provider, `mark_error`, scrubber) and `add-telemetry-heavy-path-spans`
-(`mintmory.embed`), not on `add-telemetry-entry-points` (`design.md`).
+(`mintmory.embed`, the `span()` options), not on `add-telemetry-entry-points` (`design.md`).

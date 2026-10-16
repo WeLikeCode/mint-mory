@@ -1,20 +1,17 @@
 # Tasks: distributed traces across the boundaries (OpenTelemetry, part 3 of 4)
 
-Requires `add-telemetry-runtime` and `add-telemetry-heavy-path-spans`. No new dependency, no `uv.lock` change; import
-`opentelemetry` lazily. Tests: `pytest.importorskip("opentelemetry.sdk")`, in-memory exporter and reader injected
-before `TestClient`/`fastmcp.Client`, `asyncio_mode = "auto"`. Each test first, failing.
+Requires `add-telemetry-runtime` and `add-telemetry-heavy-path-spans` (`mintmory.embed`; `span()`'s `kind`, `context`,
+`record_exception`, `set_status_on_exception` and `_NoopSpan.update_name`, used here, not changed). No new dependency,
+no `uv.lock` change; import `opentelemetry` lazily. Tests: `pytest.importorskip("opentelemetry.sdk")`, in-memory
+exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode = "auto"`. Each test first, failing.
 
 ## 1. Telemetry helpers (`core/telemetry.py`)
-- [ ] 1.1 Tests for "Span options for boundary spans" and the header helpers on and off (`extract_context` of
-  `garbage` returns, `inject_trace_headers` off returns the dict unchanged).
-- [ ] 1.2 `span()` options: `kind` via `{"internal": SpanKind.INTERNAL, "server": SpanKind.SERVER, "client":
-  SpanKind.CLIENT}.get(kind, SpanKind.INTERNAL)`, typed `Literal[...]`; all four passed to
-  `_tracer.start_as_current_span`. No `staging` caller passes an attribute with these names (`step=` in `dreaming.py`,
-  `gen_ai.*`/`prompt_chars` in `llm.py`). `_NoopSpan.update_name` no-op. `command_span` is not changed here.
-- [ ] 1.3 `inject_trace_headers(headers)`: `TraceContextTextMapPropagator().inject(headers)` when enabled, returns
+- [ ] 1.1 Tests for the header helpers on and off (`extract_context` of `garbage` returns, `inject_trace_headers` off
+  returns the dict unchanged).
+- [ ] 1.2 `inject_trace_headers(headers)`: `TraceContextTextMapPropagator().inject(headers)` when enabled, returns
   `headers`. `extract_context(carrier)`: `opentelemetry.propagate.extract(carrier)` when enabled, else `None`. Both in
   `try/except Exception`.
-- [ ] 1.4 `_instrument(kind, factory_name, name, **options)` passes `options` to the factory on first creation
+- [ ] 1.3 `_instrument(kind, factory_name, name, **options)` passes `options` to the factory on first creation
   (heavy-path's `unit` included). `record_histogram(name, value, *, unit, boundaries=None, **attrs)`: through it with
   `unit` and `explicit_bucket_boundaries_advisory=boundaries`, `None` attributes dropped, no-op when metrics are off,
   body in `try/except Exception`.

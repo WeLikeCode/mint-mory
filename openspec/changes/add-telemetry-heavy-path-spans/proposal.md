@@ -12,6 +12,10 @@ history backfill runs sessions in a `ThreadPoolExecutor` (`packages/core/src/min
 
 ## What changes
 
+- `telemetry.span()` gains keyword-only `kind`, `context`, `record_exception` and `set_status_on_exception`, and
+  `_NoopSpan` a no-op `update_name`. The two flags let `command_span` leave exit code 0 unmarked; part 3
+  (`add-telemetry-boundary-tracing`, which depends on this unit) uses all four for its server and client spans, so
+  `span()` changes once, here.
 - Search: child spans `mintmory.search.fts`, `.substring`, `.vector`, `.fusion` in both storage backends, and the
   histogram `mintmory.search.latency_ms` by `phase` (`fts`, `substring`, `vector`, `fusion`, `graph`, `total`),
   measured in code shared by both backends (`hybrid_search.collect_scores`); note anchoring does not count as search.
@@ -29,7 +33,7 @@ database-driver spans; per-row or per-file spans for cheap work (a plain file st
 
 ## Impact
 
-- Code: `telemetry.py` (phase, command and context helpers), `storage.py`, `storage_postgres.py`, `hybrid_search.py`,
+- Code: `telemetry.py` (`span()` options; phase, command and context helpers), `storage.py`, `storage_postgres.py`, `hybrid_search.py`,
   `embedder.py`, `history/ingest.py`, `dreaming.py`, and `packages/cli/src/mintmory/cli/main.py`.
 - Depends on `add-telemetry-runtime` (test seam, `mark_error`), `fix-cochange-tools-on-postgres` and
   `add-recurrent-tree-indexing` (both edit `index_tree`). Not on `add-telemetry-entry-points`: the tests initialise

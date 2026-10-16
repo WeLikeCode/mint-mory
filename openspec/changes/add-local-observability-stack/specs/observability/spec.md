@@ -34,7 +34,7 @@ MintMory's observability: OpenTelemetry traces and metrics from every entry poin
 - **THEN** `mintmory-api` has `profiles: [api]`, a `build` context at the repository root, a named volume mounted at `/data`, port `${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_API_PORT:-8080}:8080`, no `command` override, and the two environment variables above; and every `Dockerfile` line whose command starts with `uv sync` contains `--extra otel` (on `staging` exactly two such lines)
 
 ### Requirement: Telemetry status in doctor
-`mintmory doctor` SHALL add one row whose check is `telemetry` and whose status is `mode=<auto|true|false>, state=<state>, endpoint=<endpoint>, reachable=<yes|no|invalid>, service=<name>`. `state` maps `add-telemetry-runtime`'s `_resolve_state` values `export`, `off`, `no collector`, `sdk missing` to `exporting`, `off`, `no collector`, `SDK missing`; `endpoint` is runtime's `_traces_endpoint()`; `service` is runtime's `_service_name(settings, "mintmory-cli")`. `reachable` SHALL be `invalid` when the endpoint has no host or its port is not a valid number (`urllib.parse.urlsplit(...).port` raises `ValueError`), else `yes`/`no` from runtime's `_endpoint_reachable` (100 ms; port 443/80 by scheme when absent). Building the row SHALL never raise and never change doctor's exit code: on any exception the status is `status unavailable (<exception class name>)`. It SHALL NOT print header values or other secrets.
+`mintmory doctor` SHALL add one row whose check is `telemetry` and whose status is `mode=<auto|true|false>, state=<state>, endpoint=<endpoint>, reachable=<yes|no|invalid>, service=<name>`. `state` maps `add-telemetry-runtime`'s `_resolve_state` values `export`, `off`, `no collector`, `sdk missing` to `exporting`, `off`, `no collector`, `SDK missing`; `service` is runtime's `_service_name(settings, "mintmory-cli")`. `endpoint` is runtime's `_traces_endpoint()` reduced to `<scheme>://<host>[:<port>]<path>`: the userinfo (`user:token@`), the query string and the fragment are removed, host and port are kept as written, so an endpoint with none of the three prints unchanged. The endpoint is invalid when `urllib.parse.urlsplit` raises `ValueError`, it has no host, or its port is not a valid number (`.port` raises `ValueError`); the row then has `endpoint=<invalid>` and `reachable=invalid` and prints nothing of the raw value. Otherwise `reachable` is `yes`/`no` from runtime's `_endpoint_reachable` called with the reduced endpoint (same host and port; 100 ms; port 443/80 by scheme when absent). `telemetry.status` returns only the reduced form. Building the row SHALL never raise and never change doctor's exit code: on any exception the status is `status unavailable (<exception class name>)`. It SHALL NOT print header values, userinfo, query strings or other secrets.
 
 #### Scenario: Doctor without a collector
 - **GIVEN** the `cli_db` fixture, `MINTMORY_OTEL_ENABLED` unset, and `telemetry._endpoint_reachable` patched to return False
@@ -42,9 +42,14 @@ MintMory's observability: OpenTelemetry traces and metrics from every entry poin
 - **THEN** it exits 0 and the `telemetry` row contains `mode=auto, state=no collector, endpoint=http://localhost:4318/v1/traces, reachable=no, service=mintmory-cli`
 
 #### Scenario: Doctor with an endpoint it cannot parse
-- **GIVEN** the `cli_db` fixture and `OTEL_EXPORTER_OTLP_ENDPOINT` set to (a) `not a url`, (b) `http://localhost:99999`
+- **GIVEN** the `cli_db` fixture and `OTEL_EXPORTER_OTLP_ENDPOINT` set to (a) `not a url`, (b) `http://localhost:99999`, (c) `http://user:SECRET-I-33@localhost:99999`
 - **WHEN** `mintmory doctor` runs
-- **THEN** it exits 0 and the `telemetry` row contains `reachable=invalid`
+- **THEN** it exits 0 and the `telemetry` row contains `endpoint=<invalid>, reachable=invalid`; the output of (c) does not contain `SECRET-I-33`
+
+#### Scenario: Doctor hides credentials in the endpoint
+- **GIVEN** the `cli_db` fixture, `telemetry._endpoint_reachable` patched to record its argument and return False, and (a) `OTEL_EXPORTER_OTLP_ENDPOINT=http://user:SECRET-U-55@collector:4318`, (b) `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://collector.example:4318/v1/traces?api_key=SECRET-Q-77#frag`
+- **WHEN** `mintmory doctor` runs
+- **THEN** it exits 0; the row contains (a) `endpoint=http://collector:4318/v1/traces, reachable=no`, (b) `endpoint=https://collector.example:4318/v1/traces, reachable=no`; `_endpoint_reachable` received that same printed endpoint; and neither output contains `SECRET-U-55`, `SECRET-Q-77` or `api_key`
 
 #### Scenario: Doctor survives a failing status
 - **GIVEN** the `cli_db` fixture and `mintmory.core.telemetry.status` patched to raise `RuntimeError`
