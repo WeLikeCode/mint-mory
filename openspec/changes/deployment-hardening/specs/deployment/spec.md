@@ -29,7 +29,11 @@ auto-published.
 #### Scenario: A release tag publishes the chart's default image tag
 - **GIVEN** `deploy/helm/mintmory/Chart.yaml` has `appVersion: "0.1.0"` and `packages/meta/pyproject.toml` has `version = "0.1.0"`
 - **WHEN** the tag `v0.1.0` is pushed
-- **THEN** `.github/workflows/ci.yml` runs (its `on.push.tags` includes `"v*"`), `publish-image` runs and pushes `ghcr.io/welikecode/mint-mory:0.1.0`, and that push does NOT tag the image `latest`.
+- **THEN** `.github/workflows/ci.yml` runs (its `on.push.tags` includes `"v*"`), `publish-image` runs and pushes `ghcr.io/welikecode/mint-mory:0.1.0`, and that push does NOT tag the image `latest`. The same push also gets `sha-<short sha>` (from `type=sha`).
+
+#### Scenario: A non-release v-tag publishes no version tag
+- **WHEN** a tag `vfoo` or `v1` is pushed (the filter `v*` matches it; `release.yml` rejects it, it accepts only `vX.Y.Z` equal to the package version)
+- **THEN** `type=semver,pattern={{version}}` yields no tag, so only `sha-<short sha>` is pushed, and never `latest` or a `v`-prefixed tag.
 
 #### Scenario: A pull request never publishes
 - **WHEN** CI runs for a `pull_request` event
@@ -41,7 +45,21 @@ auto-published.
 
 #### Scenario: The chart's default tag tracks the release version
 - **WHEN** the test compares `appVersion` from `deploy/helm/mintmory/Chart.yaml` with `project.version` from `packages/meta/pyproject.toml`
-- **THEN** they are equal, and `scripts/bump_version.py X.Y.Z` rewrites the Chart `appVersion` to `"X.Y.Z"` (the chart's own `version:` line is left unchanged), so the tag that `release.yml` accepts (`vX.Y.Z` equal to the package version) always publishes the chart's default image tag.
+- **THEN** they are equal, and `scripts/bump_version.py X.Y.Z` rewrites the Chart `appVersion` to `"X.Y.Z"` (the chart's own `version:` line is left unchanged; see the next scenarios), so the tag that `release.yml` accepts (`vX.Y.Z` equal to the package version) always publishes the chart's default image tag.
+
+#### Scenario: bump_version.py updates the chart through main()
+- **GIVEN** a root with the five package `pyproject.toml` files at `version = "0.1.0"` and `deploy/helm/mintmory/Chart.yaml` containing `apiVersion: v2\nname: mintmory\nversion: 0.1.0\nappVersion: "0.1.0"\n`
+- **WHEN** `main(["0.2.0"], root=<that root>)` runs (`main(argv=None, root=None)` defaults to `sys.argv[1:]` and the repository root)
+- **THEN** Chart.yaml is `apiVersion: v2\nname: mintmory\nversion: 0.1.0\nappVersion: "0.2.0"\n`, the five pyprojects have `version = "0.2.0"`, and stdout contains the line `bumped deploy/helm/mintmory/Chart.yaml`.
+
+#### Scenario: A Chart without a double-quoted appVersion fails the bump and writes nothing
+- **GIVEN** the same root but Chart.yaml is `appVersion: 0.1.0\n` (or single-quoted, or has no `appVersion` line)
+- **WHEN** `main(["0.2.0"], root=<that root>)` runs, or `bump_chart_text` is called on that text
+- **THEN** `bump_chart_text` raises `ValueError("appVersion line not found")`, `main` exits via `SystemExit` with a message containing `appVersion`, and no file (pyproject or chart) has been modified.
+
+#### Scenario: A bad version argument is rejected
+- **WHEN** `main(["1.2"], root=<that root>)` runs
+- **THEN** `SystemExit("usage: bump_version.py X.Y.Z")` is raised and no file is modified.
 
 ### Requirement: Selectable ingress authentication mode
 The chart SHALL support `auth.mode` values `none` (default), `basic` and
@@ -71,6 +89,8 @@ traffic never reaches oauth2-proxy. The application selectors SHALL NOT change.
 - **WHEN** the chart is rendered as release `t` with `--set auth.mode=oauth2proxy --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com --set auth.oauth2proxy.clientId=mintmory-ci --set auth.oauth2proxy.clientSecret=ci-placeholder --set ingress.enabled=true`
 - **THEN** Deployment `t-mintmory-oauth2-proxy` has pod-template labels `{app.kubernetes.io/name: mintmory-oauth2-proxy, app.kubernetes.io/instance: t, app.kubernetes.io/component: oauth2-proxy}` and the same `matchLabels`; the selector of Service `t-mintmory` is NOT a subset of those pod labels; the selector of Service `t-mintmory-oauth2-proxy` IS a subset of them and is NOT a subset of the pod labels of Deployment `t-mintmory`; and Deployment `t-mintmory` still has `matchLabels` `{app.kubernetes.io/name: mintmory, app.kubernetes.io/instance: t}`.
 
+Facts the render relies on (read from the chart): the oauth2-proxy pod template carries only the helper labels (no `podLabels` are merged into it; `podLabels` apply to `deployment.yaml` only), and `values-postgres.yaml` renders the PDB `t-mintmory` with no further required values (CI already renders it that way).
+
 #### Scenario: The postgres-mode PodDisruptionBudget does not cover oauth2-proxy
 - **GIVEN** `helm` is on PATH
 - **WHEN** the same render adds `-f deploy/helm/mintmory/values-postgres.yaml`
@@ -83,6 +103,10 @@ traffic never reaches oauth2-proxy. The application selectors SHALL NOT change.
 #### Scenario: The application selectors are unchanged
 - **WHEN** the same test reads `_helpers.tpl`, `deployment.yaml`, `service.yaml` and `pdb.yaml`
 - **THEN** the body of the `mintmory.selectorLabels` define is still exactly the two lines `app.kubernetes.io/name: {{ include "mintmory.name" . }}` and `app.kubernetes.io/instance: {{ .Release.Name }}`, and each of `deployment.yaml`, `service.yaml` and `pdb.yaml` still contains `include "mintmory.selectorLabels"`.
+
+#### Scenario: The README documents the tag scheme and the upgrade step
+- **WHEN** `tests/integration/test_deploy_hardening.py` reads `deploy/helm/mintmory/README.md`
+- **THEN** the text contains each of the substrings `vX.Y.Z`, `X.Y.Z`, `latest`, `app.kubernetes.io/name`, `oauth2-proxy Deployment` and `helm upgrade`.
 
 ### Requirement: CI validates the oauth2proxy auth render
 The CI `deploy-validate` job SHALL render the chart with `auth.mode=oauth2proxy`

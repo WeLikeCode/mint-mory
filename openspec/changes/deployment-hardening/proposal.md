@@ -21,7 +21,7 @@ Follow-ups to the MM-42/MM-43 Kubernetes deployment:
   reproducible and supply-chain-pinned. (`--frozen` also fails CI fast if the lock
   drifts from `pyproject.toml`.)
 - **GHCR image publishing.** A CI job publishes the **light** image to
-  `ghcr.io/welikecode/mint-mory` on pushes to `main` (tags: `sha-<sha>`, `main`,
+  `ghcr.io/welikecode/mint-mory` on pushes to `main` (tags: `sha-<short sha>`, `main`,
   `latest`) and on release tags `vX.Y.Z` (image tag `X.Y.Z`, the chart's default
   `appVersion`; `latest` tracks only the default branch). Uses the built-in
   `GITHUB_TOKEN` with `packages: write` (no extra secret). The **full/torch** image

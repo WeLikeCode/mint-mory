@@ -1,7 +1,7 @@
 # Change: Recurrent, online-only-aware tree indexing for Hermes
 
 **ID:** `add-recurrent-tree-indexing`
-**Status:** IMPLEMENTED (manual cadence) — `mintmory index-tree`. See `docs/research/recurrent-tree-indexing/results.md`.
+**Status:** Sections 1.1-1.7 of tasks.md IMPLEMENTED (manual cadence, `mintmory index-tree`); section 2 (online-only guard) is open. "Recurrent" in the title is the original goal; recurrent execution is out of scope (cadence=manual). See `docs/research/recurrent-tree-indexing/results.md`.
 One gap remains: the default text-content pass must skip online-only files
 (`tasks.md` section 2).
 **Capability:** `ingestion`
@@ -94,7 +94,7 @@ is out of scope, and its "default artifact denylist" was shipped as opt-in
 ## Impact
 
 - **Affected specs:** `ingestion` (deltas in `specs/`).
-- **New code (planned):** a tree-indexer module + `mintmory index-tree` CLI +
+- **Code (delivered, tasks 1.1-1.7):** a tree-indexer module + `mintmory index-tree` CLI +
   manifest table/migration; reuses MM-11 `conversion` for the opt-in content pass.
 - **Data:** writes into `hermes.db` (or a dedicated DB — see `docs/research/recurrent-tree-indexing/gaps.md` G6).
 - **Remaining gap (tasks.md section 2):** `packages/cli/src/mintmory/cli/main.py`

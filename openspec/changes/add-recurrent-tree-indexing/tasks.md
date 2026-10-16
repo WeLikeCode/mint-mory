@@ -2,7 +2,8 @@
 
 Paths: `cli/main.py` = `packages/cli/src/mintmory/cli/main.py`, `tree_index.py` =
 `packages/core/src/mintmory/core/tree_index.py`. Line numbers are as of `staging`
-a08aee3.
+a08aee3 and shift once `fix-cochange-tools-on-postgres` merges (it edits `index_tree` too): locate code by the names
+`text_eligible`, `want_binary`, `desired_mode`, `store.manifest_get`.
 
 ## 1. Already implemented (on staging)
 - [x] 1.1 Stat-only walk with online-only detection — `tree_index.py` (`_is_online_only` :117, `iter_dir_groups` :127); tests `packages/core/tests/test_tree_index.py:53-93`.
@@ -45,11 +46,19 @@ default. A user who wants them can still run `--content --content-types txt,md`
     with no online-only file, and a run with `--no-text-content`, have no
     `text-skipped-online-only` in `result.output`).
   - `test_index_tree_content_pass_reads_online_only_text_on_request`: scenario "The
-    budgeted content pass can still fetch it on request" (`--content
+    budgeted content pass can still fetch it on request (fresh DB)" (`--content
     --content-types txt`; `cloud.txt` manifest `index_mode == "content"`; no
     `text-skipped-online-only` row).
+  - `test_index_tree_content_run_upgrades_metadata_row_without_force`: scenarios
+    "Default run, then a content run, upgrades the file without --force" and "A content
+    row is not downgraded by a later default run" (same `cli_db`; run default, then
+    `--content --content-types txt`, then default again; assert the `unchanged` row
+    values `1` then `2`, `cloud.txt` read once by the spy, one `context` memory per
+    path). These pass against existing code (the check already behaves so); they pin it.
+  - `test_index_tree_empty_tree_has_no_online_only_row`: scenario "Empty tree".
+  - Budget-exhausted scenario: one test with `--max-download-mb 0.000001`.
   Run `.venv/bin/pytest -q --no-cov packages/cli/tests/test_cli.py -k online_only`;
-  the first two must fail before 2.2.
+  the first two must fail before 2.2; the upgrade/downgrade and empty-tree tests pass before and after.
 - [ ] 2.2 The guard, in `index_tree` (`cli/main.py:613-617`): split the eligibility
   into `text_candidate = text_content and entry.suffix in TEXT_SUFFIXES and
   (text_max_bytes is None or entry.size <= text_max_bytes)` and
@@ -65,5 +74,7 @@ default. A user who wants them can still run `--content --content-types txt,md`
   Update the `--text-content` help text and the `index_tree` docstring to say
   online-only files are skipped by this pass.
 - [ ] 2.4 Gates: `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
-  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate), and
-  `npx --yes @fission-ai/openspec@1.14.1 validate add-recurrent-tree-indexing --strict`.
+  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). The OpenSpec
+  validation needs Node and network, so it is not a task gate: the author runs
+  `openspec validate add-recurrent-tree-indexing --strict` on the spec files before the
+  unit starts.

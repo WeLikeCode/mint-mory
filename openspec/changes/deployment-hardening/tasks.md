@@ -60,8 +60,9 @@ oauth2-proxy pods are selected by the application selectors, and CI never render
 
 ## 5. Remaining gap (review of 2026-10-15)
 
-The L4 gates are ruff, mypy and pytest; `helm`, `docker` and the network are not
-guaranteed on the runner. Every check below therefore has a pytest test that needs
+The L4 gates (`.l4/config.yaml`: `uv sync --frozen ...` setup creating `.venv`, then ruff, mypy,
+pytest) are all that run on the runner; `helm`, `docker`, Node and the network are not
+guaranteed there, and the `.venv/bin/...` paths exist because the setup gate creates `.venv`. Every check below therefore has a pytest test that needs
 none of them. Put the tests in a NEW file `tests/integration/test_deploy_hardening.py`
 (`tests/integration` is in `[tool.pytest.ini_options] testpaths`; a new top-level
 test folder would NOT be collected). Find the repository root with
@@ -93,6 +94,11 @@ function is annotated `-> None` (ruff `ANN`).
     checks of the scenario "The template wiring is checked without helm". Extract a
     define body with
     `re.search(r'\{\{-? define "NAME" -?\}\}(.*?)\{\{-? end -?\}\}', text, re.DOTALL)`.
+  - `test_bump_main_rewrites_chart_and_pyprojects` and
+    `test_bump_chart_fails_without_double_quoted_app_version` go in
+    `tests/integration/test_bump_version.py` (see 5.6).
+  - `test_readme_documents_release_tags_and_upgrade_note` (fails today): the scenario
+    "The README documents the tag scheme and the upgrade step".
   - `test_app_selectors_unchanged` (passes today, guard): the scenario "The
     application selectors are unchanged".
   - `test_ci_validates_oauth2proxy_render` (fails today): the scenario "The CI step
@@ -152,22 +158,46 @@ function is annotated `-> None` (ruff `ANN`).
   (Without the three OIDC values `templates/oauth2proxy-secret.yaml` calls `fail`;
   without `ingress.enabled=true` the auth-url/auth-signin annotations are not
   rendered.) Then tick 4.1.
-- [ ] 5.6 `scripts/bump_version.py`: add `bump_chart_text(text: str, new_version: str)
-  -> str` that rewrites only the line matching `^appVersion: "[^"]+"` (re.M, count=1)
-  to `appVersion: "<new_version>"`, and make `main()` apply it to
-  `deploy/helm/mintmory/Chart.yaml` (print `bumped deploy/helm/mintmory/Chart.yaml`).
-  Test first in `tests/integration/test_bump_version.py`:
-  `test_bump_chart_rewrites_app_version_only` — on
-  `'apiVersion: v2\nname: mintmory\nversion: 0.1.0\nappVersion: "0.1.0"\n'` with
-  `"0.2.0"` the result contains `appVersion: "0.2.0"` and still contains the line
-  `version: 0.1.0`.
+- [ ] 5.6 `scripts/bump_version.py` (today: `PYPROJECTS`, `bump_text(text, new_version)`,
+  `main()` reading `sys.argv`, root `Path(__file__).parents[1]`). Add
+  `bump_chart_text(text: str, new_version: str) -> str` that rewrites only the first line
+  matching `^appVersion: "[^"]+"` (re.M, count=1) to `appVersion: "<new_version>"` and raises
+  `ValueError("appVersion line not found")` when no line matches (single-quoted, unquoted or
+  absent). Change `main` to `main(argv: list[str] | None = None, root: Path | None = None)`
+  (`argv` defaults to `sys.argv[1:]`, `root` to `Path(__file__).parents[1]`; the `__main__`
+  call stays `main()`). `main` first computes the new text of the five pyprojects and of
+  `deploy/helm/mintmory/Chart.yaml`, and only then writes them all, printing
+  `bumped <rel>` per file (the chart line is `bumped deploy/helm/mintmory/Chart.yaml`); a
+  `ValueError` becomes `sys.exit("deploy/helm/mintmory/Chart.yaml: appVersion line not found")`
+  with nothing written. Tests first in `tests/integration/test_bump_version.py` (it loads the
+  script by path, as the existing tests do; use `tmp_path`, `capsys`, `pytest.raises`):
+  - `test_bump_chart_rewrites_app_version_only`: on
+    `'apiVersion: v2\nname: mintmory\nversion: 0.1.0\nappVersion: "0.1.0"\n'` with `"0.2.0"`
+    the result is `'apiVersion: v2\nname: mintmory\nversion: 0.1.0\nappVersion: "0.2.0"\n'`.
+  - `test_bump_chart_fails_without_double_quoted_app_version`: for the texts
+    `'appVersion: 0.1.0\n'`, `"appVersion: '0.1.0'\n"` and `'name: x\n'`,
+    `bump_chart_text(text, "0.2.0")` raises `ValueError`.
+  - `test_bump_main_rewrites_chart_and_pyprojects`: build under `tmp_path` the five
+    `packages/<name>/pyproject.toml` files (copy of `SAMPLE`) and
+    `deploy/helm/mintmory/Chart.yaml` (the text above); `main(["0.2.0"], root=tmp_path)`;
+    Chart.yaml now has `appVersion: "0.2.0"` and still `version: 0.1.0`; captured stdout
+    contains the line `bumped deploy/helm/mintmory/Chart.yaml`.
+  - `test_bump_main_writes_nothing_when_chart_unparseable` (failure case): same tree but
+    Chart.yaml is `'appVersion: 0.1.0\n'`; `main(["0.2.0"], root=tmp_path)` raises `SystemExit`
+    whose message contains `appVersion`; every pyproject still contains `version = "0.1.0"`.
+  - `test_bump_main_rejects_bad_version`: `main(["1.2"], root=tmp_path)` raises `SystemExit`
+    with `usage: bump_version.py X.Y.Z`.
 - [ ] 5.7 Docs. `deploy/helm/mintmory/README.md:9-11`: say CI publishes on pushes to
   the default branch (`main`, `sha-<sha>`, `latest`) and on release tags `vX.Y.Z` as
   the image tag `X.Y.Z` (e.g. `0.1.0`, the chart's default `appVersion`); `latest`
   tracks only the default branch. Add to the oauth2proxy section: oauth2-proxy pods
   now carry `app.kubernetes.io/name: <chart name>-oauth2-proxy`; a release installed
   earlier in `oauth2proxy` mode must delete its `<release>-mintmory-oauth2-proxy`
-  Deployment before `helm upgrade`, because a Deployment selector is immutable.
-- [ ] 5.8 Gates: `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
-  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate), and
-  `npx --yes @fission-ai/openspec@1.14.1 validate deployment-hardening --strict`.
+  Deployment before `helm upgrade`, because a Deployment selector is immutable. The check is the
+  test `test_readme_documents_release_tags_and_upgrade_note` (spec scenario "The README
+  documents the tag scheme and the upgrade step").
+- [ ] 5.8 Gates (the L4 gates only): `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). Do NOT run `npx`/`openspec`
+  here: it needs Node and network, which the runner and `ci.yml` do not provide; the spec files
+  are validated with `openspec validate deployment-hardening --strict` by the author before the
+  unit starts (see design.md Decisions).
