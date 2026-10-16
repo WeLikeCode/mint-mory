@@ -19,15 +19,31 @@ traces render in any OTel-aware backend.
 
 from __future__ import annotations
 
+import importlib.util
+import logging
+import os
+import socket
+import sys
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from mintmory.core.config import OTelSettings
 
 _F = TypeVar("_F", bound=Callable[..., Any])
+
+_LOGGER = logging.getLogger("mintmory.telemetry")
+
+_DEFAULT_ENDPOINT = "http://localhost:4318"
+_ENDPOINT_VARIABLES = (
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+)
+_KNOWN_EXPORTERS = ("otlp", "console", "none")
 
 # Lazily-populated handles; all None == no-op shim.
 _enabled: bool = False
@@ -53,60 +69,93 @@ def is_enabled() -> bool:
     return _enabled
 
 
+def _sdk_disabled() -> bool:
+    """``OTEL_SDK_DISABLED`` (any case) is the standard kill switch."""
+    return os.environ.get("OTEL_SDK_DISABLED", "").strip().lower() == "true"
+
+
+def _signal_exporter(settings: OTelSettings, signal: str) -> str:
+    """One signal's exporter: ``OTEL_<SIGNAL>_EXPORTER`` wins over ``MINTMORY_OTEL_EXPORTER``."""
+    raw = os.environ.get(f"OTEL_{signal}_EXPORTER", "").strip()
+    if raw:
+        for item in raw.split(","):
+            candidate = item.strip().lower()
+            if candidate in _KNOWN_EXPORTERS:
+                return candidate
+    return settings.exporter
+
+
 def init_telemetry(settings: OTelSettings | None = None) -> bool:
     """Idempotent. Returns True if real OTel export is active afterwards.
 
-    No-op (returns False) when ``settings.enabled`` is false or the optional
-    ``opentelemetry`` SDK is not installed.
+    No-op (returns False) when telemetry is switched off, no collector answers
+    ``auto``, or the optional ``opentelemetry`` SDK is not installed.
     """
     global _enabled, _tracer, _meter
     if settings is None:
         from mintmory.core.config import OTelSettings
 
         settings = OTelSettings()
-    if settings.enabled != "true":
-        return False
     if _enabled:
         return True
-    try:
-        from opentelemetry import metrics, trace
-        from opentelemetry.sdk.metrics import MeterProvider
-        from opentelemetry.sdk.metrics.export import (
-            ConsoleMetricExporter,
-            PeriodicExportingMetricReader,
-        )
-        from opentelemetry.sdk.resources import Resource
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-    except ImportError:
-        import structlog
-
-        structlog.get_logger(__name__).warning(
-            "otel_enabled_but_sdk_missing", hint="pip install 'mintmory-core[otel]'"
-        )
+    if settings.enabled == "false" or _sdk_disabled():
         return False
 
+    traces_exporter = _signal_exporter(settings, "TRACES")
+    metrics_exporter = _signal_exporter(settings, "METRICS")
+    if traces_exporter == "none" and metrics_exporter == "none":
+        return False
+
+    has_endpoint = any(os.environ.get(name) for name in _ENDPOINT_VARIABLES)
+    if (
+        not has_endpoint
+        and settings.enabled != "true"
+        and not _endpoint_reachable(_DEFAULT_ENDPOINT)
+    ):
+        return False
+
+    if not _sdk_available():
+        if settings.enabled == "true" or has_endpoint:
+            _LOGGER.warning(
+                "OpenTelemetry export requested but the SDK is missing; "
+                "install 'mintmory-core[otel]'"
+            )
+        return False
+
+    from opentelemetry import metrics, trace
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import (
+        ConsoleMetricExporter,
+        PeriodicExportingMetricReader,
+    )
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+
     resource = Resource.create({"service.name": settings.service_name or "mintmory"})
-    if settings.exporter == "otlp":
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    if traces_exporter != "none":
+        if traces_exporter == "otlp":
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-        span_exporter: Any = OTLPSpanExporter()
-    else:
-        span_exporter = ConsoleSpanExporter()
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(BatchSpanProcessor(span_exporter))
-    trace.set_tracer_provider(provider)
-    if settings.exporter == "otlp":
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+            span_exporter: Any = OTLPSpanExporter()
+        else:
+            span_exporter = ConsoleSpanExporter(out=sys.stderr)
+        provider = TracerProvider(resource=resource)
+        provider.add_span_processor(BatchSpanProcessor(span_exporter))
+        trace.set_tracer_provider(provider)
+        _tracer = trace.get_tracer("mintmory")
 
-        metric_exporter: Any = OTLPMetricExporter()
-    else:
-        metric_exporter = ConsoleMetricExporter()
-    reader = PeriodicExportingMetricReader(metric_exporter)
-    metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
+    if metrics_exporter != "none":
+        if metrics_exporter == "otlp":
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 
-    _tracer = trace.get_tracer("mintmory")
-    _meter = metrics.get_meter("mintmory")
+            metric_exporter: Any = OTLPMetricExporter()
+        else:
+            metric_exporter = ConsoleMetricExporter(out=sys.stderr)
+        reader = PeriodicExportingMetricReader(metric_exporter)
+        metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
+        _meter = metrics.get_meter("mintmory")
+
     _enabled = True
     return True
 
@@ -174,11 +223,23 @@ def reset_telemetry() -> None:
 
 
 def _sdk_available() -> bool:
-    raise NotImplementedError
+    """Whether the optional ``opentelemetry.sdk`` is installed, without importing it."""
+    return importlib.util.find_spec("opentelemetry.sdk") is not None
 
 
 def _endpoint_reachable(url: str, timeout: float = 0.1) -> bool:
-    raise NotImplementedError
+    """A quick TCP probe: True when something answers at ``url`` within ``timeout``."""
+    parsed = urlparse(url)
+    if not parsed.hostname:
+        return False
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
+    try:
+        with socket.create_connection((parsed.hostname, port), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def shutdown_telemetry(timeout_s: float = 2.0) -> None:

@@ -16,7 +16,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   only reader of `OTelSettings.enabled` on `staging`, so no caller breaks on the string.
 
 ## 3. Enablement and exporters (`telemetry.py`)
-- [ ] 3.1 Tests for "Telemetry enablement modes" (run "Auto with no collector stays off" in a `sys.executable -c`
+- [x] 3.1 Tests for "Telemetry enablement modes" (run "Auto with no collector stays off" in a `sys.executable -c`
   subprocess, since pytest already imported the SDK) and "Exporter selection..." (`capfd`).
 - [ ] 3.2 Helpers part 4 reuses: `_DEFAULT_ENDPOINT = "http://localhost:4318"`; `_sdk_available()`
   (`importlib.util.find_spec("opentelemetry.sdk") is not None`); `_endpoint_reachable(url, timeout=0.1)`
