@@ -10,15 +10,15 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | behaviour |  | _sdk_available must catch ImportError and ValueError from |
-| FB-002 | submitted | behaviour |  | _build_meter_provider must wrap the configured metric exporter with |
+| FB-001 | taken | behaviour |  | _sdk_available must catch ImportError and ValueError from |
+| FB-002 | taken | behaviour |  | _build_meter_provider must wrap the configured metric exporter with |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: _sdk_available must catch ImportError and ValueError from
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-10-16T16:54:38Z
@@ -32,12 +32,13 @@ _sdk_available must catch ImportError and ValueError from importlib.util.find_sp
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into add-telemetry-runtime-fix-1
 
 ---
 
 ## FB-002: _build_meter_provider must wrap the configured metric exporter with
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-10-16T16:54:38Z
@@ -51,3 +52,4 @@ _build_meter_provider must wrap the configured metric exporter with _GuardedMetr
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into add-telemetry-runtime-fix-1
