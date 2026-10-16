@@ -35,3 +35,4 @@
 {"at":"2026-10-16T04:48:54Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd","status":"pass","type":"unit.postcheck","unit":"openspec:fix-markdown-cleanup-fences"}
 {"at":"2026-10-16T04:48:54Z","revision":"e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd","type":"unit.integrated","unit":"openspec:fix-markdown-cleanup-fences"}
 {"at":"2026-10-16T04:48:54Z","attempt":1,"cost_usd":0.653388,"runs":1,"type":"plan.charged","unit":"openspec:fix-markdown-cleanup-fences"}
+{"at":"2026-10-16T04:49:29Z","batch":"warm-up","profile":"none","revision":"7942c5591c0bcd29f2f50fabefeea04ea99fe9f9","type":"batch.accepted"}
