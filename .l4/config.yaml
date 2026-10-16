@@ -63,3 +63,5 @@ yolo:
   hold:                     # no agent work for these until a plan lists them (L4 0.4.1 yolo.hold; replaces the backlog plan)
   - openspec:add-image-understanding
   - openspec:add-llm-vision-provider
+clarifier:
+  answer_by_agents: true    # the owner lets the planning agent answer questions with `l4 questions` (including one that unfreezes a test-support file); each answer is a commit on the unit branch
