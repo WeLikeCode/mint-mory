@@ -664,3 +664,130 @@ def test_clean_markdown_with_fences_idempotent() -> None:
         once = clean_markdown(text)
         assert clean_markdown(once) == once
     assert clean_markdown("text\n\n\n\n```\ny  \n```") == "text\n\n```\ny  \n```"
+
+
+# ---------------------------------------------------------------------------
+# extract_markdown call sites — dispatch and suffix tables unchanged (task 2.3)
+# The cleaner is reached from three call sites (text suffix, convertible via
+# markitdown, unknown suffix). These pin that the call sites still route the
+# file text through the fence-aware ``clean_markdown`` and that the suffix
+# tables keep their frozen values; ``extract_markdown`` itself is untouched.
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_extract_markdown_text_path_keeps_fenced_content(tmp_path: Path) -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    p = tmp_path / "doc.md"
+    p.write_text(text, encoding="utf-8")
+    result = extract_markdown(p)
+    assert result == ExtractResult(text=expected, method="text", path=p)
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_extract_markdown_text_path_normalises_crlf_inside_fence(tmp_path: Path) -> None:
+    p = tmp_path / "crlf.md"
+    p.write_bytes(b"```\r\nx  \r\n```")
+    assert extract_markdown(p) == ExtractResult(text="```\nx  \n```", method="text", path=p)
+
+
+@pytest.mark.l4("C-99501760")
+def test_extract_markdown_text_path_fence_grammar(tmp_path: Path) -> None:
+    cases = [
+        ("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->", "~~~\n```\n<!-- k -->\n~~~"),
+        ("````\n```\n<!-- k -->\n````\n<!-- gone -->", "````\n```\n<!-- k -->\n````"),
+        ("   ```\n<!-- k -->\n   ```", "   ```\n<!-- k -->\n   ```"),
+        ("    ```\n<!-- x -->", "    ```"),
+    ]
+    for i, (text, expected) in enumerate(cases):
+        p = tmp_path / f"grammar{i}.md"
+        p.write_text(text, encoding="utf-8")
+        assert extract_markdown(p) == ExtractResult(text=expected, method="text", path=p)
+
+
+@pytest.mark.l4("C-637d6041")
+def test_extract_markdown_text_path_unterminated_fence_runs_to_end(tmp_path: Path) -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    p = tmp_path / "unterminated.md"
+    p.write_text(text, encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text=text, method="text", path=p)
+
+
+@pytest.mark.l4("C-279cc124")
+def test_extract_markdown_text_path_comment_split_by_fence_survives(tmp_path: Path) -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    p = tmp_path / "split.md"
+    p.write_text(text, encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text=text, method="text", path=p)
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_extract_markdown_text_path_unterminated_fence_keeps_trailing_blanks(
+    tmp_path: Path,
+) -> None:
+    text = "a\n```\nx\n\n\n"
+    p = tmp_path / "trailing.md"
+    p.write_text(text, encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text=text, method="text", path=p)
+
+
+@pytest.mark.l4("C-202c649c")
+def test_extract_markdown_text_path_blank_run_before_fence_collapses(tmp_path: Path) -> None:
+    p = tmp_path / "blanks.md"
+    p.write_text("text\n\n\n\n```\ny\n```", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text="text\n\n```\ny\n```", method="text", path=p)
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_extract_markdown_text_path_comment_exposing_opener_needs_one_pass(
+    tmp_path: Path,
+) -> None:
+    p = tmp_path / "expose.md"
+    p.write_text("<!-- c -->```\n<!-- x -->\n\n\n\ny  ", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text="```\n\ny", method="text", path=p)
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_extract_markdown_text_path_second_pass_reaches_fixed_point(tmp_path: Path) -> None:
+    p = tmp_path / "second.md"
+    p.write_text("<!-- c -->```\n```\n<!-- k -->  \n```", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text="```\n```\n\n```", method="text", path=p)
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_extract_markdown_text_path_fence_cleanup_is_idempotent(tmp_path: Path) -> None:
+    p = tmp_path / "idem.md"
+    p.write_text("text\n\n\n\n```\ny  \n```", encoding="utf-8")
+    once = extract_markdown(p)
+    assert once == ExtractResult(text="text\n\n```\ny  \n```", method="text", path=p)
+    p2 = tmp_path / "idem2.md"
+    p2.write_text(once.text, encoding="utf-8")
+    assert extract_markdown(p2).text == once.text
+
+
+@pytest.mark.l4("C-0c0ba143")
+def test_extract_markdown_unknown_suffix_path_keeps_fenced_content(tmp_path: Path) -> None:
+    p = tmp_path / "data.weird"
+    p.write_text("before <!-- gone -->\n\n```\ncode   \n```\n", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(
+        text="before\n\n```\ncode   \n```", method="text", path=p
+    )
+
+
+@pytest.mark.l4("C-0c0ba143")
+def test_extract_markdown_markitdown_path_keeps_fenced_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _inject_fake_markitdown(monkeypatch, "Intro <!-- drop -->text\n\n```\nkeep   \n```\n")
+    p = tmp_path / "report.docx"
+    p.write_bytes(b"PK\x03\x04 fake docx bytes")
+    assert extract_markdown(p, convert=True) == ExtractResult(
+        text="Intro text\n\n```\nkeep   \n```", method="markitdown", path=p
+    )

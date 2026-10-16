@@ -71,7 +71,7 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
   Keep `_BLANK_RUN_RE` only if still used (ruff F841/F401 otherwise; it is a module
   constant, so remove it if unused). Update the docstring and the module docstring
   sentence (:10-12) to say fenced code blocks are copied unchanged.
-- [ ] 2.3 Do not change `extract_markdown`, the suffix tables or the call sites.
+- [x] 2.3 Do not change `extract_markdown`, the suffix tables or the call sites.
 
 ## 3. Gates
 - [ ] 3.1 The existing `test_conversion.py` tests and the ingest/index-tree CLI tests
