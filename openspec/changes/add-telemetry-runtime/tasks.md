@@ -18,7 +18,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
 ## 3. Enablement and exporters (`telemetry.py`)
 - [x] 3.1 Tests for "Telemetry enablement modes" (run "Auto with no collector stays off" in a `sys.executable -c`
   subprocess, since pytest already imported the SDK) and "Exporter selection..." (`capfd`).
-- [ ] 3.2 Helpers part 4 reuses: `_DEFAULT_ENDPOINT = "http://localhost:4318"`; `_sdk_available()`
+- [x] 3.2 Helpers part 4 reuses: `_DEFAULT_ENDPOINT = "http://localhost:4318"`; `_sdk_available()`
   (`importlib.util.find_spec("opentelemetry.sdk") is not None`); `_endpoint_reachable(url, timeout=0.1)`
   (`socket.create_connection`, port 443 for `https` else 80 when absent, closed at once, False on `OSError` or
   `ValueError`); `_resolve_state(settings)` -> `off` | `sdk missing` | `export` | `no collector`; `_traces_endpoint()`

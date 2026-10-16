@@ -248,9 +248,21 @@ def shutdown_telemetry(timeout_s: float = 2.0) -> None:
 
 def _resolve_state(settings: OTelSettings) -> str:
     """The single on/off decision: ``off`` | ``sdk missing`` | ``export`` | ``no collector``."""
-    raise NotImplementedError
+    if settings.enabled == "false" or _sdk_disabled():
+        return "off"
+    if not _sdk_available():
+        return "sdk missing"
+    if settings.enabled != "true":
+        has_endpoint = any(os.environ.get(name) for name in _ENDPOINT_VARIABLES)
+        if not has_endpoint and not _endpoint_reachable(_DEFAULT_ENDPOINT):
+            return "no collector"
+    return "export"
 
 
 def _traces_endpoint() -> str:
     """The OTLP/HTTP traces URL: the traces variable, else the shared endpoint plus a path."""
-    raise NotImplementedError
+    traces_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "").strip()
+    if traces_endpoint:
+        return traces_endpoint
+    shared_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip() or _DEFAULT_ENDPOINT
+    return f"{shared_endpoint}/v1/traces"
