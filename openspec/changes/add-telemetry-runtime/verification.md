@@ -1,4 +1,4 @@
-# Verification: openspec:add-telemetry-runtime: NEEDS_HUMAN (round 1)
+# Verification: openspec:add-telemetry-runtime: FAIL (round 2)
 
 traceability: 29/29 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 29/29 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.3 | base merged: staging@cbc196ba65 as 023f56e7db (4 commits) |
-| 1 | integrity | ok | 0.8 | 7 sub-checks (+2 unfrozen by human answers); scope: 41 changed file(s) |
-| 2 | build | ok | 0.7 |  |
-| 3 | tests | ok | 46.3 |  |
-| 4 | traceability | ok | 0.1 | 29/29 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 3.5 | 29/29 criteria judged by jev |
-| 9 | judge | ok | 24.7 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
@@ -190,6 +190,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-59c09ecd | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-836e8777 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-004 reject H-e0757174 by human: Two spec violations in the production code, both reproduced by a reviewer; the gates passed because the tests stub these code paths. (1) init_telemetry() raises ModuleNotFoundError when the opentelemetry package is not installed: _sdk_available calls importlib.util.find_spec("opentelemetry.sdk"), wh...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -227,10 +231,12 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 ## Findings
 
 - [minor, judge] _Scrubbing and guard not SDK subclasses (criterion C-1457e823): Spec/task says _Scrubbing(SpanExporter) but it is a plain class; works via duck typing.
+- [major, human] Rejected hold: the diff is longer than 120000 characters: the judge saw only the start: A hold the human rejected without a fix the harness can derive. Hold: the diff is longer than 120000 characters: the judge saw only the start [rejected by human (Two spec violations in the production code, both reproduced by a reviewer; the gates passed because the tests stub these code paths. (1) init_telemetry() raises ModuleNotFoundError when the opentelemetry package is not installed: _sdk_available calls importlib.util.find_spec("opentelemetry.sdk"), which raises when the parent package is missing (telemetry.py around 668-670, reached from _resolve_state and init_telemetry outside the try...
 
-## Needs a human
+## Fix unit
 
-- the diff is longer than 120000 characters: the judge saw only the start
+Escalated: no finding of this round can be converted into a fix task
+- not converted: H-e0757174: a rejected hold with no reason, or of a kind no fix can be derived from: the human decides it
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
