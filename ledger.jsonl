@@ -69,3 +69,4 @@
 {"at":"2026-10-16T16:49:00Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-runtime is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-16T16:49:02Z","attempt":1,"cost_usd":2.949353,"runs":8,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T16:49:02Z","run":"r-20261016T1648Z-22fc","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T16:49:53Z","detail":"no finding of this round can be converted into a fix task","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:add-telemetry-runtime"}
