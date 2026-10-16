@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard |
-| Q-002 | open | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
+| Q-002 | answered | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
 <!-- l4:index:end -->
 
 ---
@@ -43,7 +43,7 @@ Edit `conftest.py`: add `os.environ.setdefault("MINTMORY_OTEL_ENABLED", "false")
 
 ## Q-002: packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-16T05:24Z by deepseek, run r-20261016T0514Z-60f2, task 1.1
@@ -62,3 +62,4 @@ Edit `packages/core/tests/test_telemetry_suite_defaults.py`: replace the body of
 
 ### Answer
 <!-- write below this line -->
+Keep the red test exactly as it is and take neither option: both weaken it. Task 1.1 itself names the root support file that must get the MINTMORY_OTEL_ENABLED default and the autouse reset fixture, and from harness 0.4.2 on the green step may change a support file that the reviewed task text names. Make that change in green as task 1.1 says.
