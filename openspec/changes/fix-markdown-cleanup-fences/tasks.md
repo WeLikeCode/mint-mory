@@ -4,7 +4,7 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
 `packages/core/tests/test_conversion.py`. Line numbers are as of `staging` a08aee3.
 
 ## 1. Failing tests first
-- [ ] 1.1 In `test_conversion.py`, after `test_clean_markdown_is_idempotent` (:97-107),
+- [x] 1.1 In `test_conversion.py`, after `test_clean_markdown_is_idempotent` (:97-107),
   add one test per scenario of `specs/ingestion/spec.md` (10 scenarios, 10 tests, listed
   below by scenario name), with the exact inputs and expected strings written there
   (Python string literals; the ``` fences are plain characters inside the strings):
