@@ -1,4 +1,4 @@
-# Verification: openspec:add-telemetry-runtime: NEEDS_HUMAN (round 6)
+# Verification: openspec:add-telemetry-runtime: PASS (round 7)
 
 traceability: 33/33 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 33/33 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 1.1 | base staging@f222a94133 contained |
-| 1 | integrity | ok | 1.1 | 7 sub-checks (+2 unfrozen by human answers); scope: 82 changed file(s) |
-| 2 | build | ok | 0.8 |  |
-| 3 | tests | ok | 54.1 |  |
-| 4 | traceability | ok | 0.2 | 33/33 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 6) |
+| 1 | integrity | reused | 0.0 | reused (round 6) |
+| 2 | build | reused | 0.0 | reused (round 6) |
+| 3 | tests | reused | 0.0 | reused (round 6) |
+| 4 | traceability | reused | 0.0 | reused (round 6) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 3.3 | 32/33 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 22.2 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 6) |
+| 8 | s1 judge | reused | 0.0 | reused (round 6) |
+| 9 | judge | reused | 0.0 | reused (round 6) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -239,6 +239,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-1d1f7ab8 | ok | 0.820 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-2261ae94 | unavailable | - | - | jev | the state does not fit 450 tokens even without the excerpt |
 
+## Human verdicts
+
+- Q-005 accept H-e0757174 by human: An independent reviewer read the full production diff (telemetry.py, config.py; the judge saw only its start) against every requirement of the spec and reproduced each promise: off unless configured, auto finds a live Jaeger and exports traces, exception text scrubbed, console output on stderr only,...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -283,14 +287,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 ## Feedback
 
-- FB-001: judged addressed, pending a PASS round: telemetry.py _sdk_available catches (ImportError, ValueError); test_telemetry_sdk_probe tests pass
-- FB-002: judged addressed, pending a PASS round: telemetry.py _build_meter_provider wraps via _guarded_metric_exporter_class()(exporter); api test unwraps _inner
-- FB-003: judged addressed, pending a PASS round: telemetry.py init_telemetry: `with _shutdown_lock: if _enabled: return True`
-- FB-004: judged addressed, pending a PASS round: config.py _TRUE_SPELLINGS/_FALSE_SPELLINGS in _normalise_enabled
-
-## Needs a human
-
-- the diff is longer than 120000 characters: the judge saw only the start
+- FB-001: addressed at dc31486655: telemetry.py _sdk_available catches (ImportError, ValueError); test_telemetry_sdk_probe tests pass
+- FB-002: addressed at dc31486655: telemetry.py _build_meter_provider wraps via _guarded_metric_exporter_class()(exporter); api test unwraps _inner
+- FB-003: addressed at dc31486655: telemetry.py init_telemetry: `with _shutdown_lock: if _enabled: return True`
+- FB-004: addressed at dc31486655: config.py _TRUE_SPELLINGS/_FALSE_SPELLINGS in _normalise_enabled
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
