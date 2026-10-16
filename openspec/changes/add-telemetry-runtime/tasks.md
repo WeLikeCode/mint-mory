@@ -64,7 +64,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   `uuid4().hex`; overlay the parsed keys, then the computed `service.name`. No `sampler` argument to `TracerProvider`.
 
 ## 7. Existing tests this change affects
-- [ ] 7.1 `packages/api/tests/test_health_and_otel.py`: `test_telemetry_default_off_returns_false` (line 78) uses
+- [x] 7.1 `packages/api/tests/test_health_and_otel.py`: `test_telemetry_default_off_returns_false` (line 78) uses
   `OTelSettings(enabled="false")` (the new `auto` default would probe); drop the comment that CI lacks the SDK; the
   exporter-type test (lines 101-141) checks `captured[-1]._inner` and calls `telemetry.reset_telemetry()` instead of
   its `_reset()`. `OTelSettings(enabled=True, ...)` keeps working (normalised to `"true"`).
