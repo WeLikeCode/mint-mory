@@ -15,7 +15,8 @@ default it would no longer switch telemetry off; it also cannot set sampling.
   serves metrics to Prometheus. Ports, bind address and image tags are variables with defaults, documented in an
   `.env.example`. An optional profile `api` builds and runs the MintMory API from the repository's `Dockerfile`,
   wired to the collector. All images are pinned to exact versions.
-- `mintmory doctor` prints a telemetry row: mode, state, endpoint, whether the endpoint answers, service name.
+- `mintmory doctor` prints a telemetry row: mode, state, endpoint, whether the endpoint answers (or is invalid),
+  service name; the row never fails `doctor`.
 - Helm: `otel.enabled: false` renders `MINTMORY_OTEL_ENABLED: "false"`; `otel.sampler`, `otel.samplerArg` and
   `otel.resourceAttributes` set the standard variables.
 - `docs/OBSERVABILITY.md` section 4 becomes the user guide: modes, variables and their precedence, the local stack in
@@ -29,8 +30,7 @@ Grafana dashboards, alerting, log collection, and any change to application tele
 
 - New: `deploy/observability/compose.yaml`, `otel-collector.yaml`, `prometheus.yml`, `.env.example`, `README.md`.
 - Unchanged, verified on `staging`: the `Dockerfile` already runs `uv sync --frozen --no-dev --extra otel` (light, line 48)
-  and `... --extra otel --extra local` (full, line 46); a test pins it, and if it ever fails the fix is to restore
-  `--extra otel` on those lines.
+  and `... --extra otel --extra local` (full, line 46), its only two `uv sync` commands; a test pins it.
 - Changed: `packages/cli/src/mintmory/cli/main.py` (`doctor`), `packages/core/src/mintmory/core/telemetry.py` (a
   status function), `deploy/helm/mintmory/templates/configmap.yaml`, `values.yaml`, `values.schema.json`,
   `docs/OBSERVABILITY.md`, `README.md` (one pointer).
@@ -38,6 +38,7 @@ Grafana dashboards, alerting, log collection, and any change to application tele
   (the per-entry-point service names the guide lists), and on
   `add-telemetry-heavy-path-spans` and `add-telemetry-boundary-tracing`, whose spans and metrics
   (`mintmory.search.*`, `mintmory_search_latency_ms`, `gen_ai.chat`, `traceparent`) the guide documents and which also
-  edit `docs/OBSERVABILITY.md` section 4. It edits Helm files that
-  `deployment-hardening` does not (`configmap.yaml`, `values.yaml`, `values.schema.json`); rebase if that change merges
-  first.
+  edit `docs/OBSERVABILITY.md` section 4. Its Helm edits (the `otel`
+  keys of `configmap.yaml`, `values.yaml`, `values.schema.json`) do not overlap `deployment-hardening`, whose values
+  and schema work (`auth`, `image`) is already on `staging` and whose open tasks edit `_helpers.tpl`, CI, scripts and the
+  chart README; the merge order does not matter.

@@ -18,15 +18,15 @@ A trace is only "distributed" if it crosses process boundaries. Today it does no
 
 - A small ASGI middleware in the API: one SERVER span per request named `<METHOD> <route template>`, continuing the
   caller's W3C context, with the stable HTTP semantic-convention attributes (no raw path: paths such as
-  `/summaries/{concept}` carry content), status ERROR on 5xx, and the histogram `http.server.request.duration`
+  `/summaries/{concept}` carry content), failures marked with runtime's `mark_error`, and the histogram `http.server.request.duration`
   (seconds, with buckets suited to an API). Health endpoints are not traced. No new dependency: this is ~80 lines over
   `opentelemetry-api`, which the `otel` extra already installs.
 - MCP: MintMory relies on FastMCP's native tool-call span and does not add its own; tests pin that one span per tool
   call is exported, that core spans are its descendants, and that `_meta.traceparent` is continued, in both MCP
   servers.
 - Outbound: `gen_ai.chat` becomes a CLIENT span with `server.address` and `server.port`, and every outbound LLM and
-  embedding HTTP request carries `traceparent` (and `tracestate`, `baggage` when present) injected inside the client
-  span.
+  embedding HTTP request carries `traceparent` (and `tracestate` when present, never `baggage`, see `design.md`)
+  injected inside the span that wraps it.
 
 ## Non-goals
 
@@ -38,5 +38,7 @@ database drivers; recording request or tool arguments.
 
 - Code: new `packages/api/src/mintmory/api/telemetry_middleware.py`; `app.py`, `llm.py`, `embedder.py`, and
   `telemetry.py` (a span `kind` argument and header helpers); new MCP tests.
-- Depends on `add-telemetry-runtime` (test seam, global provider) and `add-telemetry-heavy-path-spans` (the
-  `mintmory.embed` span inside which embedding requests inject their headers).
+- Depends on `add-telemetry-runtime` (test seam, global provider, `mark_error`, scrubber) and
+  `add-telemetry-heavy-path-spans` (the `mintmory.embed` span inside which embedding requests inject their headers).
+  Not on `add-telemetry-entry-points`: the tests initialise telemetry themselves and the two units edit different
+  parts of `app.py` (`design.md`).

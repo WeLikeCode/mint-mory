@@ -10,7 +10,7 @@ MintMory's observability: OpenTelemetry traces and metrics from every entry poin
 Each search SHALL record child spans `mintmory.search.fts`, `.substring`, `.vector` and `.fusion` under `mintmory.search`, each with `mintmory.result_count`, and the histogram `mintmory.search.latency_ms` (unit `ms`) with `phase` = `fts`, `substring`, `vector`, `fusion`, `graph` (every search-around) or `total`. This SHALL live in code shared by both storage backends (`hybrid_search.py` and `telemetry.py`). Note anchoring SHALL NOT record search phases.
 
 #### Scenario: A search shows its phases
-- **GIVEN** telemetry with an in-memory span exporter and metric reader, and a SQLite store with three memories
+- **GIVEN** telemetry with an injected in-memory span exporter and metric reader, and a SQLite store with three memories
 - **WHEN** a search runs
 - **THEN** the four phase spans have the `mintmory.search` span as parent, and latency points exist for `fts`, `substring`, `vector`, `fusion` and `total`
 
@@ -23,8 +23,8 @@ Each search SHALL record child spans `mintmory.search.fts`, `.substring`, `.vect
 - **WHEN** its `search` runs with telemetry on
 - **THEN** the same four phase spans and the `total` point are recorded
 
-### Requirement: Search phases without work or with a failure
-A stage with nothing to do (no query embedding, substring search off, no match) SHALL still record its span with `mintmory.result_count` = 0. A stage that raises SHALL end its span with status ERROR, still record its latency point, and re-raise unchanged.
+### Requirement: Span helpers without work or with a failure
+A search stage with nothing to do (no query embedding, substring search off, no match) SHALL still record its span with `mintmory.result_count` = 0. When the code wrapped by any span helper of this change raises (`search_phase`, the embed decorator, `mintmory.convert`, `mintmory.vision.caption`, `command_span`), the helper SHALL mark its span with `telemetry.mark_error(span, <exception class name>)` from `add-telemetry-runtime`, still record its metric point if it has one, and re-raise the exception unchanged. Recording a metric point or attribute SHALL never raise into the caller.
 
 #### Scenario: A stage with nothing to do
 - **WHEN** a search runs without a query embedding
@@ -33,21 +33,26 @@ A stage with nothing to do (no query embedding, substring search off, no match) 
 #### Scenario: A failing stage
 - **GIVEN** `_fts_scores` patched to raise `RuntimeError`
 - **WHEN** a search runs
-- **THEN** the error propagates, the `mintmory.search.fts` span has status ERROR, and a `phase=fts` point is recorded
+- **THEN** the same `RuntimeError` propagates, the `mintmory.search.fts` span has status ERROR and `error.type=RuntimeError`, and a `phase=fts` point is recorded
+
+#### Scenario: A metric failure stays inside telemetry
+- **GIVEN** telemetry on and `telemetry.record_value` patched to raise `RuntimeError`
+- **WHEN** `HashingEmbedder().embed("a")` and a search run
+- **THEN** both return their normal results
 
 ### Requirement: Embedding spans and latency
-Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL record one `mintmory.embed` span (`mintmory.embed.provider`, `gen_ai.request.model` when known, `mintmory.embed.batch_size`, `mintmory.embed.dim`) and one `mintmory.embed.latency_ms` point (unit `ms`, `provider`, `model`).
+Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL record one `mintmory.embed` span (kind INTERNAL) with `mintmory.embed.provider` (the `create_embedder` name: `hashing`, `local`, `ollama`, `openai`, `fake`), `gen_ai.request.model` (the embedder's `model_name`, omitted when empty), `mintmory.embed.batch_size` and `mintmory.embed.dim`, and one `mintmory.embed.latency_ms` point (unit `ms`, attributes `provider` and `model`, `model` omitted when empty). A public method calling another (`FakeEmbedder.embed_batch` calls `embed`) SHALL record once.
 
 #### Scenario: Hashing embedder is traced
 - **WHEN** `HashingEmbedder().embed_batch(["a", "b"])` runs with telemetry on
-- **THEN** one `mintmory.embed` span with `mintmory.embed.batch_size` = 2 and `mintmory.embed.dim` = the embedder's dimension, and one latency point exist
+- **THEN** one `mintmory.embed` span with `mintmory.embed.provider=hashing`, `mintmory.embed.batch_size` = 2 and `mintmory.embed.dim` = the embedder's dimension, and one latency point exist
 
 #### Scenario: Network embedders name their model
 - **WHEN** `OllamaEmbedder` embeds one text against a local test HTTP server, and an `OpenAIEmbedder` built with `OpenAIEmbedder.__new__` and a stub client embeds one text
-- **THEN** each records one `mintmory.embed` span with `mintmory.embed.provider`, `gen_ai.request.model` and `mintmory.embed.dim`, and `LocalEmbedder.embed` and `.embed_batch` carry the same decorator (`__wrapped__`)
+- **THEN** each records one `mintmory.embed` span with `mintmory.embed.provider` (`ollama`, `openai`), `gen_ai.request.model` and `mintmory.embed.dim`, and `LocalEmbedder.embed` and `.embed_batch` carry the same decorator (`__wrapped__`)
 
 ### Requirement: CLI commands are traced end to end
-`add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), ending with status ERROR when the command raises or exits non-zero, and never for exit code 0. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed` from the counters of the same names that `index_tree` already keeps.
+`add`, `search`, `ingest`, `index-tree`, `dream`, `history backfill` and `history sync` SHALL each run inside a root span `mintmory.cli.<command>` (spaces become dots), marked with `mark_error` when the command raises or exits non-zero, never for exit code 0. `index-tree` SHALL set `mintmory.files.scanned`, `.added`, `.updated`, `.unchanged` and `.failed` from the counters `index_tree` already keeps (`scanned`, `added`, `updated`, `unchanged`, `failed`).
 
 #### Scenario: Command spans and counts
 - **GIVEN** telemetry with an in-memory exporter and a folder with two text files
@@ -56,49 +61,58 @@ Every public `embed` or `embed_batch` call of an embedder in `embedder.py` SHALL
 
 #### Scenario: A failing command is marked
 - **WHEN** `mintmory ingest` runs on a path that does not exist (Typer does not validate it: the body finds no files and raises `typer.Exit(code=1)`)
-- **THEN** the `mintmory.cli.ingest` span has status ERROR
+- **THEN** the `mintmory.cli.ingest` span has status ERROR and `error.type=Exit`
 
 ### Requirement: Indexing and conversion phases are traced
-`index-tree` SHALL record child spans `mintmory.index_tree.scan`, `mintmory.index_tree.prune` (with `--prune`) and `mintmory.index_tree.cochange` (when co-change runs), one `mintmory.convert` span per binary-document conversion (the `--content` pass through markitdown; the small plain-text pass records none) and one `mintmory.vision.caption` span per inline caption; `ingest` SHALL record one `mintmory.convert` span per converted file.
+Under `mintmory.cli.index-tree`, `index-tree` SHALL record `mintmory.index_tree.scan` around the walk over the roots (including the per-file co-change embeddings), `mintmory.index_tree.prune` around the `--prune` pass, and `mintmory.index_tree.cochange` around the post-walk co-change block, which runs only when co-change is on and at least two files were added or updated (`if run_cochange and len(changed_docs) >= 2:`); that span SHALL carry `mintmory.outcome=ok` and `mintmory.cochange.changesets` (the count `apply_changesets` returns), or `mintmory.outcome=unavailable` when `CoChangeUnavailable` is caught (no ERROR). Inside the walk it SHALL record one `mintmory.convert` span per binary conversion (the `extract_markdown` call when `want_binary` is true; the plain-text pass, `text_eligible` without `want_binary`, records none) and one `mintmory.vision.caption` span around each `captioner.describe(...)` call of the raster branch, which runs only when `vision.captioner_from_settings` returns a captioner (`MINTMORY_VISION_PROVIDER=llm`); SVG text and rasters queued for the agent record none. `ingest` SHALL record one `mintmory.convert` span per `extract_markdown` call. Both span kinds carry `mintmory.file.suffix`, `mintmory.file.size_bytes` and `mintmory.outcome` (`ok`, or `failed` on the `ConversionError` / `VisionError` the commands catch and count).
 
 #### Scenario: index-tree phases
-- **GIVEN** telemetry with an in-memory exporter and a folder with three text files
+- **GIVEN** telemetry with an in-memory exporter and a folder with three text files written at once
 - **WHEN** `mintmory index-tree --prune --cochange <folder>` runs
-- **THEN** the `mintmory.cli.index-tree` span has the children `mintmory.index_tree.scan`, `.prune` and `.cochange`, and no `mintmory.convert` span (the text files take the plain-text pass)
+- **THEN** `mintmory.cli.index-tree` has the children `mintmory.index_tree.scan`, `.prune` and `.cochange`, the last with `mintmory.outcome=ok` (three files in one folder and time block take the connected-components fallback, since `cochange_fallback_max_n` defaults to 8, so scikit-learn is not needed), and no `mintmory.convert` span exists
 
-#### Scenario: Conversion and caption spans
-- **GIVEN** `mintmory.core.conversion.extract_markdown` patched to return text, and `vision.captioner_from_settings` patched to return a fake captioner with `MINTMORY_VISION_PROVIDER=llm`
-- **WHEN** `mintmory ingest report.pdf` runs, `mintmory index-tree --content --content-types pdf <folder with report.pdf>` runs, and `mintmory index-tree --vision <folder with one PNG>` runs
-- **THEN** one `mintmory.convert` span (`mintmory.file.suffix` = `.pdf`) is a child of `mintmory.cli.ingest`, one is a descendant of the content run's `mintmory.index_tree.scan`, and one `mintmory.vision.caption` span is a descendant of the vision run's `mintmory.cli.index-tree`
+#### Scenario: No co-change span without co-change work
+- **WHEN** `mintmory index-tree --cochange` runs over a folder with one text file, and `--no-cochange` over three
+- **THEN** neither run exports a `mintmory.index_tree.cochange` span
+
+#### Scenario: Conversion spans
+- **GIVEN** `mintmory.core.conversion.extract_markdown` patched to return `ExtractResult(text="converted", method="markitdown", path=...)`
+- **WHEN** `mintmory ingest report.pdf` runs, and `mintmory index-tree --content --content-types pdf <folder with report.pdf>`
+- **THEN** one `mintmory.convert` span (`mintmory.file.suffix=.pdf`, `mintmory.outcome=ok`) is a child of `mintmory.cli.ingest`, and one is a descendant of the content run's `mintmory.index_tree.scan`
+
+#### Scenario: Inline caption span
+- **GIVEN** `MINTMORY_VISION_PROVIDER=llm`, `mintmory.core.llm.post_chat_completion` patched to return `{"choices": [{"message": {"content": "A caption."}}]}` (as `test_index_tree_vision_llm_mode_captions_raster_inline` in `packages/cli/tests/test_cli.py` does), and a folder with `photo.png` (`b"\x89PNG\r\n\x1a\n" + b"\x00" * 16`)
+- **WHEN** `mintmory index-tree <folder> --no-text-content --vision` runs, then the same over a fresh database with `MINTMORY_VISION_PROVIDER` unset
+- **THEN** the first run prints `images-described` and exports one `mintmory.vision.caption` span (`mintmory.file.suffix=.png`, `mintmory.outcome=ok`) under `mintmory.index_tree.scan`; the second prints `images-queued` and exports none
 
 ### Requirement: Worker threads keep the trace
-Work handed to thread pools in a traced operation (session preparation in history backfill and sync, the dream's concurrent summaries) SHALL run in a fresh copy of the caller's context per task.
+Work handed to thread pools in a traced operation (session preparation in history `backfill` and `sync`, the dream's concurrent summaries) SHALL run in a fresh copy of the caller's context per task.
 
 #### Scenario: Threads stay in the trace
 - **GIVEN** telemetry with an in-memory exporter
-- **WHEN** a history backfill of four sessions with `max_concurrency=4` and a span-opening fake distiller runs, and a full dream with summary concurrency 2 and a span-opening fake summarizer runs
-- **THEN** every worker span has its operation's trace id and the backfill report has no errors
+- **WHEN** inside a test span `root-a`, `backfill(..., max_concurrency=4)` runs, and then `sync(..., max_concurrency=4)` into a second, empty history database, each over four sessions (the stub adapter of `test_backfill_concurrent_no_data_loss` in `packages/core/tests/test_history_ingest.py`) with a fake distiller that opens span `fake.distill`; and inside a test span `root-b`, `DreamingEngine(store, summarizer=fake, summary_settings=SummarySettings(concurrency=2, min_memories=2)).run_full()` runs over four memories (two quoting `"alpha-x"`, two quoting `"beta-y"`, so at least two concepts), the fake summarizer opening span `fake.summarize`
+- **THEN** every `fake.distill` span has the trace id of `root-a`, every `fake.summarize` span that of `root-b`, and the backfill and sync reports have `errors == 0`
 
 ### Requirement: Memory counters
-Adding a memory SHALL increment `mintmory.memories.added` with `category`, through one decorator shared by both backends' `add_memory`.
+Adding a memory SHALL increment `mintmory.memories.added` with `category` (the `MemoryCategory` value, e.g. `fact`), through one decorator shared by both backends' `add_memory`.
 
 #### Scenario: Counter by category
 - **WHEN** two `fact` memories and one `skill` memory are added to a SQLite store with telemetry on
 - **THEN** the counter reports 2 for `category=fact` and 1 for `category=skill`, and `PostgresBackend.add_memory` carries the same decorator
 
 ### Requirement: Telemetry carries no content
-Span attributes, span events and metric attributes SHALL NOT contain memory text, note text, query text, prompts, completions, file contents, concept names or header values. A failed span SHALL set status ERROR and `error.type` (the exception class name); exception messages and tracebacks are removed at export by the runtime's scrubber (`add-telemetry-runtime`), for every span.
+Span names, span and event attributes, status descriptions and metric attributes SHALL NOT contain memory text, note text, query text, prompts, completions, file contents, concept names or header values. A failed span carries status ERROR and `error.type` only; exception messages are removed at export by the runtime's scrubber. On `staging` the existing spans already comply and stay as they are: `gen_ai.chat` carries `gen_ai.system`, `gen_ai.request.model`, `prompt_chars`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `latency_ms`, `ok`; `mintmory.dream.light` / `.full` carry counts (`new_links`, `new_summaries`, `contradictions_resolved`, `archived`, `rehabilitated`); `mintmory.dream.step` carries `step` and `count`; metrics `mintmory.llm.latency_ms`, `mintmory.llm.calls` (`model`, `ok`) and `mintmory.dream.duration_ms` (`intensity`).
 
 #### Scenario: No content leaks into telemetry
-- **WHEN** a memory with text `SENTINEL-CONTENT-7f3a` is added, a search for `SENTINEL-QUERY-91c2` runs and a light dream runs, with telemetry on
+- **WHEN** a memory with text `SENTINEL-CONTENT-7f3a` is added, a search for `SENTINEL-QUERY-91c2` runs and `build_dreaming_engine(store).run_light()` runs, with telemetry on
 - **THEN** no exported span, event or metric attribute value contains either sentinel
 
-#### Scenario: Notes, LLM calls, dreams and indexed files leak nothing
-- **GIVEN** telemetry on, a fake LLM endpoint that answers `SENTINEL-OUT-2b` and a fake summarizer
-- **WHEN** a note with `SENTINEL-NOTE-5d` is added, a full dream summarises a concept whose memories contain `SENTINEL-DREAM-8e` (its LLM prompt therefore contains it), and `index-tree` indexes a text file containing `SENTINEL-FILE-3c`
-- **THEN** no exported span, event, status description or metric attribute contains any of the four sentinels
+#### Scenario: Notes, LLM calls, concept names, headers and indexed files leak nothing
+- **GIVEN** telemetry on; a local test HTTP server answering `POST /v1/chat/completions` with `{"choices": [{"message": {"content": "SENTINEL-OUT-2b"}}]}`; a SQLite store with three memories each containing `"zq-concept-41"` (quoted, so the entity extractor yields the concept `zq-concept-41`) and `SENTINEL-DREAM-8e`
+- **WHEN** `notes.create_note(store, "SENTINEL-NOTE-5d")` runs, `build_dreaming_engine(store, LLMSettings(provider="ollama", base_url=<server>/v1, model="m", api_key="SENTINEL-KEY-6e")).run_full()` runs (the summary prompt holds the concept name and `SENTINEL-DREAM-8e`, the `Authorization` header the key), and `mintmory index-tree` indexes a text file containing `SENTINEL-FILE-3c`
+- **THEN** the server received at least one chat request, and no exported span name, span or event attribute, status description or metric attribute contains `zq-concept-41`, `SENTINEL-NOTE-5d`, `SENTINEL-DREAM-8e`, `SENTINEL-OUT-2b`, `SENTINEL-KEY-6e` or `SENTINEL-FILE-3c`
 
 #### Scenario: A failure does not leak its message
 - **GIVEN** `_fts_scores` patched to raise `RuntimeError("no such column: SENTINEL-QUERY-91c2")`
 - **WHEN** a search runs with telemetry on and the error propagates
-- **THEN** the `mintmory.search.fts` span has status ERROR and `error.type` = `RuntimeError`, and no exported span (including `mintmory.search`), event or status description contains the sentinel
+- **THEN** the `mintmory.search.fts` span has status ERROR and `error.type=RuntimeError`, and no exported span (including `mintmory.search`), event or status description contains the sentinel

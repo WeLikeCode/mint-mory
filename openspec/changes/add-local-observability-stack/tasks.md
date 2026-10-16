@@ -2,12 +2,18 @@
 
 Requires `add-telemetry-runtime`. No new Python dependencies. The gates have no Docker and no Helm, so every check
 below is a pytest test that parses files (`yaml` is available; use `pytest.importorskip("yaml")`), plus tests that
-run `docker` or `helm` only when `shutil.which(...)` finds them (skipped otherwise). Put the file tests in
-`packages/core/tests/test_observability_stack.py` (or the package where the deploy tests already live, if any).
-Write each test first and see it fail.
+run `docker` or `helm` only when `shutil.which(...)` finds them (skipped otherwise). No deploy tests exist on
+`staging`; put the file tests in `tests/integration/test_observability_stack.py` (in `testpaths`; the repository root
+is `Path(__file__).resolve().parents[2]`, as `tests/integration/test_bump_version.py` does) and the doctor tests in
+`packages/cli/tests/test_cli.py`. Write each test first and see it fail. The image tags below were current when the
+change was written; the gates cannot pull them, so only the `docker` test (skipped without Docker) checks them.
 
 ## 1. Collector, Jaeger and Prometheus (`deploy/observability/`)
 - [ ] 1.1 Tests for every scenario of "Local observability stack" and "MintMory API service in the local stack".
+  Resolve `${VAR:-default}` with `re.fullmatch(r"\$\{[A-Z_]+:-(.+)\}", image)` before checking the tag (the part
+  after the last `:` that follows the last `/`). For the `Dockerfile` check, strip each line and its `RUN`/`&&`/`;`
+  prefixes; on `staging` lines 46 and 48 are the only `uv sync` commands (line 20 is a comment) and both carry
+  `--extra otel`, so the test passes without touching the `Dockerfile`.
 - [ ] 1.2 `otel-collector.yaml`, exactly this content (validated with `otelcol-contrib validate` on
   `otel/opentelemetry-collector-contrib:0.162.0`):
 
@@ -57,12 +63,13 @@ Write each test first and see it fail.
   - `prometheus`: image `${MINTMORY_OBS_PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0}`, `prometheus.yml` mounted read-only
     at `/etc/prometheus/prometheus.yml`, port `${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_PROMETHEUS_PORT:-9090}:9090`.
   - `mintmory-api` with `profiles: [api]`: `build: {context: ../.., dockerfile: Dockerfile}`, port
-    `${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_API_PORT:-8080}:8080`, a named volume for the database (look at the
-    `Dockerfile` for the data path and the command), environment `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`,
+    `${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_API_PORT:-8080}:8080`, the top-level named volume `mintmory-data`
+    mounted at `/data` (the `Dockerfile` sets `MINTMORY_DB=/data/memories.db`, `VOLUME ["/data"]`, `USER app`, and its
+    `CMD` runs uvicorn on `0.0.0.0:8080`; no `command` override), environment `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`,
     `MINTMORY_OTEL_ENABLED=true`, `OTEL_SERVICE_NAME=mintmory-api`, `depends_on: [otel-collector]`.
-- [ ] 1.5 `.env.example`: every `MINTMORY_OBS_*` variable above with its default and one comment line each, plus the
-  MintMory-side variables a developer may want (`OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG`,
-  `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_METRICS_EXPORTER`), all commented out.
+- [ ] 1.5 `.env.example`: every `MINTMORY_OBS_*` variable above as an active `NAME=<compose default>` line under one
+  comment line, plus the MintMory-side variables a developer may want as commented lines (`# OTEL_TRACES_SAMPLER=`,
+  `# OTEL_TRACES_SAMPLER_ARG=`, `# OTEL_RESOURCE_ATTRIBUTES=`, `# OTEL_METRICS_EXPORTER=`).
 - [ ] 1.6 `README.md` in `deploy/observability/`: the quick start (`docker compose -f deploy/observability/compose.yaml up -d`,
   run any `mintmory` command or start `mintmory-mcp`, open `http://localhost:16686` and pick the service
   `mintmory-cli` or `mintmory-mcp`; Prometheus at `http://localhost:9090` with the query
@@ -72,31 +79,37 @@ Write each test first and see it fail.
   (`--profile api up -d --build`), changing ports with a `.env` file, and stopping (`down`, `down -v`).
 
 ## 2. Doctor (`packages/cli/src/mintmory/cli/main.py`, `telemetry.py`)
-- [ ] 2.1 Tests for both scenarios of "Telemetry status in doctor". Make "nothing listens" certain by patching
-  `telemetry._endpoint_reachable` to return False (do not change `_DEFAULT_ENDPOINT`: the row must still name
-  `http://localhost:4318`), remove `MINTMORY_OTEL_ENABLED` with `monkeypatch.delenv` (the root `conftest.py` sets it to
-  `false`), and set `monkeypatch.setenv("COLUMNS", "200")` so Rich does not wrap the table in `CliRunner`'s 80 columns.
-- [ ] 2.2 Add `telemetry.status(settings, default_service_name="mintmory-cli") -> dict[str, str]` returning `mode`,
-  `state` (part 1's `_resolve_state`; `export` is shown as `exporting`), `endpoint` (part 1's `_traces_endpoint()`),
-  `reachable` (`yes`/`no`, `_endpoint_reachable`) and `service_name` (part 1's `_service_name(settings,
-  default_service_name)`), without initialising anything. Add a `telemetry` row to the `doctor`
-  table built from it. Never read or print `OTEL_EXPORTER_OTLP_HEADERS`.
+- [ ] 2.1 Tests for every scenario of "Telemetry status in doctor" (`cli_db` fixture of `test_cli.py`). Patch
+  `telemetry._endpoint_reachable` (do not change `_DEFAULT_ENDPOINT`: the row must still name `http://localhost:4318`),
+  remove `MINTMORY_OTEL_ENABLED` with `monkeypatch.delenv` where the scenario says unset (the root `conftest.py` sets
+  `false`), and set `monkeypatch.setenv("COLUMNS", "200")` so Rich does not wrap the table.
+- [ ] 2.2 `telemetry.status(settings, default_service_name="mintmory-cli") -> dict[str, str]` with keys `mode`, `state`,
+  `endpoint`, `reachable`, `service`, built from runtime's helpers (`add-telemetry-runtime` tasks 3.2 and 6.2):
+  `_resolve_state(settings)` (`off` | `sdk missing` | `export` | `no collector`, mapped per the spec),
+  `_traces_endpoint()` (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as is, else `OTEL_EXPORTER_OTLP_ENDPOINT` or
+  `http://localhost:4318` plus `/v1/traces`), `_endpoint_reachable(url)` and `_service_name(settings,
+  default_service_name)`. `reachable`: `parts = urlsplit(endpoint)`; `invalid` if `parts.hostname` is None or reading
+  `parts.port` raises `ValueError`; else `yes`/`no`. It initialises nothing and never reads `OTEL_EXPORTER_OTLP_HEADERS`.
+- [ ] 2.3 In `doctor`, after the `conversion` row: `table.add_row("telemetry", text)` where `text` is
+  `", ".join(f"{k}={v}" for k, v in status(...).items())`, inside `try/except Exception as exc` giving
+  `f"status unavailable ({type(exc).__name__})"`. The row never touches `healthy` (exit code unchanged).
 
 ## 3. Helm (`deploy/helm/mintmory/`)
-- [ ] 3.1 Tests: the configmap template text renders `MINTMORY_OTEL_ENABLED: "false"` in an `else` branch of
-  `.Values.otel.enabled`, and references `.Values.otel.sampler`, `.Values.otel.samplerArg`,
-  `.Values.otel.resourceAttributes`; `values.schema.json` declares them as strings. If `helm` is on PATH, also run
-  `helm template` with defaults and with `--set otel.enabled=true --set-string
-  otel.sampler=parentbased_traceidratio,otel.samplerArg=0.1` and assert the rendered values. (`--set` turns
-  `samplerArg=1` into a number, which a string schema rejects; the guide uses `--set-string` too.)
-- [ ] 3.2 Change `templates/configmap.yaml`, `values.yaml` (with comments) and `values.schema.json` accordingly. Keep
-  the existing `otel.endpoint` and `otel.serviceName` behaviour.
+- [ ] 3.1 Tests for every scenario of "Helm telemetry settings" (template text; `values.yaml` and `values.schema.json`
+  parsed). In the `helm template` test use `--set-string` (`--set` turns `samplerArg=0.1` into a number, which the
+  string schema rejects; the guide uses `--set-string` too).
+- [ ] 3.2 `templates/configmap.yaml`: inside `{{- if .Values.otel.enabled }}` add `{{- if .Values.otel.sampler }}
+  OTEL_TRACES_SAMPLER: {{ .Values.otel.sampler | quote }}{{- end }}` and the same for the other two; add `{{- else }}
+  MINTMORY_OTEL_ENABLED: "false"`. `values.yaml`: the three keys with `""` and a comment each. `values.schema.json`:
+  three `{"type": "string"}` properties under `otel`. Keep `otel.endpoint` and `otel.serviceName` as they are.
 
 ## 4. Guide
 - [ ] 4.1 Tests "Guide names every variable" and "Guide has its parts and links" (read the files and assert each name,
   heading, command and link).
-- [ ] 4.2 Rewrite `docs/OBSERVABILITY.md` section 4.5 (and the summary at the top of section 4) as the user guide in the
-  spec, under the headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`: a table of the
+- [ ] 4.2 In `docs/OBSERVABILITY.md` section 4, replace the body of `4.5 Exporters & local viewing` with the guide,
+  under `####` headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`, and update the
+  first bullet of `4.1 Principles` ("Off by default") to the `auto` mode. Keep `4.2`-`4.4`, `4.6` and the
+  "Distributed tracing" subsection that parts 2 and 3 write; edit nothing else in section 4. The guide: a table of the
   variables with default and precedence; modes (`auto` exports when a collector is configured or
   answers on `localhost:4318`, `true`, `false`); the local stack; "finding a bottleneck" (Jaeger: search service and
   operation, sort by duration, open the slowest trace, read the `mintmory.search.*` and `gen_ai.chat` children;
