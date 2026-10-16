@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard |
 | Q-002 | answered | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
-| Q-003 | open | 1.2 | technical | packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze |
+| Q-003 | accepted | 1.2 | technical | packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze |
 <!-- l4:index:end -->
 
 ---
@@ -69,7 +69,7 @@ Keep the red test exactly as it is and take neither option: both weaken it. Task
 
 ## Q-003: packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 1.2
 - **Kind:** technical
 - **Asked:** 2026-10-16T09:15Z by deepseek, run r-20261016T0849Z-8d03, task 1.2
