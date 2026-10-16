@@ -401,10 +401,21 @@ def _build_guarded_metric_exporter() -> type:
 def __getattr__(name: str) -> Any:
     """Build ``_GuardedMetricExporter`` on first access, so the SDK import stays lazy."""
     if name == "_GuardedMetricExporter":
-        exporter_class = _build_guarded_metric_exporter()
+        exporter_class = _guarded_metric_exporter_class()
         globals()[name] = exporter_class
         return exporter_class
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+_cached_metric_guard: type | None = None
+
+
+def _guarded_metric_exporter_class() -> type:
+    """The single cached ``_GuardedMetricExporter`` class, built on first use."""
+    global _cached_metric_guard
+    if _cached_metric_guard is None:
+        _cached_metric_guard = _build_guarded_metric_exporter()
+    return _cached_metric_guard
 
 
 def _build_tracer_provider(
@@ -459,8 +470,9 @@ def _build_meter_provider(
         from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
 
         exporter = ConsoleMetricExporter(out=sys.stderr)
+    guarded: Any = _guarded_metric_exporter_class()(exporter)
     reader = PeriodicExportingMetricReader(
-        exporter, export_timeout_millis=settings.export_timeout_s * 1000
+        guarded, export_timeout_millis=settings.export_timeout_s * 1000
     )
     return MeterProvider(resource=resource, metric_readers=[reader], shutdown_on_exit=False)
 

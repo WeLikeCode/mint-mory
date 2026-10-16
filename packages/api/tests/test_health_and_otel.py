@@ -132,10 +132,10 @@ def test_telemetry_metric_exporter_matches_configured_exporter(
     try:
         _reset()
         assert telemetry_mod.init_telemetry(OTelSettings(enabled=True, exporter="otlp")) is True
-        assert isinstance(captured[-1], me_mod.OTLPMetricExporter)
+        assert isinstance(captured[-1]._inner, me_mod.OTLPMetricExporter)
 
         _reset()
         assert telemetry_mod.init_telemetry(OTelSettings(enabled=True, exporter="console")) is True
-        assert isinstance(captured[-1], export_mod.ConsoleMetricExporter)
+        assert isinstance(captured[-1]._inner, export_mod.ConsoleMetricExporter)
     finally:
         _reset()
