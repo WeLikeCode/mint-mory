@@ -12,6 +12,8 @@ verification round, turns them into a fix unit and checks that each one was addr
 |----|--------|------|-------|----------|
 | FB-001 | taken | behaviour |  | _sdk_available must catch ImportError and ValueError from |
 | FB-002 | taken | behaviour |  | _build_meter_provider must wrap the configured metric exporter with |
+| FB-003 | submitted | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | init_telemetry: one set of providers when two threads init at once |
+| FB-004 | submitted | behaviour | packages/core/src/mintmory/core/config.py:220 | MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -53,3 +55,91 @@ _build_meter_provider must wrap the configured metric exporter with _GuardedMetr
 ### Outcome
 <!-- written by the harness -->
 Taken in round 3 into add-telemetry-runtime-fix-1
+
+---
+
+## FB-003: init_telemetry: one set of providers when two threads init at once
+
+- **Status:** submitted
+- **Kind:** behaviour
+- **Where:** `packages/core/src/mintmory/core/telemetry.py:541-568`
+- **Lesson:** no
+- **By:** CiprianSpot, 2026-10-16T21:28:28Z
+
+### Code
+```python
+    if _enabled:
+        return True
+
+    injected = span_exporter is not None or metric_reader is not None
+    if injected:
+        if not _sdk_available():
+            return False
+        traces_exporter = "injected" if span_exporter is not None else "none"
+        metrics_exporter = "injected" if metric_reader is not None else "none"
+    else:
+        traces_exporter = _resolve_exporter(settings, "TRACES")
+        metrics_exporter = _resolve_exporter(settings, "METRICS")
+        if traces_exporter == "none" and metrics_exporter == "none":
+            return False
+        state = _resolve_state(settings)
+        if state == "off" or state == "no collector":
+            return False
+        if state == "sdk missing":
+            if settings.enabled == "true" or _has_endpoint_variable():
+                _LOGGER.warning(
+                    "OpenTelemetry export requested but the SDK is missing; "
+                    "install 'mintmory-core[otel]'"
+                )
+            return False
+
+    with _shutdown_lock:
+        try:
+            return _activate(
+```
+
+### Feedback
+The check of _enabled runs outside the lock and is not repeated inside it, so two threads that call init_telemetry at the same time both build providers: the second is installed as the module provider while the first stays the global one, spans reach only the first exporter, and shutdown_telemetry flushes the orphan, never the global provider. The spec says init and shutdown share one lock and a later init changes nothing. Repeat the _enabled check inside the lock (double-checked) so exactly one init builds.
+
+### When / Then
+- **When:** two threads call init_telemetry at the same time (for example behind a threading.Barrier, each with its own span_exporter)
+- **Then:** exactly one set of providers is built and installed as the global ones, the other call returns the same result without building, and shutdown_telemetry flushes and shuts down that one set
+
+### Outcome
+<!-- written by the harness -->
+
+---
+
+## FB-004: MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before
+
+- **Status:** submitted
+- **Kind:** behaviour
+- **Where:** `packages/core/src/mintmory/core/config.py:220-231`
+- **Lesson:** no
+- **By:** CiprianSpot, 2026-10-16T21:28:28Z
+
+### Code
+```python
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _normalise_enabled(cls, value: object) -> object:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if value is None:
+            return value
+        normalised = str(value).strip().lower()
+        if normalised in ("auto", "true", "false"):
+            return normalised
+        _OTEL_LOGGER.warning("MINTMORY_OTEL_ENABLED=%r is invalid; falling back to 'auto'", value)
+        return "auto"
+```
+
+### Feedback
+On staging, the setting was a pydantic bool, so 1, yes and on (any case) meant true and 0, no and off meant false. Now 1, yes and on become auto with a WARNING, which silently changes what a deployed setting does. Keep every spelling pydantic's boolean parser accepts, mapped to true or false, and keep auto as the third value.
+
+### When / Then
+- **When:** MINTMORY_OTEL_ENABLED is 1, yes, on, 0, no or off (any case)
+- **Then:** the mode is true for 1, yes and on and false for 0, no and off, with no WARNING; auto, true and false (any case) keep their meaning; any other value still falls back to auto with a WARNING
+
+### Outcome
+<!-- written by the harness -->
