@@ -43,3 +43,4 @@
 {"at":"2026-10-16T05:14:21Z","attempt":1,"cost_usd":0.104833,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T05:14:21Z","run":"r-20261016T0514Z-60f2","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T05:25:25Z","detail":"awaiting_human: no new answers (open: Q-002)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T08:49:41Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-runtime is awaiting_human","type":"plan.resumed"}
