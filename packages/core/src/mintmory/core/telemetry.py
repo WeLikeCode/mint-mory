@@ -171,3 +171,15 @@ def reset_telemetry() -> None:
     _tracer = None
     _meter = None
     _instruments.clear()
+
+
+def _sdk_available() -> bool:
+    raise NotImplementedError
+
+
+def _endpoint_reachable(url: str, timeout: float = 0.1) -> bool:
+    raise NotImplementedError
+
+
+def shutdown_telemetry(timeout_s: float = 2.0) -> None:
+    raise NotImplementedError
