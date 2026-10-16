@@ -68,7 +68,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   `OTelSettings(enabled="false")` (the new `auto` default would probe); drop the comment that CI lacks the SDK; the
   exporter-type test (lines 101-141) checks `captured[-1]._inner` and calls `telemetry.reset_telemetry()` instead of
   its `_reset()`. `OTelSettings(enabled=True, ...)` keeps working (normalised to `"true"`).
-- [ ] 7.2 `packages/mcp/tests/test_telemetry_init.py` passes unchanged in its calls (`server.main()` still calls
+- [x] 7.2 `packages/mcp/tests/test_telemetry_init.py` passes unchanged in its calls (`server.main()` still calls
   `init_telemetry(load_settings().otel)` until part 1b; its fake takes `settings`). In
   `test_main_telemetry_default_off_is_safe`, which deletes `MINTMORY_OTEL_ENABLED`, patch `telemetry._endpoint_reachable`
   to return False so `auto` never probes.
