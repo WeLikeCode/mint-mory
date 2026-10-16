@@ -81,5 +81,5 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   Injected exporter via `SimpleSpanProcessor`; injected reader replaces the periodic one.
 
 ## 9. Checks
-- [ ] 9.1 Update the `telemetry.py` docstring; `ruff check`, `ruff format --check`, `mypy packages`, full suite with
+- [x] 9.1 Update the `telemetry.py` docstring; `ruff check`, `ruff format --check`, `mypy packages`, full suite with
   coverage at or above 80%.
