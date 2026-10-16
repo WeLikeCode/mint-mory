@@ -15,6 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
 | Q-003 | accepted | 1.2 | technical | packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze |
 | Q-004 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
+| Q-005 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -111,3 +112,24 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why: a r
 ### Answer
 <!-- write below this line -->
 reject Two spec violations in the production code, both reproduced by a reviewer; the gates passed because the tests stub these code paths. (1) init_telemetry() raises ModuleNotFoundError when the opentelemetry package is not installed: _sdk_available calls importlib.util.find_spec("opentelemetry.sdk"), which raises when the parent package is missing (telemetry.py around 668-670, reached from _resolve_state and init_telemetry outside the try), so a plain install without the otel extra crashes the API at startup and breaks "init SHALL NOT raise". Fix: wrap find_spec in try/except (ImportError, ValueError) returning False; add a test that does NOT stub _sdk_available (monkeypatch importlib.util.find_spec to raise ModuleNotFoundError): auto returns False with no warning, true returns False with one WARNING that names mintmory-core[otel]. (2) _GuardedMetricExporter is never wired in: _build_meter_provider gives the raw exporter to PeriodicExportingMetricReader (telemetry.py around 453-465), so a failing metric export logs nothing, against the guard requirement. Fix: wrap the configured metric exporter with the guard as the span exporter is wrapped (keep the reader's temporality); change packages/api/tests/test_health_and_otel.py to unwrap _inner to the OTLP metric exporter (task 7.1); add a metric version of "Unreachable collector logs once" (endpoint on a closed port, three force_flush calls, exactly one WARNING "telemetry: metric export failed"). WHEN init_telemetry() runs without the opentelemetry package installed, or a metric export fails because the collector is unreachable, THEN init returns False without raising and exactly one WARNING "telemetry: metric export failed" is logged per failure streak.
+
+---
+
+## Q-005: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 6, verifier
+
+### Context
+After round 6 the verifier cannot decide on its own: the diff is longer than 120000 characters: the judge saw only the start
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why; end the reason with a sentence WHEN ... THEN ... so that a fix unit can be made.
+
+### Options
+1. accept
+2. reject: <reason>
+
+### Answer
+<!-- write below this line -->
