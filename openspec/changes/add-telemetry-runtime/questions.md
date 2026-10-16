@@ -14,6 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard |
 | Q-002 | answered | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
 | Q-003 | accepted | 1.2 | technical | packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze |
+| Q-004 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -85,6 +86,27 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `conftest.py`: add the shared telemetry fixtures — a `closed_port` fixture returning an int 127.0.0.1 port nobody listens on, and an `otlp_receiver` fixture backed by a ThreadingHTTPServer in a daemon thread (shut down at teardown) exposing `.endpoint` (`http://127.0.0.1:<port>`), `.requests` (`(path, body bytes)` per POST, each answered 200) and `.spans()` (`(name, resource-attributes dict)` per span posted to `/v1/traces`, decoding the body with `trace_service_pb2.ExportTraceServiceRequest` imported inside the method) — and unfreeze `conftest.py` for task 1.2.
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-004: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+
+### Context
+After round 1 the verifier cannot decide on its own: the diff is longer than 120000 characters: the judge saw only the start
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why: a rejected hold is fixed by a fix unit.
+
+### Options
+1. accept
+2. reject: <reason>
 
 ### Answer
 <!-- write below this line -->
