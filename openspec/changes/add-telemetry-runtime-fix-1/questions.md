@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.2 | technical | packages/api/tests/test_health_and_otel.py:135 still asserts the reader got the raw OTLP exporter; FB-002 requires the guard, so it must unwrap `_inner` |
+| Q-001 | accepted | 1.2 | technical | packages/api/tests/test_health_and_otel.py:135 still asserts the reader got the raw OTLP exporter; FB-002 requires the guard, so it must unwrap `_inner` |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/api/tests/test_health_and_otel.py:135 still asserts the reader got the raw OTLP exporter; FB-002 requires the guard, so it must unwrap `_inner`
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 1.2
 - **Kind:** technical
 - **Asked:** 2026-10-16T17:17Z by deepseek, run r-20261016T1655Z-d3d9, task 1.2
