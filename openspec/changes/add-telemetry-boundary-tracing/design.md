@@ -2,20 +2,27 @@
 
 ## Decisions
 
-- **No dependency on `add-telemetry-entry-points`.** Checked against both folders and `staging`: (1) every test here
-  initialises telemetry itself through runtime's seam (`init_telemetry(span_exporter=..., metric_reader=...)`) before
-  `TestClient(app)` or `fastmcp.Client(mcp)`; the API lifespan on `staging` already calls `init_telemetry(settings.otel)`
-  (`app.py`), which after runtime is a no-op that returns True, and after entry-points still is; (2) the MCP tests use
-  the in-memory client and never call `main()`, the only code entry-points changes in the MCP servers; (3) the only
-  file both units touch is `api/app.py`, entry-points in `lifespan` and this unit after the CORS `add_middleware`
-  block, separate hunks; (4) the tests assert inside the `with TestClient(app)` block, so the `shutdown_telemetry()`
-  that entry-points adds at lifespan exit cannot affect them. The plan keeps the two units unordered.
-- **Outbound requests carry `traceparent` and `tracestate` only, never `baggage`.** LLM and embedding endpoints may be
-  third-party (OpenAI, hosted gateways); baggage from an inbound caller could carry user data there, and MintMory
-  itself sets none. A fixed `TraceContextTextMapPropagator` is used for outbound headers; inbound extraction keeps the
-  global propagator (`OTEL_PROPAGATORS`), as runtime requires.
-- **Error marking is runtime's `mark_error`** (one helper, also used by heavy-path's `search_phase`).
-- **`asyncio.CancelledError` is not an error**: a client that goes away is not a server failure.
-- **An exception after the response started keeps the sent status** on the span and duration point (the client saw
-  it), and the span is still marked with `mark_error`.
-- **`server.port` defaults to 443/80 by scheme** when the URL has none, matching runtime's `_endpoint_reachable`.
+- **No dependency on `add-telemetry-entry-points`**: every test here initialises telemetry through runtime's seam
+  before `TestClient`/`fastmcp.Client` and asserts inside the `with` block, so the lifespan's `init_telemetry` (a no-op
+  after that) and the `shutdown_telemetry()` entry-points adds at exit cannot affect it; the MCP tests never call
+  `main()`; in `app.py` the two units edit separate hunks (`lifespan` vs after the CORS block).
+- **Server span flags off**: in OpenTelemetry 1.42.1, `start_as_current_span` wraps the span in `use_span`
+  (`opentelemetry/trace/__init__.py`), whose `except Exception` records the message and sets `Status(ERROR,
+  "<Class>: <message>")`; `Span.set_status` keeps only an OK status, so that would replace `mark_error`'s.
+- **`asyncio.CancelledError` is not an error** (the client went away). It is a `BaseException`, caught neither by
+  `use_span` nor by the middleware's `except Exception`.
+- **No status sent**: after an `Exception` the middleware records 500, which Starlette's outer `ServerErrorMiddleware`
+  sends (run on the locked versions, the middleware saw no `http.response.start` for a raising route); otherwise the
+  attribute is left out, not guessed, and the duration point is still recorded.
+- **Exception after the response started**: the sent status stays (the client saw it); the span is still marked.
+- **Outermost middleware** (registered after CORS): CORS preflights are traced as `OPTIONS` with no route.
+- **A 405 keeps its route**: FastAPI 0.137.1 `APIRoute.matches` sets `scope["route"]` on a partial match (run:
+  `DELETE /stats` arrived with route `/stats`); a template is bounded, so naming by it is safe.
+- **Middleware telemetry failures are dropped at DEBUG** with the class name only: telemetry never changes what a
+  client receives, and no header value or message reaches the logs.
+- **MCP relies on FastMCP's span, verified by running FastMCP 3.4.2** with an SDK provider and an in-memory exporter
+  (every fact in the spec). `uv.lock` pins it and CI syncs `--frozen`; a test asserts the version, so a later FastMCP
+  fails the tests and its bump re-checks the facts. No MintMory code reads the span.
+- **Outbound headers are `traceparent` and `tracestate` only** (a fixed `TraceContextTextMapPropagator`): endpoints may
+  be third-party and inbound baggage could carry user data. Inbound extraction keeps the global propagator.
+- **`server.port` defaults to 443/80 by scheme**, as runtime's `_endpoint_reachable`.

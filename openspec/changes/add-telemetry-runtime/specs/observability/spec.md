@@ -82,12 +82,12 @@ Constructing `OTelSettings` SHALL never raise for a bad `MINTMORY_OTEL_*` value:
 - **THEN** nothing raises, the span is on stderr (console), `mintmory.telemetry` logs exactly two WARNINGs (naming `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_PROTOCOL`), and `opentelemetry.sdk.trace.sampling` one containing `Couldn't recognize sampler`
 
 ### Requirement: Telemetry init never raises
-`init_telemetry` SHALL NOT raise. With `settings=None` it SHALL construct `OTelSettings()`, never `load_settings()`, so an invalid variable of another settings group cannot affect it. Any exception while importing the SDK or building exporters, processors, readers or providers (the OTLP exporters raise `ValueError` for `OTEL_EXPORTER_OTLP_TIMEOUT=abc` or `OTEL_EXPORTER_OTLP_COMPRESSION=zip`) SHALL be caught: init shuts down what it built, sets no global provider, keeps no state, logs one WARNING on `mintmory.telemetry` containing `telemetry disabled: init failed (<exception class name>)` without the message, and returns False. Callers need no guard.
+`init_telemetry` SHALL NOT raise. With `settings=None` it SHALL construct `OTelSettings()`, never `load_settings()`, so an invalid variable of another settings group cannot affect it. Any exception while importing the SDK or building exporters, processors, readers or providers (the OTLP exporters raise `ValueError` for `OTEL_EXPORTER_OTLP_TIMEOUT=abc` or `OTEL_EXPORTER_OTLP_COMPRESSION=zip`) SHALL be caught: init runs `shutdown_telemetry`'s teardown on what it built under the lock it already holds (not taken again), so no global provider, no state and the saved logger level restored, logs one WARNING on `mintmory.telemetry` containing `telemetry disabled: init failed (<exception class name>)` without the message, and returns False. Callers need no guard.
 
 #### Scenario: An exporter cannot be built
 - **GIVEN** `MINTMORY_OTEL_ENABLED=true` and `OTEL_EXPORTER_OTLP_TIMEOUT=abc`
 - **WHEN** `init_telemetry()` runs
-- **THEN** it returns False, `is_enabled()` is False, `opentelemetry.trace.get_tracer_provider()` is not an SDK `TracerProvider`, a WARNING contains `telemetry disabled: init failed (ValueError)`, no record contains `could not convert`, and a following `init_telemetry(span_exporter=InMemorySpanExporter())` returns True
+- **THEN** it returns False, `is_enabled()` is False, `opentelemetry.trace.get_tracer_provider()` is not an SDK `TracerProvider`, a WARNING contains `telemetry disabled: init failed (ValueError)`, no record contains `could not convert`, the `opentelemetry.exporter.otlp.proto.http` level is the one before init, and a following `init_telemetry(span_exporter=InMemorySpanExporter())` returns True
 
 #### Scenario: Another settings group is invalid
 - **GIVEN** `MINTMORY_SUMMARY_CONCURRENCY=0` (`load_settings()` raises `ValidationError`)
@@ -95,7 +95,7 @@ Constructing `OTelSettings` SHALL never raise for a bad `MINTMORY_OTEL_*` value:
 - **THEN** it returns True and the span carries `service.name=mintmory-cli`
 
 ### Requirement: Bounded flush on exit
-`shutdown_telemetry(timeout_s=2.0)` SHALL be the one teardown: providers' `shutdown()` in a daemon thread named `mintmory-telemetry-shutdown` awaited at most `timeout_s`, then clear the module state, release the API's global providers and restore the `opentelemetry.exporter.otlp.proto.http` level init saved (saved only when none is). It SHALL be safe to repeat and without a prior init. `reset_telemetry()` SHALL be `shutdown_telemetry(timeout_s=0.5)`. Init and shutdown SHALL share one lock. The first successful init in a process SHALL register `shutdown_telemetry` with `atexit` once and build providers with `shutdown_on_exit=False`.
+`shutdown_telemetry(timeout_s=2.0)` SHALL be the one teardown: providers' `shutdown()` in a daemon thread named `mintmory-telemetry-shutdown` awaited at most `timeout_s`, then clear the module state (`_tracer`, `_meter`, the providers, the `_instruments` cache), release the API's global providers and restore the `opentelemetry.exporter.otlp.proto.http` level init saved (saved only when none is). It SHALL be safe to repeat and without a prior init. Init and shutdown SHALL share one lock. Providers SHALL be built with `shutdown_on_exit=False`. A successful init while the module flag `_atexit_registered` is False SHALL call `atexit.register(shutdown_telemetry)` (looked up on the `atexit` module at call time) and set the flag; `shutdown_telemetry` keeps it, so a process registers once however often it re-initialises. `reset_telemetry()` SHALL be `shutdown_telemetry(timeout_s=0.5)`, then `atexit.unregister(shutdown_telemetry)` and `_atexit_registered = False`, so each test starts unregistered.
 
 #### Scenario: Exit is bounded when export hangs
 - **GIVEN** telemetry initialised with an injected span exporter whose `shutdown` waits on a `threading.Event` never set
@@ -113,9 +113,9 @@ Constructing `OTelSettings` SHALL never raise for a bad `MINTMORY_OTEL_*` value:
 - **THEN** the level is CRITICAL while telemetry runs and NOTSET after each shutdown
 
 #### Scenario: One atexit hook, none from the SDK
-- **GIVEN** `atexit.register` patched to record its argument
-- **WHEN** telemetry is initialised with an in-memory exporter and reader, reset, and initialised again
-- **THEN** `shutdown_telemetry` was registered once, and `telemetry._tracer_provider._atexit_handler` and `telemetry._meter_provider._atexit_handler` are None
+- **GIVEN** `monkeypatch.setattr("atexit.register", calls.append)` with `calls = []`, and `_atexit_registered` False (the autouse reset)
+- **WHEN** telemetry is initialised with an in-memory exporter and reader, initialised again, shut down with `shutdown_telemetry()` and initialised again
+- **THEN** `calls == [telemetry.shutdown_telemetry]`, `_atexit_registered` is True, `telemetry._tracer_provider._atexit_handler` and `telemetry._meter_provider._atexit_handler` are None; after `reset_telemetry()` the flag is False and one more init makes `len(calls) == 2`; with the same GIVEN, an init returning False (`MINTMORY_OTEL_ENABLED=true`, `MINTMORY_OTEL_EXPORTER=none`) leaves `calls` empty and the flag False
 
 ### Requirement: Resource identifies the process
 `service.name` SHALL be, in order: `OTEL_SERVICE_NAME`, `service.name` in `OTEL_RESOURCE_ATTRIBUTES`, `MINTMORY_OTEL_SERVICE_NAME`, the entry point's default (`mintmory-api`, `mintmory-mcp`, `mintmory-history-mcp`, `mintmory-cli`). MintMory SHALL add `service.namespace=mintmory`, `service.version` (installed `mintmory-core`) and a random `service.instance.id`, which the same keys in `OTEL_RESOURCE_ATTRIBUTES` SHALL override.

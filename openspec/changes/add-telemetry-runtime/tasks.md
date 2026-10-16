@@ -1,6 +1,7 @@
 # Tasks: telemetry runtime (OpenTelemetry, part 1 of 4)
 
-No new dependencies (`uv.lock` resolves the `otel` extra to SDK and OTLP/HTTP exporter 1.42.1). Import `opentelemetry`
+No new dependencies (`uv.lock` resolves the `otel` extra to SDK and OTLP/HTTP exporter 1.42.1; CI installs it,
+`ci.yml` runs `uv sync --frozen ... --extra otel`; SDK tests `pytest.importorskip("opentelemetry.sdk")`). Import `opentelemetry`
 only inside `init_telemetry` and what it enables. Log via `logging.getLogger("mintmory.telemetry")` (`config.py` too),
 never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Each test first, failing.
 
@@ -35,8 +36,8 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   timeout_millis=10_000, **kwargs)`, `shutdown(timeout_millis=30_000, **kwargs)`.
 - [ ] 4.4 Before building an OTLP exporter save the `opentelemetry.exporter.otlp.proto.http` logger level (if none is
   saved) and set CRITICAL (children inherit it; a filter on the parent would not reach them).
-- [ ] 4.5 `try/except Exception` around everything after the arguments are read; on failure shut down what was built,
-  release globals only if set, log, return False.
+- [ ] 4.5 `try/except Exception` around everything after the arguments are read; on failure call `_teardown(2.0)` (5.2)
+  under the held lock, log, return False.
 
 ## 4b. Export scrubber
 - [ ] 4b.1 Test "A library's exception is scrubbed", plus a MintMory span through `telemetry.span`.
@@ -46,10 +47,12 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
 
 ## 5. Shutdown, error helper
 - [ ] 5.1 Tests for "Bounded flush on exit" and "One error-marking helper".
-- [ ] 5.2 `shutdown_telemetry`: providers' `shutdown()` in `threading.Thread(name="mintmory-telemetry-shutdown",
-  daemon=True)`, `join(timeout_s)`; clear module state; `_release_globals()`; restore the logger level.
-  `def reset_telemetry(): shutdown_telemetry(0.5)`. One `threading.Lock`; module flag `_atexit_registered`, never
-  cleared; call `atexit.register(...)` through the module (`import atexit`), so tests can patch it.
+- [ ] 5.2 `_teardown(timeout_s)`, called with the lock held: providers' `shutdown()` in `threading.Thread(name=
+  "mintmory-telemetry-shutdown", daemon=True)`, `join(timeout_s)`; clear module state and `_instruments`;
+  `_release_globals()` only if set; restore the logger level. `shutdown_telemetry` takes the one `threading.Lock`
+  (not reentrant) and calls it. `_atexit_registered`: set after `atexit.register(shutdown_telemetry)` (via `import
+  atexit`, so tests patch it) on a successful init; `reset_telemetry()` = `shutdown_telemetry(0.5)`,
+  `atexit.unregister(shutdown_telemetry)`, flag False.
 - [ ] 5.3 `mark_error`: return on `_NoopSpan`; else `set_status(Status(StatusCode.ERROR))` and
   `set_attribute("error.type", error_type)` inside `try/except Exception`.
 

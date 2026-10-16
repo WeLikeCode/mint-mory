@@ -14,6 +14,9 @@
 - **`mark_error` lives here** because heavy-path (ordered before boundary) and boundary both need it.
 - **`shutdown_telemetry` owns all teardown, the logger level included**: a level restored only by reset would be
   saved as CRITICAL by the next init.
+- **One `atexit` hook per process, re-armed only by `reset_telemetry`**: an API lifespan that re-initialises must not
+  stack hooks, so `shutdown_telemetry` keeps `_atexit_registered`; the test-only reset unregisters and clears it, so a
+  test counts `atexit.register` calls whatever ran before it.
 - **Test fixtures live in the root `conftest.py`**: pytest runs with `--import-mode=importlib` and no test folder is on
   `sys.path`, while root fixtures reach `packages/*/tests` (checked with pytest 9.1.0 on this layout).
 - **The SDK-missing WARNING also fires for explicit `true`**, a misconfiguration; `auto` with nothing set stays silent.
