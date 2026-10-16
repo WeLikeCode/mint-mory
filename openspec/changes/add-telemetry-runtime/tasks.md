@@ -7,7 +7,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
 
 ## 1. Root `conftest.py`
 - [x] 1.1 `os.environ.setdefault("MINTMORY_OTEL_ENABLED", "false")` beside the busy-timeout line; autouse reset fixture.
-- [ ] 1.2 Fixtures of the spec: `otlp_receiver` is a `ThreadingHTTPServer` in a daemon thread, shut down at teardown;
+- [x] 1.2 Fixtures of the spec: `otlp_receiver` is a `ThreadingHTTPServer` in a daemon thread, shut down at teardown;
   `spans()` decodes with `trace_service_pb2.ExportTraceServiceRequest`, imported inside the method.
 
 ## 2. Settings (`config.py`, `OTelSettings`)
