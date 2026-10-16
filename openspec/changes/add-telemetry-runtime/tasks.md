@@ -24,7 +24,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   `ValueError`); `_resolve_state(settings)` -> `off` | `sdk missing` | `export` | `no collector`; `_traces_endpoint()`
   (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as is, else `OTEL_EXPORTER_OTLP_ENDPOINT` or `_DEFAULT_ENDPOINT` plus
   `/v1/traces`). Replace the `structlog` call.
-- [ ] 3.3 With an endpoint variable set, build the OTLP exporters without `endpoint` (the SDK appends the path),
+- [x] 3.3 With an endpoint variable set, build the OTLP exporters without `endpoint` (the SDK appends the path),
   else pass `_DEFAULT_ENDPOINT` plus `/v1/traces` or `/v1/metrics`. Console exporters with `out=sys.stderr`.
 
 ## 4. Never block, never flood, never raise

@@ -137,7 +137,7 @@ def init_telemetry(settings: OTelSettings | None = None) -> bool:
         if traces_exporter == "otlp":
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-            span_exporter: Any = OTLPSpanExporter()
+            span_exporter: Any = OTLPSpanExporter(**_otlp_exporter_kwargs("TRACES"))
         else:
             span_exporter = ConsoleSpanExporter(out=sys.stderr)
         provider = TracerProvider(resource=resource)
@@ -149,7 +149,7 @@ def init_telemetry(settings: OTelSettings | None = None) -> bool:
         if metrics_exporter == "otlp":
             from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 
-            metric_exporter: Any = OTLPMetricExporter()
+            metric_exporter: Any = OTLPMetricExporter(**_otlp_exporter_kwargs("METRICS"))
         else:
             metric_exporter = ConsoleMetricExporter(out=sys.stderr)
         reader = PeriodicExportingMetricReader(metric_exporter)
@@ -266,3 +266,17 @@ def _traces_endpoint() -> str:
         return traces_endpoint
     shared_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip() or _DEFAULT_ENDPOINT
     return f"{shared_endpoint}/v1/traces"
+
+
+def _otlp_exporter_kwargs(signal: str) -> dict[str, Any]:
+    """OTLP/HTTP exporter keyword arguments for one signal.
+
+    When a standard endpoint variable applies, no ``endpoint`` is passed: the SDK reads the
+    variable itself and appends the signal path. Without one, MintMory passes the local
+    default plus ``/v1/traces`` or ``/v1/metrics``.
+    """
+    shared = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    specific = os.environ.get(f"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT", "").strip()
+    if shared or specific:
+        return {}
+    return {"endpoint": f"{_DEFAULT_ENDPOINT}/v1/{signal.lower()}"}
