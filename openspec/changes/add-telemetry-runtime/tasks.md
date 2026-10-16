@@ -11,7 +11,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   `spans()` decodes with `trace_service_pb2.ExportTraceServiceRequest`, imported inside the method.
 
 ## 2. Settings (`config.py`, `OTelSettings`)
-- [ ] 2.1 `enabled: Literal["auto", "true", "false"] = "auto"`, `exporter: str = "otlp"`, `service_name: str | None = None`,
+- [x] 2.1 `enabled: Literal["auto", "true", "false"] = "auto"`, `exporter: str = "otlp"`, `service_name: str | None = None`,
   `export_timeout_s: float = 3.0`; fallbacks as `field_validator(mode="before")`, no `gt=0`. `init_telemetry` is the
   only reader of `OTelSettings.enabled` on `staging`, so no caller breaks on the string.
 

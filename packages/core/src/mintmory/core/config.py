@@ -22,10 +22,14 @@ properties.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
+from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_OTEL_LOGGER = logging.getLogger("mintmory.telemetry")
 
 
 def _csv_set(value: str) -> frozenset[str]:
@@ -199,11 +203,59 @@ class ConversionSettings(BaseSettings):
 # OpenTelemetry (MINTMORY_OTEL_*) — off by default, no-op shim when disabled.
 # ---------------------------------------------------------------------------
 class OTelSettings(BaseSettings):
+    """OpenTelemetry knobs (``MINTMORY_OTEL_*``).
+
+    Constructing this object NEVER raises for a bad value: each invalid variable logs one
+    WARNING on ``mintmory.telemetry`` naming itself and falls back to its default. Booleans
+    and case are normalised so ``True``, ``"TRUE"`` and ``"true"`` all mean ``"true"``.
+    """
+
     model_config = SettingsConfigDict(env_prefix="MINTMORY_OTEL_", extra="ignore")
 
-    enabled: bool = False
-    exporter: str = "console"  # "console" | "otlp"
-    service_name: str = "mintmory"
+    enabled: Literal["auto", "true", "false"] | bool = "auto"
+    exporter: str = "otlp"  # "otlp" | "console" | "none"
+    service_name: str | None = None
+    export_timeout_s: float = 3.0
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _normalise_enabled(cls, value: object) -> object:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if value is None:
+            return value
+        normalised = str(value).strip().lower()
+        if normalised in ("auto", "true", "false"):
+            return normalised
+        _OTEL_LOGGER.warning("MINTMORY_OTEL_ENABLED=%r is invalid; falling back to 'auto'", value)
+        return "auto"
+
+    @field_validator("exporter", mode="before")
+    @classmethod
+    def _normalise_exporter(cls, value: object) -> object:
+        if value is None:
+            return value
+        normalised = str(value).strip().lower()
+        if normalised in ("otlp", "console", "none"):
+            return normalised
+        _OTEL_LOGGER.warning("MINTMORY_OTEL_EXPORTER=%r is invalid; falling back to 'otlp'", value)
+        return "otlp"
+
+    @field_validator("export_timeout_s", mode="before")
+    @classmethod
+    def _normalise_export_timeout(cls, value: object) -> object:
+        if value is None:
+            return value
+        try:
+            timeout = float(str(value))
+        except ValueError:
+            timeout = 0.0
+        if timeout > 0:
+            return timeout
+        _OTEL_LOGGER.warning(
+            "MINTMORY_OTEL_EXPORT_TIMEOUT_S=%r is invalid; falling back to 3.0", value
+        )
+        return 3.0
 
 
 # ---------------------------------------------------------------------------

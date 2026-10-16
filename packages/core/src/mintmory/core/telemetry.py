@@ -64,7 +64,7 @@ def init_telemetry(settings: OTelSettings | None = None) -> bool:
         from mintmory.core.config import OTelSettings
 
         settings = OTelSettings()
-    if not settings.enabled:
+    if settings.enabled != "true":
         return False
     if _enabled:
         return True
@@ -86,7 +86,7 @@ def init_telemetry(settings: OTelSettings | None = None) -> bool:
         )
         return False
 
-    resource = Resource.create({"service.name": settings.service_name})
+    resource = Resource.create({"service.name": settings.service_name or "mintmory"})
     if settings.exporter == "otlp":
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
