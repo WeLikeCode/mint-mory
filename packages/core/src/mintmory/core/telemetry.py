@@ -162,3 +162,7 @@ def record_value(name: str, value: float, **attrs: Any) -> None:
     hist = _instrument("histogram", "create_histogram", name)
     if hist is not None:
         hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+
+
+def reset_telemetry() -> None:
+    raise NotImplementedError
