@@ -87,3 +87,4 @@
 {"at":"2026-10-16T19:48:36Z","run":"r-20261016T1948Z-479c","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T19:56:59Z","attempt":1,"cost_usd":3.836902,"runs":12,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T19:56:59Z","detail":"no finding of this round can be converted into a fix task","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T21:29:25Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"PR #6 retried on v0.4.6 (the human reject loop is fixed in L4)","type":"plan.resumed"}
