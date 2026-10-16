@@ -85,12 +85,20 @@ def _signal_exporter(settings: OTelSettings, signal: str) -> str:
     return settings.exporter
 
 
-def init_telemetry(settings: OTelSettings | None = None) -> bool:
+def init_telemetry(
+    settings: OTelSettings | None = None,
+    *,
+    default_service_name: str | None = None,
+    span_exporter: Any = None,
+    metric_reader: Any = None,
+) -> bool:
     """Idempotent. Returns True if real OTel export is active afterwards.
 
     No-op (returns False) when telemetry is switched off, no collector answers
     ``auto``, or the optional ``opentelemetry`` SDK is not installed.
     """
+    if span_exporter is not None or metric_reader is not None or default_service_name is not None:
+        raise NotImplementedError
     global _enabled, _tracer, _meter
     if settings is None:
         from mintmory.core.config import OTelSettings
@@ -137,7 +145,7 @@ def init_telemetry(settings: OTelSettings | None = None) -> bool:
         if traces_exporter == "otlp":
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-            span_exporter: Any = OTLPSpanExporter(**_otlp_exporter_kwargs("TRACES"))
+            span_exporter: Any = OTLPSpanExporter(**_otlp_exporter_kwargs("TRACES"))  # type: ignore[no-redef]
         else:
             span_exporter = ConsoleSpanExporter(out=sys.stderr)
         provider = TracerProvider(resource=resource)
@@ -280,3 +288,35 @@ def _otlp_exporter_kwargs(signal: str) -> dict[str, Any]:
     if shared or specific:
         return {}
     return {"endpoint": f"{_DEFAULT_ENDPOINT}/v1/{signal.lower()}"}
+
+
+class _GuardedSpanExporter:
+    """Wraps a span exporter so a failing export never raises and never floods the log."""
+
+    def __init__(self, inner: Any) -> None:
+        raise NotImplementedError
+
+    def export(self, spans: Any) -> Any:
+        raise NotImplementedError
+
+    def shutdown(self) -> None:
+        raise NotImplementedError
+
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
+        raise NotImplementedError
+
+
+class _GuardedMetricExporter:
+    """Wraps a metric exporter so a failing export never raises and never floods the log."""
+
+    def __init__(self, inner: Any) -> None:
+        raise NotImplementedError
+
+    def export(self, metrics_data: Any, timeout_millis: float = 10_000, **kwargs: Any) -> Any:
+        raise NotImplementedError
+
+    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
+        raise NotImplementedError
+
+    def force_flush(self, timeout_millis: float = 10_000) -> bool:
+        raise NotImplementedError
