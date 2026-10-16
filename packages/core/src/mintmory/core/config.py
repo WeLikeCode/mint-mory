@@ -31,6 +31,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _OTEL_LOGGER = logging.getLogger("mintmory.telemetry")
 
+# Every spelling pydantic's boolean parser accepted when ``OTelSettings.enabled`` was a plain
+# ``bool``: true-ish and false-ish, case-insensitively, mapped to the string ``"true"``/``"false"``.
+_TRUE_SPELLINGS = frozenset({"1", "true", "t", "yes", "y", "on"})
+_FALSE_SPELLINGS = frozenset({"0", "false", "f", "no", "n", "off"})
+
 
 def _csv_set(value: str) -> frozenset[str]:
     """Parse a comma-separated env string into a normalised lowercase set."""
@@ -225,8 +230,12 @@ class OTelSettings(BaseSettings):
         if value is None:
             return value
         normalised = str(value).strip().lower()
-        if normalised in ("auto", "true", "false"):
-            return normalised
+        if normalised == "auto":
+            return "auto"
+        if normalised in _TRUE_SPELLINGS:
+            return "true"
+        if normalised in _FALSE_SPELLINGS:
+            return "false"
         _OTEL_LOGGER.warning("MINTMORY_OTEL_ENABLED=%r is invalid; falling back to 'auto'", value)
         return "auto"
 
