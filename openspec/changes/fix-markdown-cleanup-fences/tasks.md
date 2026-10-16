@@ -51,7 +51,7 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
   (build it with `re.escape`); the opening line, the closing line and every line
   between are marked; an unclosed block runs to the last line. Scanning continues
   after the closing line.
-- [ ] 2.2 Rewrite `clean_markdown(text: str) -> str` (:102-114):
+- [x] 2.2 Rewrite `clean_markdown(text: str) -> str` (:102-114):
   1. `text = text.replace("\r\n", "\n").replace("\r", "\n")`;
   2. `lines = text.split("\n")`; `mask = _fenced_line_mask(lines)`;
   3. walk the lines: a marked line is appended to the output unchanged; each
