@@ -25,6 +25,11 @@ profiles:
     model: opencode-go/deepseek-v4.1-flash
     vendor: deepseek
     auth: api_key
+  glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
+    adapter: opencode
+    model: opencode-go/glm-5.3-flash
+    vendor: zhipu
+    auth: api_key
   jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
     backend: system-one
     engine: jev
@@ -37,8 +42,9 @@ profiles:
     auth: subscription
     vendor: anthropic
 roles:
-  implementer:
+  implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
   - deepseek
+  - glm
   judges:
   - claude-judge
   s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
