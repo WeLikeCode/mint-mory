@@ -74,7 +74,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   to return False so `auto` never probes.
 
 ## 8. Test seam and global provider
-- [ ] 8.1 Tests for "Telemetry test seam" and "Global providers and repeated init".
+- [x] 8.1 Tests for "Telemetry test seam" and "Global providers and repeated init".
 - [ ] 8.2 Module `_tracer_provider`/`_meter_provider` give `_tracer`/`_meter` and become global on success.
   `_release_globals()` resets the API globals as OpenTelemetry's test utilities do (`trace._TRACER_PROVIDER_SET_ONCE =
   Once()`, `trace._TRACER_PROVIDER = None`, same for `metrics._internal._METER_PROVIDER_SET_ONCE` / `_METER_PROVIDER`).
