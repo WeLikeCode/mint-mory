@@ -67,3 +67,5 @@
 {"at":"2026-10-16T14:42:09Z","run":"r-20261016T1442Z-fd5b","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T16:34:42Z","detail":"awaiting_human: no new answers (verdicts open: Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T16:49:00Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-runtime is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-16T16:49:02Z","attempt":1,"cost_usd":2.949353,"runs":8,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T16:49:02Z","run":"r-20261016T1648Z-22fc","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
