@@ -205,3 +205,7 @@ def extract_markdown(
         method="text",
         path=p,
     )
+
+
+def _clean_pass(text: str) -> str:
+    raise NotImplementedError

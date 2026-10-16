@@ -108,6 +108,104 @@ def test_clean_markdown_is_idempotent() -> None:
 
 
 # ---------------------------------------------------------------------------
+# clean_markdown — fenced code blocks survive cleanup (design D1-D3)
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_clean_markdown_keeps_fenced_content_and_cleans_prose() -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_clean_markdown_normalises_line_endings_inside_fence() -> None:
+    assert clean_markdown("```\r\nx  \r\n```") == "```\nx  \n```"
+
+
+@pytest.mark.l4("C-99501760")
+def test_clean_markdown_fence_grammar() -> None:
+    assert clean_markdown("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->") == "~~~\n```\n<!-- k -->\n~~~"
+    assert (
+        clean_markdown("````\n```\n<!-- k -->\n````\n<!-- gone -->")
+        == "````\n```\n<!-- k -->\n````"
+    )
+    assert clean_markdown("   ```\n<!-- k -->\n   ```") == "   ```\n<!-- k -->\n   ```"
+    assert clean_markdown("    ```\n<!-- x -->") == "    ```"
+
+
+@pytest.mark.l4("C-637d6041")
+def test_clean_markdown_unterminated_fence_runs_to_end_of_text() -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-279cc124")
+def test_clean_markdown_comment_spanning_a_fence_is_not_removed() -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_clean_markdown_unterminated_fence_keeps_trailing_blank_lines() -> None:
+    text = "a\n```\nx\n\n\n"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-202c649c")
+def test_clean_markdown_collapses_blank_run_before_fence() -> None:
+    text = "text\n\n\n\n```\ny\n```"
+    expected = "text\n\n```\ny\n```"
+    assert conversion._clean_pass(text) == expected
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_clean_markdown_removed_comment_exposing_opener_needs_one_pass() -> None:
+    text = "<!-- c -->```\n<!-- x -->\n\n\n\ny  "
+    assert conversion._clean_pass(text) == "```\n\ny"
+    assert clean_markdown(text) == "```\n\ny"
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_clean_markdown_second_pass_changes_first_pass_output() -> None:
+    text = "<!-- c -->```\n```\n<!-- k -->  \n```"
+    assert conversion._clean_pass(text) == "```\n```\n<!-- k -->  \n```"
+    assert clean_markdown(text) == "```\n```\n\n```"
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_clean_markdown_is_idempotent_with_fences() -> None:
+    samples = [
+        (
+            "Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n"
+            "<!-- keep me -->\nline   \n\n\n\nend\n```\n\n~~~\na\n\n\n\nb  \n~~~\n"
+        ),
+        "```\r\nx  \r\n```",
+        "~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->",
+        "````\n```\n<!-- k -->\n````\n<!-- gone -->",
+        "    ```\n<!-- x -->",
+        "a\n```\n<!-- c -->\n\n\n\nb",
+        "a <!-- open\n```\nx\n```\nclose --> b",
+        "a\n```\nx\n\n\n",
+        "text\n\n\n\n```\ny\n```",
+        "<!-- c -->```\n<!-- x -->\n\n\n\ny  ",
+        "<!-- c -->```\n```\n<!-- k -->  \n```",
+    ]
+    for text in samples:
+        once = clean_markdown(text)
+        assert clean_markdown(once) == once
+    assert clean_markdown("text\n\n\n\n```\ny  \n```") == "text\n\n```\ny  \n```"
+
+
+# ---------------------------------------------------------------------------
 # is_convertible / supported_suffixes
 # ---------------------------------------------------------------------------
 def test_is_convertible_true_for_office_binaries() -> None:
