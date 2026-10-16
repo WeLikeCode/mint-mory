@@ -44,13 +44,19 @@ Measured on `staging` (a08aee3) with `max_prompt_chars=12000` unless noted:
 | 200 × (user 50 + tool 10) | 15,733 | 178 |
 | user 2,000 + assistant 2,000, cap 500 | 4,020 | 0 |
 
+After the fix the first three give 11,880, 11,913 and 11,947 characters (arithmetic in
+tasks.md section 4).
+
 (40 user turns of 400 chars with no assistant turns fit: 11,853 chars, 1 marker.)
 The existing test only checks `len(prompt) <= 12000 + 4000`
 (`packages/core/tests/test_history_distill_phase2.py:659`), so none of this is caught.
 
 ## Impact
 
-- Affected specs: **agent-history** (ADDED).
+- Affected specs: **agent-history** (MODIFIED: `Bounded LLM distiller prompt`, whose
+  base text says "plus a small elision marker" and "the first ask and last turn SHALL
+  always survive"; both change: markers are counted and an oversized first or last turn
+  is shortened).
 - Code: `packages/core/src/mintmory/core/history/distill.py` (`_elide_transcript`
   only). Tests: `packages/core/tests/test_history_distill_phase2.py`.
 - No config, schema or prompt change.

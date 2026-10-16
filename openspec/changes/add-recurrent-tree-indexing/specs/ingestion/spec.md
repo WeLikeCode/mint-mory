@@ -67,26 +67,34 @@ metadata only (manifest `index_mode` `metadata`), and the run report SHALL count
 in a `text-skipped-online-only` row.
 
 #### Scenario: An online-only text file is not read by default
-- **GIVEN** a tree with a local `local.txt` and a `cloud.txt` that the walk reports as online-only
+- **GIVEN** a tree with `local.txt` (content `LOCAL-BODY-5520 plus more`, 25 bytes) and `cloud.txt` (content `CLOUD-BODY-7391`, 15 bytes) where `_is_online_only` is replaced by `lambda st: st.st_size == 15`
 - **WHEN** `mintmory index-tree <tree> --collection lib` runs with default options
-- **THEN** the command exits 0, `extract_markdown` is never called with `cloud.txt`, no `category='fact'` memory holds `cloud.txt`'s body, the manifest row of `cloud.txt` has `index_mode='metadata'` and `online_only=1`, `local.txt` is still full-texted (`index_mode='content'`), and the report table has a row `text-skipped-online-only` whose value is `1`.
+- **THEN** the command exits 0, `extract_markdown` is never called with `cloud.txt`, `SELECT count(*) FROM memories WHERE category='fact' AND content LIKE '%CLOUD-BODY-7391%'` returns `0` (and returns `1` for `LOCAL-BODY-5520`), the manifest row of `cloud.txt` has `index_mode='metadata'` and `online_only=1`, `local.txt` is still full-texted (`index_mode='content'`), and the report table has a row `text-skipped-online-only` whose value is `1`.
 
 #### Scenario: The count is per run and the row is shown only when non-zero
 - **WHEN** the same command runs a second time on the unchanged tree
-- **THEN** the row `text-skipped-online-only` again shows `1` (every scanned online-only text file within the size cap is counted, unchanged or not); and a run in which no text file is online-only, or a run with `--no-text-content`, prints no `text-skipped-online-only` row.
+- **THEN** the row `text-skipped-online-only` again shows `1` (by the counting rule, every scanned online-only text file within the size cap that the content pass does not read is counted, unchanged or not); and a run in which no text file is online-only, or a run with `--no-text-content`, prints no `text-skipped-online-only` row.
 
 #### Scenario: The budgeted content pass can still fetch it on request (fresh DB)
 - **GIVEN** an empty DB and the same tree
 - **WHEN** the run is `mintmory index-tree <tree> --collection lib --content --content-types txt`
-- **THEN** `cloud.txt` is read by the content pass, its size counts toward the `downloaded` row and the download budget, its manifest `index_mode` is `content`, and it is NOT counted in `text-skipped-online-only` (no such row).
+- **THEN** `cloud.txt` is read by the content pass, its size counts toward the `downloaded` row and the download budget, its manifest `index_mode` is `content`, and it is NOT counted in `text-skipped-online-only` (`want_binary` is true for it; no such row).
+
+### Requirement: One counting rule for text-skipped-online-only
+In `index_tree`, for every scanned file, right after `want_binary` is computed and before the unchanged check, `text-skipped-online-only` SHALL go up by one exactly when the file is a text candidate (`--text-content` on, suffix in `TEXT_SUFFIXES`, size within `--text-max-kb`), is `online_only`, and has `want_binary` false (`--content`, suffix in `--content-types`, and `not budget_hit` at that file). The row is printed only when above zero.
+
+#### Scenario: Read is not counted; stopped by the budget or unchanged is counted
+- **GIVEN** online-only text files scanned under `--content --content-types txt`
+- **WHEN** one file is read, another is stopped by an exhausted budget (its `want_binary` is already false, so the budget branch adds no increment), and a third has an unchanged manifest row
+- **THEN** the read file is not counted, and the other two are counted once each.
 
 ### Requirement: A metadata row is upgraded by a later content run without --force
-The unchanged check in `index_tree` (`packages/cli/src/mintmory/cli/main.py`, the `existing = store.manifest_get(path_str)` block) SHALL skip a file only when its `size` and `mtime` match the manifest row AND the row is "covered": `index_mode` is `content` or `vision`, or the mode this run wants (`desired_mode`) is `metadata`. Therefore a row with `index_mode='metadata'` whose file is unchanged is re-indexed, with no `--force`, when this run wants `content` (it is not counted as `unchanged`); a row with `index_mode='content'` is never downgraded to `metadata` by a later run (it is counted as `unchanged`), even when that later run skips the file as online-only. This is existing behaviour; this change adds scenarios for it and does not modify the check.
+The unchanged check in `index_tree` (the `existing = store.manifest_get(path_str)` block) SHALL skip a file only when its `size` and `mtime` match the manifest row AND the row is covered: `index_mode` is `content` or `vision`, or this run's `desired_mode` is `metadata`. So an unchanged `metadata` row is re-indexed when this run wants `content`, and a `content` row is never downgraded. This is existing behaviour; this change adds scenarios and does not modify the check.
 
 #### Scenario: Default run, then a content run, upgrades the file without --force
 - **GIVEN** the tree of the first scenario, indexed once with default options (so `cloud.txt` has `index_mode='metadata'`, `online_only=1`; `local.txt` has `index_mode='content'`), no file touched since
 - **WHEN** `mintmory index-tree <tree> --collection lib --content --content-types txt` runs (no `--force`)
-- **THEN** `cloud.txt` is read exactly once and its row becomes `index_mode='content'`; its previous metadata memory is replaced, not duplicated (one memory per path for the file record); `local.txt` is counted in `unchanged`; the `unchanged` row shows `1`; no `text-skipped-online-only` row is printed.
+- **THEN** `cloud.txt` is read exactly once and its row becomes `index_mode='content'`; its previous metadata memory is replaced, not duplicated (one `category='context'` memory per path for the file record); `local.txt` is counted in `unchanged`; the `unchanged` row shows `1`; no `text-skipped-online-only` row is printed.
 
 #### Scenario: A content row is not downgraded by a later default run
 - **GIVEN** the DB left by the previous scenario
@@ -94,17 +102,10 @@ The unchanged check in `index_tree` (`packages/cli/src/mintmory/cli/main.py`, th
 - **THEN** `cloud.txt` stays `index_mode='content'` and is counted in `unchanged` (the row `unchanged` shows `2`); `cloud.txt` is not opened; the `text-skipped-online-only` row shows `1`, because the counter is per scanned file and runs before the unchanged check.
 
 #### Scenario: Budget exhausted, online-only text falls back to metadata
-- **GIVEN** a fresh DB and two online-only files `a.txt` and `b.txt` (scanned in that order), run with `--content --content-types txt --max-download-mb 0.000001`
-- **WHEN** the run finishes
-- **THEN** `a.txt` is read (it crosses the budget, so `budget_hit` becomes true) and gets `index_mode='content'`; `b.txt` is not read, keeps `index_mode='metadata'`, and IS counted in `text-skipped-online-only` (row shows `1`), because it is an online-only text file that was not read.
+- **GIVEN** a fresh DB; a tree with two files `a.txt` and `b.txt`, each containing `hello` (5 bytes); `_is_online_only` replaced by `lambda st: True`; the budget is `int(0.000001 * 1024 * 1024)` = 1 byte; the walk order inside one directory is the `os.walk` order, which is not sorted, so the test must not assume it
+- **WHEN** `mintmory index-tree <tree> --collection lib --content --content-types txt --max-download-mb 0.000001` runs
+- **THEN** the file scanned first (call it F1) is read: `downloaded` becomes 5 which is at least 1, so `budget_hit` becomes true, and F1 gets `index_mode='content'` and is not counted; the file scanned second (F2) has `want_binary` false, is not read, keeps `index_mode='metadata'`, and is counted: the `text-skipped-online-only` row shows `1`; the spy saw exactly one of the two names; the report has a `budget` row. The test does not care which of the two is F1: it asserts one manifest row `content`, one `metadata`.
 
 #### Scenario: Empty tree
 - **WHEN** `index-tree` runs on an empty directory with default options
 - **THEN** it exits 0, `scanned` is `0`, and no `text-skipped-online-only` row is printed.
-
-### Requirement: Code is located by name
-Units that edit `index_tree` SHALL locate code by function and variable name (`text_eligible`, `want_binary`, `desired_mode`, `store.manifest_get`), not by line number; line numbers in `tasks.md` are as of staging a08aee3 and shift when `fix-cochange-tools-on-postgres` merges first.
-
-#### Scenario: Names resolve on the merged base
-- **WHEN** the dependency `fix-cochange-tools-on-postgres` has merged
-- **THEN** `grep -n "text_eligible\|want_binary\|desired_mode" packages/cli/src/mintmory/cli/main.py` still finds the lines the task edits.

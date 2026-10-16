@@ -27,8 +27,13 @@ default. A user who wants them can still run `--content --content-types txt,md`
   fixture, `runner`, `app` and `_store` helpers). A real file system cannot produce
   `st_blocks == 0`, so mark a file online-only with
   `monkeypatch.setattr("mintmory.core.tree_index._is_online_only", lambda st: st.st_size == cloud_size)`
-  (the walk looks the function up in its module at call time; give `local.txt` and
-  `cloud.txt` different sizes). To prove `cloud.txt` is never read, wrap
+  (the real signature is `_is_online_only(st: os.stat_result) -> bool`, called by
+  `iter_dir_groups` with the `fp.stat()` result only, and looked up in its module at
+  call time; give `local.txt` (`LOCAL-BODY-5520 plus more`, 25 bytes) and `cloud.txt`
+  (`CLOUD-BODY-7391`, 15 bytes) different sizes, so the stub is
+  `lambda st: st.st_size == 15`). Check that the body of `cloud.txt` was not indexed with
+  `SELECT count(*) FROM memories WHERE category = 'fact' AND content LIKE '%CLOUD-BODY-7391%'`
+  (`0`; `1` for `LOCAL-BODY-5520`), as the existing text-content test queries `memories`. To prove `cloud.txt` is never read, wrap
   `mintmory.core.conversion.extract_markdown` with
   `monkeypatch.setattr("mintmory.core.conversion.extract_markdown", spy)` where
   `def spy(path: str | Path, **kwargs: Any) -> Any:` records `Path(path).name` and
@@ -56,19 +61,30 @@ default. A user who wants them can still run `--content --content-types txt,md`
     values `1` then `2`, `cloud.txt` read once by the spy, one `context` memory per
     path). These pass against existing code (the check already behaves so); they pin it.
   - `test_index_tree_empty_tree_has_no_online_only_row`: scenario "Empty tree".
-  - Budget-exhausted scenario: one test with `--max-download-mb 0.000001`.
+  - `test_index_tree_budget_exhausted_online_only_text_counted`: scenario "Budget
+    exhausted, online-only text falls back to metadata": `a.txt` and `b.txt` each
+    containing `hello`, stub `lambda st: True`, `--content --content-types txt
+    --max-download-mb 0.000001` (budget = `int(0.000001 * 1024 * 1024)` = 1 byte).
+    `os.walk` order is not sorted, so assert order-free: the spy saw exactly one of
+    the two names; the manifest has one `content` and one `metadata` row; the
+    `text-skipped-online-only` row is `1`; a `budget` row is printed. It passes
+    against the code after 2.2 and 2.3; before them there is no such row (it fails).
   Run `.venv/bin/pytest -q --no-cov packages/cli/tests/test_cli.py -k online_only`;
-  the first two must fail before 2.2; the upgrade/downgrade and empty-tree tests pass before and after.
+  the first two and the budget test must fail before 2.2/2.3; the upgrade/downgrade and empty-tree tests pass before and after.
 - [ ] 2.2 The guard, in `index_tree` (`cli/main.py:613-617`): split the eligibility
   into `text_candidate = text_content and entry.suffix in TEXT_SUFFIXES and
   (text_max_bytes is None or entry.size <= text_max_bytes)` and
   `text_eligible = text_candidate and not entry.online_only`. Leave `want_binary`,
   `do_content`, the vision branch and the budget logic unchanged. Nothing else reads
   an online-only file on the default path.
-- [ ] 2.3 The report counter: add `text_skipped_online_only = 0` next to the other
-  counters (around `cli/main.py:584-591`); after `want_binary` is computed, do
+- [ ] 2.3 The report counter, following the counting rule of the spec (design.md
+  `## Decisions`): add `text_skipped_online_only = 0` next to the other
+  counters (around `cli/main.py:584-591`); on the line right after `want_binary` is
+  computed (it already contains `not budget_hit`, so files the exhausted budget
+  stopped have `want_binary` false and are counted there; add no increment in the
+  budget branch near `budget_hit = True`), do
   `if text_candidate and entry.online_only and not want_binary: text_skipped_online_only += 1`
-  (this runs before the unchanged check, so the count is per scanned file); after
+  (this runs before the unchanged check, so unchanged files are counted); after
   the `base_rows` loop add
   `if text_skipped_online_only: table.add_row("text-skipped-online-only", str(text_skipped_online_only))`.
   Update the `--text-content` help text and the `index_tree` docstring to say

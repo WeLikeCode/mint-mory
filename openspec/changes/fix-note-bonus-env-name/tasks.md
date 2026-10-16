@@ -41,5 +41,5 @@ Paths: `config.py` = `packages/core/src/mintmory/core/config.py`, tests in
 - [ ] 4.1 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate; the existing
   notes/search tests that build `NoteSettings(anchor_min_dominance=0.0)` or
-  `StorageAdapter(":memory:", note_bonus=0.0)` pass unedited), and
-  `npx --yes @fission-ai/openspec@1.14.1 validate fix-note-bonus-env-name --strict`.
+  `StorageAdapter(":memory:", note_bonus=0.0)` pass unedited). These are the real gates of `.l4/config.yaml` (uv sync, ruff, mypy, pytest);
+  OpenSpec validation is not a task gate (design.md `## Decisions`).

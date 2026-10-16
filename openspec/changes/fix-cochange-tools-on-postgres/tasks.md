@@ -86,5 +86,5 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
 
 ## 3. Gates
 - [ ] 3.1 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
-  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate), and
-  `npx --yes @fission-ai/openspec@1.14.1 validate fix-cochange-tools-on-postgres --strict`.
+  `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). These are the real gates of `.l4/config.yaml` (uv sync, ruff, mypy,
+  pytest); OpenSpec validation is not a task gate (design.md `## Decisions`).
