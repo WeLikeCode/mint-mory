@@ -41,7 +41,7 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
   Run `.venv/bin/pytest -q --no-cov packages/core/tests/test_conversion.py -k clean_markdown`.
 
 ## 2. Fix
-- [ ] 2.1 In `conversion.py` add a module-level regex
+- [x] 2.1 In `conversion.py` add a module-level regex
   `_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")` and a private helper
   `_fenced_line_mask(lines: list[str]) -> list[bool]` that marks, for each line,
   whether it is part of a fenced block: a line matching `_FENCE_OPEN_RE` opens a
