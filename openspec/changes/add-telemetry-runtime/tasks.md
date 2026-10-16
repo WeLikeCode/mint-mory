@@ -53,7 +53,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   (not reentrant) and calls it. `_atexit_registered`: set after `atexit.register(shutdown_telemetry)` (via `import
   atexit`, so tests patch it) on a successful init; `reset_telemetry()` = `shutdown_telemetry(0.5)`,
   `atexit.unregister(shutdown_telemetry)`, flag False.
-- [ ] 5.3 `mark_error`: return on `_NoopSpan`; else `set_status(Status(StatusCode.ERROR))` and
+- [x] 5.3 `mark_error`: return on `_NoopSpan`; else `set_status(Status(StatusCode.ERROR))` and
   `set_attribute("error.type", error_type)` inside `try/except Exception`.
 
 ## 6. Resource, sampling
