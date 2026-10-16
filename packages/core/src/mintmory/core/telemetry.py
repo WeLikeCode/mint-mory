@@ -666,8 +666,16 @@ def reset_telemetry() -> None:
 
 
 def _sdk_available() -> bool:
-    """Whether the optional ``opentelemetry.sdk`` is installed, without importing it."""
-    return importlib.util.find_spec("opentelemetry.sdk") is not None
+    """Whether the optional ``opentelemetry.sdk`` is installed, without importing it.
+
+    ``find_spec`` raises ``ModuleNotFoundError`` (an ``ImportError``) when the package is absent
+    and can raise ``ValueError`` for a namespace/``__spec__`` quirk; both mean "not available"
+    rather than a crash.
+    """
+    try:
+        return importlib.util.find_spec("opentelemetry.sdk") is not None
+    except (ImportError, ValueError):
+        return False
 
 
 def _endpoint_reachable(url: str, timeout: float = 0.1) -> bool:
