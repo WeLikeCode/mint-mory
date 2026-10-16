@@ -14,6 +14,12 @@
 #            harness). Restored here when the key
 #            has no hit; the WORKFLOW saves it after `l4 doctor --ci --fix`, with actions/cache/save and the outputs
 #            clis-cache-key and clis-cache-paths, when clis-cache-hit is not 'true'.
+#   laya     Laya, the System One engine (adoption-lessons L4-ADO-019): its uv tool directory, the laya-serve link and
+#            the checkpoint, keyed l4-laya-<os>-<arch>-<image>-<laya pin>-<checkpoint> by `l4 ci cache-key laya`, which
+#            prints nothing (so nothing is restored or saved) unless a laya-local profile is in a System One list. A
+#            cache of its own: the CLI key does not change. Restored here, saved by the WORKFLOW after
+#            `l4 doctor --ci --fix` with the outputs laya-cache-key and laya-cache-paths, when laya-cache-hit is not
+#            'true'. It follows the clis input.
 name: L4 harness
 description: >-
   Install the L4 harness at a pinned source, restore its caches, run the runner setup and put l4 on PATH. The agent-CLI
@@ -66,6 +72,15 @@ outputs:
       The agent-CLI cache paths (multi-line; empty when clis is none), for the workflow's actions/cache/save step. The
       workflow never repeats them: a cache is versioned by its exact path list, so a copy would drift from the restore.
     value: ${{ steps.clipaths.outputs.paths }}
+  laya-cache-hit:
+    description: true when the Laya cache was restored, else false (also when there is no Laya key).
+    value: ${{ steps.laya.outputs.cache-hit == 'true' }}
+  laya-cache-key:
+    description: The Laya cache key, for the workflow's actions/cache/save step (empty without a laya-local profile).
+    value: ${{ steps.layakey.outputs.key }}
+  laya-cache-paths:
+    description: The Laya cache paths (multi-line; empty when clis is none), for the workflow's actions/cache/save step.
+    value: ${{ steps.layapaths.outputs.paths }}
   version:
     description: The installed harness version.
     value: ${{ steps.ver.outputs.version }}
@@ -219,7 +234,9 @@ runs:
         !~/.local/bin/uv
         !~/.local/bin/uvx
         !~/.local/bin/l4
+        !~/.local/bin/laya-serve
         ~/.local/share/l4
+        !~/.local/share/l4/laya
         ~/.local/share/claude
         ~/.cache/l4/installers
         L4_CLI_PATHS
@@ -231,6 +248,34 @@ runs:
       with:
         path: ${{ steps.clipaths.outputs.paths }}
         key: ${{ steps.clikey.outputs.key }}
+    - name: Laya cache key
+      id: layakey
+      if: inputs.clis != 'none'
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      run: |
+        # the whole key, made by the installed harness; empty without a laya-local profile (then nothing is cached)
+        echo "key=$("$HOME/.local/bin/l4" ci cache-key laya)" >> "$GITHUB_OUTPUT"
+    - name: Laya cache paths
+      id: layapaths
+      if: inputs.clis != 'none'
+      shell: bash
+      run: |
+        # the one place the list is written: restored below and output for the workflow's save step
+        cat >> "$GITHUB_OUTPUT" <<'L4_EOF'
+        paths<<L4_LAYA_PATHS
+        ~/.local/share/l4/laya
+        ~/.cache/l4/laya
+        ~/.local/bin/laya-serve
+        L4_LAYA_PATHS
+        L4_EOF
+    - name: restore Laya cache
+      id: laya
+      if: inputs.clis != 'none' && steps.layakey.outputs.key != ''
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.layapaths.outputs.paths }}
+        key: ${{ steps.layakey.outputs.key }}
     - name: runner setup
       id: setup
       shell: bash
