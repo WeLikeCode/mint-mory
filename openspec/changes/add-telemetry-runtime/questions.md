@@ -18,7 +18,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-16T05:08Z by deepseek, run r-20261016T0449Z-8f57, task 1.1
