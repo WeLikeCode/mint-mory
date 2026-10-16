@@ -24,10 +24,14 @@ significant trailing whitespace, intentional blank lines). It runs on every
 
 `clean_markdown` splits the text (after line-ending normalisation) into fenced and
 non-fenced lines. Fenced lines — from an opening ``` or ~~~ fence through its
-closing fence — are copied byte-identical. Comment removal, trailing-whitespace
+closing fence, identified on the text each pass reads — are copied byte-identical
+within that pass. Comment removal, trailing-whitespace
 stripping and blank-run collapsing apply only to the runs of lines outside fences,
 exactly as today. Leading and trailing blank lines of the whole result are still
-removed. The function stays pure, total and idempotent.
+removed. The function stays pure, total and idempotent: it repeats the pass (`_clean_pass`)
+until the text stops changing, re-identifying fences each time. Idempotence wins over
+byte-identity in one case only: a removed comment that exposes a new fence marker
+(spec scenario "A second pass changes the first pass's output"; design.md D1).
 
 Out of scope: indented (4-space) code blocks, inline code spans, HTML `<pre>` blocks.
 

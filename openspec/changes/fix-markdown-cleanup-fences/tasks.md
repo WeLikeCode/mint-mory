@@ -5,20 +5,39 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
 
 ## 1. Failing tests first
 - [ ] 1.1 In `test_conversion.py`, after `test_clean_markdown_is_idempotent` (:97-107),
-  add one test per scenario of `specs/ingestion/spec.md`, with the exact inputs and
-  expected strings written there (Python string literals; the ``` fences are plain
-  characters inside the strings):
-  - `test_clean_markdown_keeps_fenced_blocks_byte_identical` (fails today)
-  - `test_clean_markdown_normalises_crlf_inside_fence` (fails today: the trailing
+  add one test per scenario of `specs/ingestion/spec.md` (10 scenarios, 10 tests, listed
+  below by scenario name), with the exact inputs and expected strings written there
+  (Python string literals; the ``` fences are plain characters inside the strings):
+  - Scenario "Fenced content is kept, the prose around it is cleaned" ->
+    `test_clean_markdown_keeps_fenced_blocks_byte_identical` (fails today)
+  - Scenario "Line endings are still normalised inside a fence" ->
+    `test_clean_markdown_normalises_crlf_inside_fence` (fails today: the trailing
     spaces are stripped)
-  - `test_clean_markdown_fence_grammar` (fails today on the first, second and third
-    inputs)
-  - `test_clean_markdown_unterminated_fence_runs_to_end` (fails today)
-  - `test_clean_markdown_comment_split_by_fence_is_kept` (fails today: the regex
+  - Scenario "Fence grammar" -> `test_clean_markdown_fence_grammar` (one assert per
+    input; fails today on the first, second and third inputs)
+  - Scenario "An unterminated fence runs to the end of the text" ->
+    `test_clean_markdown_unterminated_fence_runs_to_end` (fails today)
+  - Scenario "A comment is removed only within one run of non-fenced lines" ->
+    `test_clean_markdown_comment_split_by_fence_is_kept` (fails today: the regex
     removes from `<!--` to `-->` across the fence)
-  - `test_clean_markdown_collapses_blank_run_before_fence` (passes today, guard)
-  - `test_clean_markdown_is_idempotent_with_fences` (loop over the inputs above;
-    assert `clean_markdown(clean_markdown(s)) == clean_markdown(s)`)
+  - Scenario "An unterminated fence keeps its trailing blank lines" ->
+    `test_clean_markdown_unterminated_fence_keeps_trailing_blank_lines` (input
+    `"a\n```\nx\n\n\n"`, asserts it is returned unchanged; fails today)
+  - Scenario "Blank runs before a fence still collapse" ->
+    `test_clean_markdown_collapses_blank_run_before_fence` (passes today, guard)
+  - Scenario "A removed comment that exposes an opener needs only one pass" ->
+    `test_clean_markdown_comment_exposes_opener` (asserts the output
+    `"```\n\ny"` for the input of the scenario)
+  - Scenario "A second pass changes the first pass's output" ->
+    `test_clean_markdown_needs_second_pass` (asserts the output
+    `"```\n```\n\n```"` for `"<!-- c -->```\n```\n<!-- k -->  \n```"`; this test
+    fails if `clean_markdown` runs a single `_clean_pass`, which returns
+    `"```\n```\n<!-- k -->  \n```"`)
+  - Scenario "Idempotent with fences, unchanged without" ->
+    `test_clean_markdown_is_idempotent_with_fences` (loop over the inputs of all the
+    scenarios above, the CRLF one included; assert
+    `clean_markdown(clean_markdown(s)) == clean_markdown(s)`); the "unchanged
+    without fences" half is the existing tests, run unedited in 3.1.
   Run `.venv/bin/pytest -q --no-cov packages/core/tests/test_conversion.py -k clean_markdown`.
 
 ## 2. Fix
@@ -44,10 +63,11 @@ Paths: `conversion.py` = `packages/core/src/mintmory/core/conversion.py`, tests 
   Put steps 2 to 4 in a helper `_clean_pass(text: str) -> str`; `clean_markdown`
   normalises line endings (step 1), then calls `_clean_pass` until the result stops
   changing (`while (new := _clean_pass(text)) != text: text = new`, then return it).
-  Every pass that changes the text makes it shorter, so the loop ends. This keeps
-  the function idempotent when removing a comment exposes a fence line (the
-  scenario "A removed comment that exposes a fence line"); add that input to the
-  idempotency test of task 1.1.
+  Every pass that changes the text only removes characters, so the text gets shorter and the loop ends. Fences are identified from scratch on
+  each pass's input (design.md, Decisions D1): this keeps the function idempotent when
+  removing a comment exposes a fence line, at the price of the one exception in the
+  requirement; the scenarios "A removed comment that exposes an opener needs only one
+  pass" and "A second pass changes the first pass's output" pin both behaviours.
   Keep `_BLANK_RUN_RE` only if still used (ruff F841/F401 otherwise; it is a module
   constant, so remove it if unused). Update the docstring and the module docstring
   sentence (:10-12) to say fenced code blocks are copied unchanged.

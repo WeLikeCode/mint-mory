@@ -3,12 +3,14 @@
 ## ADDED Requirements
 
 ### Requirement: Fenced code blocks survive markdown cleanup byte-identical
-`clean_markdown` SHALL copy every fenced code block (opening ``` or ~~~ fence through
-its closing fence, both fence lines included) unchanged, after the document-wide
-`\r\n`/`\r` → `\n` normalisation: no HTML-comment removal, trailing-whitespace strip
-or blank-line collapse inside it. Outside fences the cleanup SHALL be exactly as
-today. The function SHALL stay idempotent: it SHALL repeat the cleanup pass until the
-text stops changing (a comment removal can expose a new fence line).
+`clean_markdown` (`conversion.py`) SHALL copy every fenced code block (opening ``` or ~~~
+fence through its closing fence) unchanged within each cleanup pass, after the `\r\n`/`\r` → `\n`
+normalisation: no comment removal, trailing-whitespace strip or blank-line collapse inside it.
+Outside fences the cleanup SHALL be as today. It SHALL repeat the pass, re-identifying fences
+on each pass's input, until the text stops changing (idempotent). Idempotence wins over
+byte-identity in one case only: a removed comment leaves a fence marker that the input did
+not have, so a later pass reads a new fence structure (scenario "A second pass changes the
+first pass's output"). Otherwise every input fenced block is byte-identical in the output.
 
 #### Scenario: Fenced content is kept, the prose around it is cleaned
 - **GIVEN** the input `"Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n~~~\na\n\n\n\nb  \n~~~\n"`
@@ -40,9 +42,14 @@ text stops changing (a comment removal can expose a new fence line).
 - **WHEN** `clean_markdown("text\n\n\n\n```\ny\n```")` runs
 - **THEN** it returns `"text\n\n```\ny\n```"`.
 
-#### Scenario: A removed comment that exposes a fence line
+#### Scenario: A removed comment that exposes an opener needs only one pass
 - **WHEN** `clean_markdown("<!-- c -->```\n<!-- x -->\n\n\n\ny  ")` runs
-- **THEN** it returns `"```\n\ny"` (the first pass removes both comments and leaves the line "```"; the second pass reads it as an unterminated fence and changes nothing), and `clean_markdown` of that result returns it unchanged.
+- **THEN** it returns `"```\n\ny"` (the first pass removes both comments and leaves the line "```" as an unterminated fence; the second pass changes nothing).
+
+#### Scenario: A second pass changes the first pass's output
+- **GIVEN** the input `"<!-- c -->```\n```\n<!-- k -->  \n```"` (line 1 is not a fence line; lines 2 to 4 are a fenced block)
+- **WHEN** `clean_markdown` runs
+- **THEN** it returns `"```\n```\n\n```"`: pass 1 keeps lines 2 to 4 and only removes the comment on line 1, giving `"```\n```\n<!-- k -->  \n```"`, which is not a fixed point; pass 2 reads lines 1 and 2 as a fence and line 3 as prose, so it removes `<!-- k -->` and strips its trailing spaces, giving `"```\n```\n\n```"`, where pass 3 changes nothing. A single pass returns `"```\n```\n<!-- k -->  \n```"` instead. This is the one case where the original fenced block is not kept byte-identical (the requirement above).
 
 #### Scenario: Idempotent with fences, unchanged without
 - **WHEN** `clean_markdown` is applied twice to each input of the scenarios above
