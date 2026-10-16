@@ -244,3 +244,13 @@ def _endpoint_reachable(url: str, timeout: float = 0.1) -> bool:
 
 def shutdown_telemetry(timeout_s: float = 2.0) -> None:
     raise NotImplementedError
+
+
+def _resolve_state(settings: OTelSettings) -> str:
+    """The single on/off decision: ``off`` | ``sdk missing`` | ``export`` | ``no collector``."""
+    raise NotImplementedError
+
+
+def _traces_endpoint() -> str:
+    """The OTLP/HTTP traces URL: the traces variable, else the shared endpoint plus a path."""
+    raise NotImplementedError
