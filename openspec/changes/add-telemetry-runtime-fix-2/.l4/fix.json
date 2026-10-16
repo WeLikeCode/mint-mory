@@ -1,0 +1,13 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:add-telemetry-runtime",
+  "round": 2,
+  "findings": [
+    "F-88eb7d41",
+    "F-9b72c55d"
+  ],
+  "chores": [],
+  "test_chores": [],
+  "refactors": [],
+  "retakes": []
+}

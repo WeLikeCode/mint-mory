@@ -12,8 +12,8 @@ verification round, turns them into a fix unit and checks that each one was addr
 |----|--------|------|-------|----------|
 | FB-001 | taken | behaviour |  | _sdk_available must catch ImportError and ValueError from |
 | FB-002 | taken | behaviour |  | _build_meter_provider must wrap the configured metric exporter with |
-| FB-003 | submitted | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | init_telemetry: one set of providers when two threads init at once |
-| FB-004 | submitted | behaviour | packages/core/src/mintmory/core/config.py:220 | MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before |
+| FB-003 | taken | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | init_telemetry: one set of providers when two threads init at once |
+| FB-004 | taken | behaviour | packages/core/src/mintmory/core/config.py:220 | MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -60,7 +60,7 @@ Taken in round 3 into add-telemetry-runtime-fix-1
 
 ## FB-003: init_telemetry: one set of providers when two threads init at once
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Where:** `packages/core/src/mintmory/core/telemetry.py:541-568`
 - **Lesson:** no
@@ -107,12 +107,13 @@ The check of _enabled runs outside the lock and is not repeated inside it, so tw
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 5 into add-telemetry-runtime-fix-2
 
 ---
 
 ## FB-004: MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Where:** `packages/core/src/mintmory/core/config.py:220-231`
 - **Lesson:** no
@@ -143,3 +144,4 @@ On staging, the setting was a pydantic bool, so 1, yes and on (any case) meant t
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 5 into add-telemetry-runtime-fix-2
