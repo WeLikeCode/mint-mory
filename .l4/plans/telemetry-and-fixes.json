@@ -5,8 +5,8 @@
   "merge": "auto",
   "limits": {
     "max_unit_attempts": 2,
-    "max_runs": 55,
-    "max_cost_usd": 30
+    "max_runs": 80,
+    "max_cost_usd": 60
   },
   "external_dependencies": [],
   "batches": [
