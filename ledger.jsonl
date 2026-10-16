@@ -71,3 +71,5 @@
 {"at":"2026-10-16T16:49:02Z","run":"r-20261016T1648Z-22fc","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T16:49:53Z","detail":"no finding of this round can be converted into a fix task","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T16:55:17Z","by":"ciprian@spotus.space","extend":{},"reason":"add-telemetry-runtime retried after the rejected verification hold; feedback FB-001/FB-002 carry the fixes","type":"plan.resumed"}
+{"at":"2026-10-16T16:55:50Z","attempt":1,"cost_usd":2.949353,"runs":9,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T16:55:50Z","run":"r-20261016T1655Z-d3d9","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
