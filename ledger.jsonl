@@ -90,3 +90,4 @@
 {"at":"2026-10-16T21:29:25Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"PR #6 retried on v0.4.6 (the human reject loop is fixed in L4)","type":"plan.resumed"}
 {"at":"2026-10-16T21:29:56Z","attempt":1,"cost_usd":3.836902,"runs":13,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T21:29:56Z","run":"r-20261016T2129Z-cb47","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T21:45:07Z","detail":"awaiting_human: no new answers (verdicts open: Q-005)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-runtime"}
