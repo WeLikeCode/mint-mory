@@ -13,6 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is restored by the green guard |
 | Q-002 | answered | 1.1 | technical | packages/core/tests/test_telemetry_suite_defaults.py:19 — the required root conftest.py default is a test-support file the green freeze always restores |
+| Q-003 | open | 1.2 | technical | packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze |
 <!-- l4:index:end -->
 
 ---
@@ -63,3 +64,27 @@ Edit `packages/core/tests/test_telemetry_suite_defaults.py`: replace the body of
 ### Answer
 <!-- write below this line -->
 Keep the red test exactly as it is and take neither option: both weaken it. Task 1.1 itself names the root support file that must get the MINTMORY_OTEL_ENABLED default and the autouse reset fixture, and from harness 0.4.2 on the green step may change a support file that the reviewed task text names. Make that change in green as task 1.1 says.
+
+---
+
+## Q-003: packages/cli/tests/test_telemetry_shared_fixtures.py:34 — the required root conftest.py fixtures are restored by the green freeze
+
+- **Status:** open
+- **Blocking tasks:** 1.2
+- **Kind:** technical
+- **Asked:** 2026-10-16T09:15Z by deepseek, run r-20261016T0849Z-8d03, task 1.2
+
+### Context
+The three red tests assert the root conftest.py provides the `otlp_receiver` and `closed_port` fixtures: `_fixture_available(request, "otlp_receiver") is True` (line 34) and `_fixture_available(request, "closed_port") is True` (line 37). The 'Shared telemetry test fixtures' requirement and task 1.2 both place those fixtures in the root conftest.py (task 1.2's block: 'otlp_receiver is a ThreadingHTTPServer in a daemon thread, shut down at teardown; spans() decodes with trace_service_pb2.ExportTraceServiceRequest, imported inside the method'). But the red snapshot froze conftest.py, and the harness restored the previous green attempt's conftest.py change (ledger seq 69 guard.violation path=conftest.py phase=green), so the fixtures cannot be added and all three red tests fail. Task 1.2's own task text block does not literally contain the token 'conftest.py' (only the '## 1. Root conftest.py' section heading does), so no human answer has unfrozen it for this task; task 1.1 needed the same unfreeze via Q-001. No production module can supply a pytest fixture to packages/cli/tests.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `conftest.py`, `packages/cli/tests/test_telemetry_shared_fixtures.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit add-telemetry-runtime`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `conftest.py`: add the shared telemetry fixtures — a `closed_port` fixture returning an int 127.0.0.1 port nobody listens on, and an `otlp_receiver` fixture backed by a ThreadingHTTPServer in a daemon thread (shut down at teardown) exposing `.endpoint` (`http://127.0.0.1:<port>`), `.requests` (`(path, body bytes)` per POST, each answered 200) and `.spans()` (`(name, resource-attributes dict)` per span posted to `/v1/traces`, decoding the body with `trace_service_pb2.ExportTraceServiceRequest` imported inside the method) — and unfreeze `conftest.py` for task 1.2.
+2. Edit `packages/cli/tests/test_telemetry_shared_fixtures.py`: drop the `_fixture_available(...) is True` assertions that require the root conftest.py and define the two fixtures locally in the test module, and unfreeze that test file for task 1.2 (this abandons the requirement that the fixtures are shared from the root conftest.py).
+
+### Clarifier suggestion
+Edit `conftest.py`: add the shared telemetry fixtures — a `closed_port` fixture returning an int 127.0.0.1 port nobody listens on, and an `otlp_receiver` fixture backed by a ThreadingHTTPServer in a daemon thread (shut down at teardown) exposing `.endpoint` (`http://127.0.0.1:<port>`), `.requests` (`(path, body bytes)` per POST, each answered 200) and `.spans()` (`(name, resource-attributes dict)` per span posted to `/v1/traces`, decoding the body with `trace_service_pb2.ExportTraceServiceRequest` imported inside the method) — and unfreeze `conftest.py` for task 1.2.
+
+### Answer
+<!-- write below this line -->
