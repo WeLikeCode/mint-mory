@@ -2,3 +2,4 @@
 {"ts": "2026-10-16T04:49:18.892306Z", "run_id": "r-20261016T0449Z-7d52", "unit": "openspec:fix-markdown-cleanup-fences", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 4, "merge_commit": "e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd"}
 {"ts": "2026-10-16T04:49:24.132862Z", "run_id": "r-20261016T0449Z-7d52", "unit": "openspec:fix-markdown-cleanup-fences", "seq": 3, "type": "archive.opened", "number": 5, "url": "<forge>/WeLikeCode/mint-mory/pull/5", "branch": "l4/archive/openspec/fix-markdown-cleanup-fences"}
 {"ts": "2026-10-16T04:49:25.479776Z", "run_id": "r-20261016T0449Z-7d52", "unit": "openspec:fix-markdown-cleanup-fences", "seq": 4, "type": "archive.merged", "head": "7942c5591c0bcd29f2f50fabefeea04ea99fe9f9", "number": 5}
+{"ts": "2026-10-16T04:49:26.614677Z", "run_id": "r-20261016T0449Z-7d52", "unit": "openspec:fix-markdown-cleanup-fences", "seq": 5, "type": "run.finished", "exit_code": 0}
