@@ -710,4 +710,21 @@ def _traces_endpoint() -> str:
 
 
 def mark_error(span: Any, error_type: str) -> None:
-    raise NotImplementedError
+    """The one way MintMory marks a span failed: ERROR status, no description, ``error.type``.
+
+    A no-op for ``_NoopSpan`` (telemetry off, or traces ``none``) and any span without a
+    status method. Never raises, so hot paths call it without a guard.
+    """
+    try:
+        from opentelemetry.trace import Status, StatusCode
+    except Exception:  # noqa: BLE001 - the SDK may be absent; marking must never raise
+        return
+    try:
+        set_status = getattr(span, "set_status", None)
+        if set_status is not None:
+            set_status(Status(StatusCode.ERROR))
+        set_attribute = getattr(span, "set_attribute", None)
+        if set_attribute is not None:
+            set_attribute("error.type", error_type)
+    except Exception:  # noqa: BLE001 - marking must never raise
+        return

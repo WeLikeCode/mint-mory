@@ -46,7 +46,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   `exception.type` and an ERROR status without description.
 
 ## 5. Shutdown, error helper
-- [ ] 5.1 Tests for "Bounded flush on exit" and "One error-marking helper".
+- [x] 5.1 Tests for "Bounded flush on exit" and "One error-marking helper".
 - [ ] 5.2 `_teardown(timeout_s)`, called with the lock held: providers' `shutdown()` in `threading.Thread(name=
   "mintmory-telemetry-shutdown", daemon=True)`, `join(timeout_s)`; clear module state and `_instruments`;
   `_release_globals()` only if set; restore the logger level. `shutdown_telemetry` takes the one `threading.Lock`
