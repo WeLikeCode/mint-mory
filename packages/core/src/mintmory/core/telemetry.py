@@ -9,9 +9,14 @@ Design (docs/OBSERVABILITY.md §4):
   * ``opentelemetry-sdk`` is an OPTIONAL extra (``mintmory-core[otel]``). If
     ``MINTMORY_OTEL_ENABLED=true`` but the SDK is absent, we log one warning and
     stay in no-op mode (never crash).
-  * Enable with ``init_telemetry(OTelSettings(enabled=True, ...))`` once at startup
+  * Enable with ``init_telemetry(OTelSettings(...))`` once at startup
     (CLI/API/MCP/scripts). Exporter: ``console`` (stderr) or ``otlp`` (uses the
     standard ``OTEL_EXPORTER_OTLP_*`` env vars).
+  * Export never runs on the calling thread and never raises: a guard around each
+    configured exporter turns a failure into ``FAILURE`` and logs it once per
+    signal per failure streak. ``init_telemetry`` never raises: a bad exporter is
+    swallowed, the runtime reverts to the no-op shim and one WARNING names only
+    the exception class.
 
 Use the OTel GenAI semantic conventions for LLM spans (gen_ai.* attributes) so
 traces render in any OTel-aware backend.
@@ -19,16 +24,21 @@ traces render in any OTel-aware backend.
 
 from __future__ import annotations
 
+import atexit
+import contextlib
+import importlib.metadata
 import importlib.util
 import logging
 import os
 import socket
 import sys
+import threading
+import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 if TYPE_CHECKING:
     from mintmory.core.config import OTelSettings
@@ -44,12 +54,20 @@ _ENDPOINT_VARIABLES = (
     "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
 )
 _KNOWN_EXPORTERS = ("otlp", "console", "none")
+_SUPPORTED_PROTOCOL = "http/protobuf"
+_EXPORTER_LOGGER_NAME = "opentelemetry.exporter.otlp.proto.http"
+_SERVICE_NAMESPACE = "mintmory"
 
 # Lazily-populated handles; all None == no-op shim.
 _enabled: bool = False
 _tracer: Any = None
 _meter: Any = None
 _instruments: dict[str, Any] = {}
+_tracer_provider: Any = None
+_meter_provider: Any = None
+_saved_exporter_level: int | None = None
+_atexit_registered: bool = False
+_shutdown_lock = threading.Lock()
 
 
 class _NoopSpan:
@@ -74,98 +92,395 @@ def _sdk_disabled() -> bool:
     return os.environ.get("OTEL_SDK_DISABLED", "").strip().lower() == "true"
 
 
-def _signal_exporter(settings: OTelSettings, signal: str) -> str:
-    """One signal's exporter: ``OTEL_<SIGNAL>_EXPORTER`` wins over ``MINTMORY_OTEL_EXPORTER``."""
-    raw = os.environ.get(f"OTEL_{signal}_EXPORTER", "").strip()
-    if raw:
-        for item in raw.split(","):
-            candidate = item.strip().lower()
-            if candidate in _KNOWN_EXPORTERS:
-                return candidate
+def _has_endpoint_variable() -> bool:
+    """Whether any standard endpoint variable is set."""
+    return any(os.environ.get(name) for name in _ENDPOINT_VARIABLES)
+
+
+def _resolve_exporter(settings: OTelSettings, signal: str) -> str:
+    """One signal's exporter: ``OTEL_<SIGNAL>_EXPORTER`` wins over ``MINTMORY_OTEL_EXPORTER``.
+
+    The standard variable may be a comma list; the first known item wins, else the
+    MintMory default. Anything but a single known token logs one WARNING naming the
+    variable.
+    """
+    variable = f"OTEL_{signal}_EXPORTER"
+    raw = os.environ.get(variable, "").strip()
+    if not raw:
+        return settings.exporter
+    normalised = raw.lower()
+    if normalised in _KNOWN_EXPORTERS:
+        return normalised
+    known = [item.strip().lower() for item in raw.split(",")]
+    known = [item for item in known if item in _KNOWN_EXPORTERS]
+    _LOGGER.warning("%s=%r is not a known exporter; falling back", variable, raw)
+    if known:
+        return known[0]
     return settings.exporter
+
+
+def _check_protocol(signal: str, warned: set[str]) -> None:
+    """Only ``http/protobuf`` is supported; a per-signal variable wins, the shared one warns."""
+    specific_var = f"OTEL_EXPORTER_OTLP_{signal}_PROTOCOL"
+    specific = os.environ.get(specific_var, "").strip()
+    if specific:
+        if specific != _SUPPORTED_PROTOCOL:
+            _LOGGER.warning(
+                "%s=%r is not supported; using %s", specific_var, specific, _SUPPORTED_PROTOCOL
+            )
+        return
+    shared = os.environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "").strip()
+    if shared and shared != _SUPPORTED_PROTOCOL and "OTEL_EXPORTER_OTLP_PROTOCOL" not in warned:
+        warned.add("OTEL_EXPORTER_OTLP_PROTOCOL")
+        _LOGGER.warning(
+            "OTEL_EXPORTER_OTLP_PROTOCOL=%r is not supported; using %s",
+            shared,
+            _SUPPORTED_PROTOCOL,
+        )
+
+
+def _resource_attributes_from_env() -> dict[str, str]:
+    """Parse ``OTEL_RESOURCE_ATTRIBUTES`` (``k=v`` pairs, values percent-decoded)."""
+    raw = os.environ.get("OTEL_RESOURCE_ATTRIBUTES", "").strip()
+    attributes: dict[str, str] = {}
+    for pair in raw.split(","):
+        key, separator, value = pair.partition("=")
+        key = key.strip()
+        if separator and key:
+            attributes[key] = unquote(value.strip())
+    return attributes
+
+
+def _service_version() -> str:
+    """The installed ``mintmory-core`` version, or ``unknown`` when it cannot be read."""
+    try:
+        return importlib.metadata.version("mintmory-core")
+    except importlib.metadata.PackageNotFoundError:
+        return "unknown"
+
+
+def _service_name(settings: OTelSettings, default_service_name: str | None) -> str:
+    """The resource's ``service.name``: standard variables before MintMory's, else the default."""
+    explicit = os.environ.get("OTEL_SERVICE_NAME", "").strip()
+    if explicit:
+        return explicit
+    from_env = _resource_attributes_from_env().get("service.name")
+    if from_env:
+        return from_env
+    if settings.service_name:
+        return settings.service_name
+    return default_service_name or "mintmory"
+
+
+def _build_resource(settings: OTelSettings, default_service_name: str | None) -> Any:
+    """The SDK ``Resource``: MintMory defaults, overridden by ``OTEL_RESOURCE_ATTRIBUTES``."""
+    from opentelemetry.sdk.resources import Resource
+
+    attributes: dict[str, Any] = {
+        "service.namespace": _SERVICE_NAMESPACE,
+        "service.version": _service_version(),
+        "service.instance.id": uuid.uuid4().hex,
+    }
+    attributes.update(_resource_attributes_from_env())
+    attributes["service.name"] = _service_name(settings, default_service_name)
+    return Resource.create(attributes)
+
+
+def _mute_exporter_logger() -> None:
+    """Silence the OTLP/HTTP exporter's own retry spam while telemetry runs."""
+    global _saved_exporter_level
+    if _saved_exporter_level is None:
+        logger = logging.getLogger(_EXPORTER_LOGGER_NAME)
+        _saved_exporter_level = logger.level
+        logger.setLevel(logging.CRITICAL)
+
+
+def _restore_exporter_logger() -> None:
+    """Put the OTLP/HTTP exporter logger back to the level saved by the first mute."""
+    global _saved_exporter_level
+    if _saved_exporter_level is not None:
+        logging.getLogger(_EXPORTER_LOGGER_NAME).setLevel(_saved_exporter_level)
+        _saved_exporter_level = None
+
+
+def _log_export_failure(signal: str) -> None:
+    """WARNING when an endpoint was configured, else DEBUG: one line per failure streak."""
+    message = f"telemetry: {signal} export failed"
+    if _has_endpoint_variable():
+        _LOGGER.warning(message)
+    else:
+        _LOGGER.debug(message)
+
+
+def _release_globals() -> None:
+    """Drop the API's global providers the way OpenTelemetry's own test utilities do."""
+    from opentelemetry import metrics, trace
+    from opentelemetry.util._once import Once
+
+    trace._TRACER_PROVIDER_SET_ONCE = Once()
+    trace._TRACER_PROVIDER = None
+    metrics._internal._METER_PROVIDER_SET_ONCE = Once()
+    metrics._internal._METER_PROVIDER = None
+
+
+def _set_tracer_provider(provider: Any) -> None:
+    global _tracer, _tracer_provider
+    from opentelemetry import trace
+
+    _tracer_provider = provider
+    trace.set_tracer_provider(provider)
+    _tracer = trace.get_tracer("mintmory")
+
+
+def _set_meter_provider(provider: Any) -> None:
+    global _meter, _meter_provider
+    from opentelemetry import metrics
+
+    _meter_provider = provider
+    metrics.set_meter_provider(provider)
+    _meter = metrics.get_meter("mintmory")
+
+
+def _otlp_exporter_kwargs(settings: OTelSettings, signal: str) -> dict[str, Any]:
+    """OTLP/HTTP exporter keyword arguments for one signal.
+
+    When a standard endpoint variable applies, no ``endpoint`` is passed: the SDK reads the
+    variable itself and appends the signal path. Without one, MintMory passes the local
+    default plus ``/v1/traces`` or ``/v1/metrics``. A standard timeout variable also defers to
+    the SDK, so an invalid one surfaces as the exporter's own ``ValueError``.
+    """
+    kwargs: dict[str, Any] = {}
+    shared = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+    specific = os.environ.get(f"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT", "").strip()
+    if not (shared or specific):
+        kwargs["endpoint"] = f"{_DEFAULT_ENDPOINT}/v1/{signal.lower()}"
+    if not (
+        os.environ.get(f"OTEL_EXPORTER_OTLP_{signal}_TIMEOUT")
+        or os.environ.get("OTEL_EXPORTER_OTLP_TIMEOUT")
+    ):
+        kwargs["timeout"] = settings.export_timeout_s
+    return kwargs
+
+
+class _GuardedSpanExporter:
+    """Wraps a span exporter so a failing export never raises and never floods the log."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._failing = False
+
+    def export(self, spans: Any) -> Any:
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        try:
+            result = self._inner.export(spans)
+        except Exception:  # noqa: BLE001 - the guard's whole point is to swallow it
+            result = SpanExportResult.FAILURE
+        if result == SpanExportResult.FAILURE:
+            if not self._failing:
+                self._failing = True
+                _log_export_failure("trace")
+            return SpanExportResult.FAILURE
+        if self._failing:
+            self._failing = False
+            _LOGGER.info("telemetry: trace export recovered")
+        return result
+
+    def shutdown(self) -> None:
+        self._inner.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30_000) -> bool:
+        return bool(self._inner.force_flush(timeout_millis))
+
+
+class _GuardedMetricExporter:
+    """Wraps a metric exporter so a failing export never raises and never floods the log."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+        self._failing = False
+
+    def export(self, metrics_data: Any, timeout_millis: float = 10_000, **kwargs: Any) -> Any:
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        try:
+            result = self._inner.export(metrics_data, timeout_millis, **kwargs)
+        except Exception:  # noqa: BLE001 - the guard's whole point is to swallow it
+            result = MetricExportResult.FAILURE
+        if result == MetricExportResult.FAILURE:
+            if not self._failing:
+                self._failing = True
+                _log_export_failure("metric")
+            return MetricExportResult.FAILURE
+        if self._failing:
+            self._failing = False
+            _LOGGER.info("telemetry: metric export recovered")
+        return result
+
+    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
+        self._inner.shutdown(timeout_millis, **kwargs)
+
+    def force_flush(self, timeout_millis: float = 10_000) -> bool:
+        return bool(self._inner.force_flush(timeout_millis))
+
+
+def _build_tracer_provider(
+    resource: Any,
+    exporter_kind: str,
+    settings: OTelSettings,
+    injected_exporter: Any,
+) -> Any:
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
+
+    if injected_exporter is not None:
+        provider = TracerProvider(resource=resource, shutdown_on_exit=False)
+        provider.add_span_processor(SimpleSpanProcessor(injected_exporter))
+        return provider
+    if exporter_kind == "otlp":
+        _mute_exporter_logger()
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+        exporter: Any = OTLPSpanExporter(**_otlp_exporter_kwargs(settings, "TRACES"))
+    else:
+        from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+
+        exporter = ConsoleSpanExporter(out=sys.stderr)
+    guarded: Any = _GuardedSpanExporter(exporter)
+    provider = TracerProvider(resource=resource, shutdown_on_exit=False)
+    provider.add_span_processor(BatchSpanProcessor(guarded))
+    return provider
+
+
+def _build_meter_provider(
+    resource: Any,
+    exporter_kind: str,
+    settings: OTelSettings,
+    injected_reader: Any,
+) -> Any:
+    from opentelemetry.sdk.metrics import MeterProvider
+
+    if injected_reader is not None:
+        return MeterProvider(
+            resource=resource, metric_readers=[injected_reader], shutdown_on_exit=False
+        )
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+    if exporter_kind == "otlp":
+        _mute_exporter_logger()
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+
+        exporter: Any = OTLPMetricExporter(**_otlp_exporter_kwargs(settings, "METRICS"))
+    else:
+        from opentelemetry.sdk.metrics.export import ConsoleMetricExporter
+
+        exporter = ConsoleMetricExporter(out=sys.stderr)
+    reader = PeriodicExportingMetricReader(
+        exporter, export_timeout_millis=settings.export_timeout_s * 1000
+    )
+    return MeterProvider(resource=resource, metric_readers=[reader], shutdown_on_exit=False)
+
+
+def _register_atexit() -> None:
+    """Register the single process-wide shutdown hook, re-armed only by ``reset_telemetry``."""
+    global _atexit_registered
+    if not _atexit_registered:
+        atexit.register(shutdown_telemetry)
+        _atexit_registered = True
+
+
+def _activate(
+    settings: OTelSettings,
+    *,
+    default_service_name: str,
+    traces_exporter: str,
+    metrics_exporter: str,
+    span_exporter: Any,
+    metric_reader: Any,
+) -> bool:
+    """Build and install the providers; the caller holds ``_shutdown_lock``."""
+    global _enabled
+
+    resource = _build_resource(settings, default_service_name)
+
+    warned: set[str] = set()
+    if traces_exporter == "otlp":
+        _check_protocol("TRACES", warned)
+    if metrics_exporter == "otlp":
+        _check_protocol("METRICS", warned)
+
+    if traces_exporter != "none":
+        _set_tracer_provider(
+            _build_tracer_provider(resource, traces_exporter, settings, span_exporter)
+        )
+    if metrics_exporter != "none":
+        _set_meter_provider(
+            _build_meter_provider(resource, metrics_exporter, settings, metric_reader)
+        )
+
+    _enabled = True
+    _register_atexit()
+    return True
 
 
 def init_telemetry(
     settings: OTelSettings | None = None,
     *,
-    default_service_name: str | None = None,
+    default_service_name: str = "mintmory",
     span_exporter: Any = None,
     metric_reader: Any = None,
 ) -> bool:
     """Idempotent. Returns True if real OTel export is active afterwards.
 
     No-op (returns False) when telemetry is switched off, no collector answers
-    ``auto``, or the optional ``opentelemetry`` SDK is not installed.
+    ``auto``, or the optional ``opentelemetry`` SDK is not installed. An injected
+    exporter or reader enables telemetry regardless of the environment and never
+    builds a configured exporter.
     """
-    if span_exporter is not None or metric_reader is not None or default_service_name is not None:
-        raise NotImplementedError
-    global _enabled, _tracer, _meter
+    global _enabled
     if settings is None:
         from mintmory.core.config import OTelSettings
 
         settings = OTelSettings()
     if _enabled:
         return True
-    if settings.enabled == "false" or _sdk_disabled():
-        return False
 
-    traces_exporter = _signal_exporter(settings, "TRACES")
-    metrics_exporter = _signal_exporter(settings, "METRICS")
-    if traces_exporter == "none" and metrics_exporter == "none":
-        return False
+    injected = span_exporter is not None or metric_reader is not None
+    if injected:
+        if not _sdk_available():
+            return False
+        traces_exporter = "injected" if span_exporter is not None else "none"
+        metrics_exporter = "injected" if metric_reader is not None else "none"
+    else:
+        traces_exporter = _resolve_exporter(settings, "TRACES")
+        metrics_exporter = _resolve_exporter(settings, "METRICS")
+        if traces_exporter == "none" and metrics_exporter == "none":
+            return False
+        state = _resolve_state(settings)
+        if state == "off" or state == "no collector":
+            return False
+        if state == "sdk missing":
+            if settings.enabled == "true" or _has_endpoint_variable():
+                _LOGGER.warning(
+                    "OpenTelemetry export requested but the SDK is missing; "
+                    "install 'mintmory-core[otel]'"
+                )
+            return False
 
-    has_endpoint = any(os.environ.get(name) for name in _ENDPOINT_VARIABLES)
-    if (
-        not has_endpoint
-        and settings.enabled != "true"
-        and not _endpoint_reachable(_DEFAULT_ENDPOINT)
-    ):
-        return False
-
-    if not _sdk_available():
-        if settings.enabled == "true" or has_endpoint:
-            _LOGGER.warning(
-                "OpenTelemetry export requested but the SDK is missing; "
-                "install 'mintmory-core[otel]'"
+    with _shutdown_lock:
+        try:
+            return _activate(
+                settings,
+                default_service_name=default_service_name,
+                traces_exporter=traces_exporter,
+                metrics_exporter=metrics_exporter,
+                span_exporter=span_exporter,
+                metric_reader=metric_reader,
             )
-        return False
-
-    from opentelemetry import metrics, trace
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import (
-        ConsoleMetricExporter,
-        PeriodicExportingMetricReader,
-    )
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
-
-    resource = Resource.create({"service.name": settings.service_name or "mintmory"})
-    if traces_exporter != "none":
-        if traces_exporter == "otlp":
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-
-            span_exporter: Any = OTLPSpanExporter(**_otlp_exporter_kwargs("TRACES"))  # type: ignore[no-redef]
-        else:
-            span_exporter = ConsoleSpanExporter(out=sys.stderr)
-        provider = TracerProvider(resource=resource)
-        provider.add_span_processor(BatchSpanProcessor(span_exporter))
-        trace.set_tracer_provider(provider)
-        _tracer = trace.get_tracer("mintmory")
-
-    if metrics_exporter != "none":
-        if metrics_exporter == "otlp":
-            from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-
-            metric_exporter: Any = OTLPMetricExporter(**_otlp_exporter_kwargs("METRICS"))
-        else:
-            metric_exporter = ConsoleMetricExporter(out=sys.stderr)
-        reader = PeriodicExportingMetricReader(metric_exporter)
-        metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
-        _meter = metrics.get_meter("mintmory")
-
-    _enabled = True
-    return True
+        except Exception as error:  # noqa: BLE001 - init must never raise
+            _teardown(2.0)
+            _LOGGER.warning("telemetry disabled: init failed (%s)", type(error).__name__)
+            return False
 
 
 @contextmanager
@@ -221,13 +536,49 @@ def record_value(name: str, value: float, **attrs: Any) -> None:
         hist.record(value, {k: v for k, v in attrs.items() if v is not None})
 
 
-def reset_telemetry() -> None:
-    """Test-only: drop the module state so each test starts from the no-op shim."""
-    global _enabled, _tracer, _meter
+def _teardown(timeout_s: float) -> None:
+    """Shutdown what was built, drop the module state and restore the logger level.
+
+    The caller holds ``_shutdown_lock``.
+    """
+    global _enabled, _tracer, _meter, _tracer_provider, _meter_provider
+
+    providers = [
+        provider for provider in (_tracer_provider, _meter_provider) if provider is not None
+    ]
+    if providers:
+
+        def _shutdown() -> None:
+            for provider in providers:
+                with contextlib.suppress(Exception):
+                    provider.shutdown()
+
+        thread = threading.Thread(target=_shutdown, name="mintmory-telemetry-shutdown", daemon=True)
+        thread.start()
+        thread.join(timeout_s)
+        _release_globals()
+
     _enabled = False
     _tracer = None
     _meter = None
+    _tracer_provider = None
+    _meter_provider = None
     _instruments.clear()
+    _restore_exporter_logger()
+
+
+def shutdown_telemetry(timeout_s: float = 2.0) -> None:
+    """The one teardown: safe to repeat and without a prior init."""
+    with _shutdown_lock:
+        _teardown(timeout_s)
+
+
+def reset_telemetry() -> None:
+    """Test-only: drop the module state so each test starts from the no-op shim."""
+    global _atexit_registered
+    shutdown_telemetry(0.5)
+    atexit.unregister(shutdown_telemetry)
+    _atexit_registered = False
 
 
 def _sdk_available() -> bool:
@@ -250,20 +601,18 @@ def _endpoint_reachable(url: str, timeout: float = 0.1) -> bool:
         return False
 
 
-def shutdown_telemetry(timeout_s: float = 2.0) -> None:
-    raise NotImplementedError
-
-
 def _resolve_state(settings: OTelSettings) -> str:
     """The single on/off decision: ``off`` | ``sdk missing`` | ``export`` | ``no collector``."""
     if settings.enabled == "false" or _sdk_disabled():
         return "off"
     if not _sdk_available():
         return "sdk missing"
-    if settings.enabled != "true":
-        has_endpoint = any(os.environ.get(name) for name in _ENDPOINT_VARIABLES)
-        if not has_endpoint and not _endpoint_reachable(_DEFAULT_ENDPOINT):
-            return "no collector"
+    if (
+        settings.enabled != "true"
+        and not _has_endpoint_variable()
+        and not _endpoint_reachable(_DEFAULT_ENDPOINT)
+    ):
+        return "no collector"
     return "export"
 
 
@@ -274,49 +623,3 @@ def _traces_endpoint() -> str:
         return traces_endpoint
     shared_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip() or _DEFAULT_ENDPOINT
     return f"{shared_endpoint}/v1/traces"
-
-
-def _otlp_exporter_kwargs(signal: str) -> dict[str, Any]:
-    """OTLP/HTTP exporter keyword arguments for one signal.
-
-    When a standard endpoint variable applies, no ``endpoint`` is passed: the SDK reads the
-    variable itself and appends the signal path. Without one, MintMory passes the local
-    default plus ``/v1/traces`` or ``/v1/metrics``.
-    """
-    shared = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
-    specific = os.environ.get(f"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT", "").strip()
-    if shared or specific:
-        return {}
-    return {"endpoint": f"{_DEFAULT_ENDPOINT}/v1/{signal.lower()}"}
-
-
-class _GuardedSpanExporter:
-    """Wraps a span exporter so a failing export never raises and never floods the log."""
-
-    def __init__(self, inner: Any) -> None:
-        raise NotImplementedError
-
-    def export(self, spans: Any) -> Any:
-        raise NotImplementedError
-
-    def shutdown(self) -> None:
-        raise NotImplementedError
-
-    def force_flush(self, timeout_millis: int = 30_000) -> bool:
-        raise NotImplementedError
-
-
-class _GuardedMetricExporter:
-    """Wraps a metric exporter so a failing export never raises and never floods the log."""
-
-    def __init__(self, inner: Any) -> None:
-        raise NotImplementedError
-
-    def export(self, metrics_data: Any, timeout_millis: float = 10_000, **kwargs: Any) -> Any:
-        raise NotImplementedError
-
-    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:
-        raise NotImplementedError
-
-    def force_flush(self, timeout_millis: float = 10_000) -> bool:
-        raise NotImplementedError

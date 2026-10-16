@@ -28,7 +28,7 @@ never `structlog` (unconfigured, it prints to stdout, the MCP stdio stream). Eac
   else pass `_DEFAULT_ENDPOINT` plus `/v1/traces` or `/v1/metrics`. Console exporters with `out=sys.stderr`.
 
 ## 4. Never block, never flood, never raise
-- [ ] 4.1 Tests for "Export never blocks or floods...", both "fall back" requirements and "Telemetry init never raises".
+- [x] 4.1 Tests for "Export never blocks or floods...", both "fall back" requirements and "Telemetry init never raises".
 - [ ] 4.2 `timeout=settings.export_timeout_s` on both OTLP exporters unless a standard timeout variable is set
   (1.42.1's `BatchSpanProcessor` ignores `export_timeout_millis`); `export_timeout_millis` on the periodic reader.
 - [ ] 4.3 Guards keep `self._inner`. `_GuardedMetricExporter(MetricExporter)` calls `super().__init__(preferred_temporality=
