@@ -57,3 +57,4 @@
 {"at":"2026-10-16T11:06:58Z","run":"r-20261016T1106Z-95fb","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T12:14:17Z","attempt":1,"cost_usd":1.139976,"runs":5,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T12:14:17Z","detail":"task 4.4: max_task_attempts (3) reached in red; last failure: not discriminating: C-1d2bd9a4 (its tests still pass, or fail by an error rather than an assertion, when the functions they use answer the zero value; none of its new tests fails by assertion against the unit base code)","reason":"unit_halted","type":"plan.stopped","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-16T12:16:00Z","by":"ciprian@spotus.space","extend":{},"reason":"add-telemetry-runtime retried after max_task_attempts in task 4.4 red (non-discriminating tests, an invalid result)","type":"plan.resumed"}
