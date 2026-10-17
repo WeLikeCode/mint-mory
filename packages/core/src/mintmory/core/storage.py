@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import scoring, telemetry
 from mintmory.core.entities import extract_entities
+from mintmory.core.hybrid_search import collect_scores, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
@@ -464,6 +465,7 @@ class SqliteBackend:
             json.dumps(record.metadata),
         )
 
+    @telemetry.counts_added
     @telemetry.traced("mintmory.add_memory")
     def add_memory(
         self,
@@ -853,6 +855,7 @@ class SqliteBackend:
             return {}
 
     @telemetry.traced("mintmory.search")
+    @telemetry.timed_phase("total")
     def search(
         self,
         request: SearchRequest,
@@ -866,15 +869,15 @@ class SqliteBackend:
         Fusion/scoring/session logic lives in ``hybrid_search.fuse_and_search``
         so it is shared identically with PostgresBackend.
         """
-        from mintmory.core.hybrid_search import fuse_and_search  # noqa: PLC0415
-
         # Wider candidate pool than the final limit so filtering + scoring have
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
 
-        fts_scores = self._fts_scores(request.query, pool)
-        vec_scores = self._vector_scores(request.query, query_embedding, pool)
-        trigram_scores = self._trigram_scores(request.query, pool)
+        fts_scores, trigram_scores, vec_scores = collect_scores(
+            fts_fn=lambda: self._fts_scores(request.query, pool),
+            trigram_fn=lambda: self._trigram_scores(request.query, pool),
+            vector_fn=lambda: self._vector_scores(request.query, query_embedding, pool),
+        )
 
         # Lazily resolve note_bonus / auto_include_cap from NoteSettings on first
         # use — import inside the call to avoid circular imports at module load time.
@@ -1104,6 +1107,7 @@ class SqliteBackend:
             )
 
     @telemetry.traced("mintmory.search_around")
+    @telemetry.timed_phase("graph")
     def search_around(
         self,
         anchor_ids: list[str],

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from mintmory.core import telemetry
 from mintmory.core.history.distill import distill_segment_deterministic
 from mintmory.core.history.models import NormalizedTurn, Segment, SessionSummary
 from mintmory.core.history.redact import redact
@@ -864,11 +865,10 @@ def backfill(
 
         # Parallel + commit-as-completed (INVARIANT: all store writes on main thread only).
         prep_args = (distiller, budget, llm_only_since, seg_settings, cache)
+        prepare = telemetry.run_in_context(_prepare_session)
         if max_concurrency > 1 and len(sessions_to_process) > 1:
             with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
-                futures = {
-                    executor.submit(_prepare_session, s, *prep_args): s for s in sessions_to_process
-                }
+                futures = {executor.submit(prepare, s, *prep_args): s for s in sessions_to_process}
                 for future in as_completed(futures):
                     try:
                         ps, source_path = future.result()
@@ -978,11 +978,10 @@ def sync(
 
         # Parallel + commit-as-completed (INVARIANT: all store writes on main thread only).
         prep_args = (distiller, budget, llm_only_since, seg_settings, cache)
+        prepare = telemetry.run_in_context(_prepare_session)
         if max_concurrency > 1 and len(sessions_to_process) > 1:
             with ThreadPoolExecutor(max_workers=max_concurrency) as executor:
-                futures = {
-                    executor.submit(_prepare_session, s, *prep_args): s for s in sessions_to_process
-                }
+                futures = {executor.submit(prepare, s, *prep_args): s for s in sessions_to_process}
                 for future in as_completed(futures):
                     try:
                         ps, source_path = future.result()

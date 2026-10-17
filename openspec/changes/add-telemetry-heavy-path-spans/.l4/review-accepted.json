@@ -1,0 +1,62 @@
+{
+  "items": [
+    {
+      "actor": "agent",
+      "by": "ciprian@spotus.space",
+      "findings": [
+        {
+          "criterion": "contradiction",
+          "id": "F-8f538f",
+          "severity": "major",
+          "text": "Task 1.2 types `kind` as `Literal[\"internal\",\"server\",\"client\"]`. The scenario \"Options reach the span\" calls `telemetry.span(\"d\", kind=\"bogus\")`. The tasks note that `mypy packages` (a gate in 6.1) also checks tests in strict mode. The Literal signature and the bogus-value test cannot both pass the mypy gate as written. The spec gives the implementer no way to resolve this: it could widen the type to `str`, or add a `type: ignore` or `cast` in the test."
+        },
+        {
+          "criterion": "testability",
+          "id": "F-b98cfc",
+          "severity": "major",
+          "text": "The requirement \"Span helpers without work or with a failure\" says every helper (`search_phase`, the embed decorator, `mintmory.convert`, `mintmory.vision.caption`, `command_span`) marks the span with `mark_error`, records its metric point, and re-raises. Only `search_phase` (the fts failure) and `command_span` have scenarios. Nothing tests a failing embedder, a `ConversionError` or `VisionError` giving `mintmory.outcome=failed` plus ERROR, or `mintmory.outcome=unavailable` when `CoChangeUnavailable` is caught (no ERROR). Nothing tests `mintmory.files.updated`, `.unchanged` or `.failed`; the scenario checks only `scanned` and `added`. These are stated SHALLs without a decidable test."
+        },
+        {
+          "criterion": "interfaces",
+          "id": "F-f16ad5",
+          "severity": "minor",
+          "text": "Several names are left to the implementer: the embed decorator has no name or signature, only \"one shared decorator\" and a `__wrapped__` check. `command_span(name)` does not say whether the argument is `history sync` or `history.sync`; the spec only says spaces become dots. Task 4.2 does not say where `index-tree` calls `set_attributes`, so the current span must be the command span, not the scan span. For `SystemExit`, the rule for \"non-zero\" is not fixed (`.code` can be None or a string). `timed_phase` (`span=False`) has no span to mark on failure, and the spec does not say what it does."
+        },
+        {
+          "criterion": "testability",
+          "id": "F-be00f0",
+          "severity": "minor",
+          "text": "The Postgres scenario says only that `PostgresBackend` is built without a database and that \"data-access methods are patched\". It does not name the methods `search` calls or what they return. The implementer must discover this from the repository. It is also not stated that the constructor works without a driver or database."
+        },
+        {
+          "criterion": "testability",
+          "id": "F-1aba09",
+          "severity": "minor",
+          "text": "The \"Conversion spans\" scenario runs `mintmory ingest report.pdf` with only `extract_markdown` patched. It does not say the file exists. The \"failing command\" scenario says a nonexistent path makes ingest exit 1, so a test that does not create the file would produce an ERROR span instead of the expected child span."
+        },
+        {
+          "criterion": "testability",
+          "id": "F-3ff0a7",
+          "severity": "minor",
+          "text": "In the privacy scenario, the dream summary only reaches the test LLM server if the three memories meet the default `SummarySettings.min_memories`, which is not shown. `build_dreaming_engine(store, LLMSettings(...))` is used with a second argument whose signature is not shown. The claim that the `Authorization` header carries the key under `provider=\"ollama\"` is not verified. The test asserts only that the server saw a chat request, so the key check may be vacuous."
+        },
+        {
+          "criterion": "outcome",
+          "id": "F-26da38",
+          "severity": "minor",
+          "text": "\"Telemetry carries no content\" lists the existing spans as compliant (`gen_ai.chat`, the dream spans, the LLM and dream metrics). It does not list the attributes of the `traced` spans `mintmory.search` and `mintmory.add_memory`. Those spans are exercised by the sentinel tests and by the new `mintmory.cli.add` parent."
+        },
+        {
+          "criterion": "feasibility",
+          "id": "F-89e0b1",
+          "severity": "minor",
+          "text": "The unit touches `telemetry.py`, both storage backends, `hybrid_search.py`, `embedder.py`, history ingest, `dreaming.py` and `cli/main.py`, and adds about 20 scenarios. It is large for one automatic run but cohesive. The spec relies on unseen `staging` code: `_instrument` accepting `unit`, `anchor_candidates` not calling `fuse_and_search`, and the history commands living in `cli/main.py`. If anchoring did call `fuse_and_search`, the \"anchoring records no phase\" test would fail, because task 2.2 puts `search_phase(\"fusion\")` there."
+        }
+      ],
+      "reason": "Resolve both findings. F-8f538f: type the kind parameter of telemetry.span() as str (an unknown value maps to INTERNAL, as the spec says), so the 'Options reach the span' test with kind='bogus' passes mypy strict without type: ignore or cast. F-b98cfc: add one test per helper failure: an embedder whose embed_batch raises gives one mintmory.embed span with status ERROR (mark_error) and one latency point, and re-raises; a ConversionError in mintmory.convert and a VisionError in mintmory.vision.caption give mintmory.outcome=failed and ERROR; a caught CoChangeUnavailable gives mintmory.outcome=unavailable and no ERROR; the index-tree scenario also asserts mintmory.files.updated, .unchanged and .failed (0, 0, 0 on the first run; after one file is modified and index-tree runs again, updated=1 and unchanged=1).",
+      "subject": "openspec:add-telemetry-heavy-path-spans"
+    }
+  ],
+  "plan": "telemetry-and-fixes",
+  "schema": "l4/review-accepted@1"
+}

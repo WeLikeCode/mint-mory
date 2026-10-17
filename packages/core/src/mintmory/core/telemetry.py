@@ -33,9 +33,11 @@ import os
 import socket
 import sys
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import unquote, urlparse
@@ -80,6 +82,9 @@ class _NoopSpan:
         return None
 
     def record_exception(self, exc: BaseException) -> None:
+        return None
+
+    def update_name(self, name: str) -> None:
         return None
 
 
@@ -586,16 +591,43 @@ def init_telemetry(
 
 
 @contextmanager
-def span(name: str, **attrs: Any) -> Iterator[Any]:
-    """Context manager: a real span when enabled, else a cheap no-op."""
+def span(
+    name: str,
+    *,
+    kind: str = "internal",
+    context: Any = None,
+    record_exception: bool = True,
+    set_status_on_exception: bool = True,
+    **attrs: Any,
+) -> Iterator[Any]:
+    """Context manager: a real span when enabled, else a cheap no-op.
+
+    ``kind`` maps ``"internal"``/``"server"``/``"client"`` to ``SpanKind``; any other value
+    maps to INTERNAL. ``context`` makes the span an explicit child of that context.
+    ``record_exception`` and ``set_status_on_exception`` reach the tracer unchanged, so callers
+    can suppress the SDK's automatic exception event and ERROR status.
+    """
     tracer = _tracer
     if not _enabled or tracer is None:
         yield _NoopSpan()
         return
-    with tracer.start_as_current_span(name) as sp:
+    from opentelemetry.trace import SpanKind
+
+    kinds = {
+        "internal": SpanKind.INTERNAL,
+        "server": SpanKind.SERVER,
+        "client": SpanKind.CLIENT,
+    }
+    with tracer.start_as_current_span(
+        name,
+        context=context,
+        kind=kinds.get(kind, SpanKind.INTERNAL),
+        record_exception=record_exception,
+        set_status_on_exception=set_status_on_exception,
+    ) as sp:
         for key, value in attrs.items():
             if value is not None:
-                sp.set_attribute(key, value)
+                _set_attribute_safe(sp, key, value)
         yield sp
 
 
@@ -615,10 +647,13 @@ def traced(name: str | None = None) -> Callable[[_F], _F]:
     return deco
 
 
-def _instrument(kind: str, factory_name: str, name: str, meter: Any) -> Any:
+def _instrument(
+    kind: str, factory_name: str, name: str, meter: Any, unit: str | None = None
+) -> Any:
     inst = _instruments.get(name)
     if inst is None and meter is not None:
-        inst = getattr(meter, factory_name)(name)
+        kwargs: dict[str, Any] = {} if unit is None else {"unit": unit}
+        inst = getattr(meter, factory_name)(name, **kwargs)
         _instruments[name] = inst
     return inst
 
@@ -627,18 +662,24 @@ def add_count(name: str, value: int = 1, **attrs: Any) -> None:
     meter = _meter
     if not _enabled or meter is None:
         return
-    counter = _instrument("counter", "create_counter", name, meter)
-    if counter is not None:
-        counter.add(value, {k: v for k, v in attrs.items() if v is not None})
+    try:
+        counter = _instrument("counter", "create_counter", name, meter)
+        if counter is not None:
+            counter.add(value, {k: v for k, v in attrs.items() if v is not None})
+    except Exception:  # noqa: BLE001 - a metric must never break the caller
+        return
 
 
-def record_value(name: str, value: float, **attrs: Any) -> None:
+def record_value(name: str, value: float, *, unit: str | None = None, **attrs: Any) -> None:
     meter = _meter
     if not _enabled or meter is None:
         return
-    hist = _instrument("histogram", "create_histogram", name, meter)
-    if hist is not None:
-        hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+    try:
+        hist = _instrument("histogram", "create_histogram", name, meter, unit)
+        if hist is not None:
+            hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+    except Exception:  # noqa: BLE001 - a metric must never break the caller
+        return
 
 
 def _teardown(timeout_s: float) -> None:
@@ -757,3 +798,298 @@ def mark_error(span: Any, error_type: str) -> None:
             set_attribute("error.type", error_type)
     except Exception:  # noqa: BLE001 - marking must never raise
         return
+
+
+def run_in_context(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap ``fn`` so each call runs in a fresh copy of the caller's context.
+
+    A thread-pool worker starts with an empty context, which drops the trace: spans opened
+    there begin a new trace. Capturing the caller's context here and attaching it inside the
+    wrapper keeps the worker's spans in the caller's trace. With telemetry off ``fn`` is
+    returned unchanged, so the no-op shim keeps its zero import cost.
+    """
+    if not _enabled:
+        return fn
+    from opentelemetry import context as otel_context
+
+    captured = otel_context.get_current()
+
+    @wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        token = otel_context.attach(captured)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            otel_context.detach(token)
+
+    return wrapper
+
+
+class _PhaseHandle:
+    """Reports a timed search stage's result count back to :func:`search_phase`."""
+
+    def __init__(self) -> None:
+        self.count = 0
+
+    def set_count(self, count: int) -> None:
+        self.count = count
+
+
+def _set_result_count(phase_span: Any, count: int) -> None:
+    """Set ``mintmory.result_count`` on the stage span; never raise into the caller."""
+    try:
+        phase_span.set_attribute("mintmory.result_count", count)
+    except Exception:  # noqa: BLE001 - an attribute must never break a search
+        return
+
+
+def _record_search_latency(name: str, started: float) -> None:
+    """Record the ``mintmory.search.latency_ms`` point; never raise into the caller."""
+    try:
+        record_value(
+            "mintmory.search.latency_ms",
+            (time.perf_counter() - started) * 1000.0,
+            unit="ms",
+            phase=name,
+        )
+    except Exception:  # noqa: BLE001 - a metric must never break a search
+        return
+
+
+_span_context = span
+
+
+@contextmanager
+def search_phase(name: str, *, span: bool = True) -> Iterator[_PhaseHandle]:
+    """Time one search stage: its ``mintmory.search.<name>`` span, count and latency point.
+
+    The block reports the stage's result count through ``set_count(n)`` (0 by default). The
+    latency point is recorded even when the block raises; a failing stage is marked with
+    ``mark_error`` before the exception is re-raised. With ``span`` false only the point is
+    recorded, and with telemetry off every call is a no-op.
+    """
+    handle = _PhaseHandle()
+    started = time.perf_counter()
+    if not span:
+        try:
+            yield handle
+        finally:
+            _record_search_latency(name, started)
+        return
+    with _span_context(f"mintmory.search.{name}") as phase_span:
+        try:
+            yield handle
+        except Exception as error:
+            mark_error(phase_span, type(error).__name__)
+            raise
+        finally:
+            _set_result_count(phase_span, handle.count)
+            _record_search_latency(name, started)
+
+
+def timed_phase(name: str) -> Callable[[_F], _F]:
+    """Wrap a search stage so it records only its ``mintmory.search.latency_ms`` point."""
+
+    def deco(func: _F) -> _F:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            with search_phase(name, span=False):
+                return func(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return deco
+
+
+_embedding_active: ContextVar[bool] = ContextVar("mintmory_embedding_active", default=False)
+
+
+def _embedding_batch_size(args: tuple[Any, ...], kwargs: dict[str, Any]) -> int:
+    """The number of texts in an ``embed``/``embed_batch`` call (``embed`` is always one)."""
+    if args:
+        first = args[0]
+    elif kwargs:
+        first = next(iter(kwargs.values()))
+    else:
+        return 0
+    if isinstance(first, str):
+        return 1
+    try:
+        return len(first)
+    except TypeError:
+        return 1
+
+
+def _record_embed_latency(provider: str, model: str, started: float) -> None:
+    """Record the ``mintmory.embed.latency_ms`` point; never raise into the caller."""
+    try:
+        record_value(
+            "mintmory.embed.latency_ms",
+            (time.perf_counter() - started) * 1000.0,
+            unit="ms",
+            provider=provider,
+            model=model or None,
+        )
+    except Exception:  # noqa: BLE001 - a metric must never break an embedding
+        return
+
+
+def embed_span[F: Callable[..., Any]](fn: F) -> F:
+    """Decorate a public ``embed``/``embed_batch`` with one span and latency point per call.
+
+    The embedder supplies its ``provider`` class attribute, ``model_name`` and ``dimensions``.
+    A public method calling another (``embed`` delegating to ``embed_batch`` or the reverse)
+    still records once: a module ``ContextVar`` re-entrancy guard keeps only the outermost call.
+    A failing call marks its span with ``mark_error`` and still records its latency point.
+    """
+
+    @wraps(fn)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if _embedding_active.get():
+            return fn(self, *args, **kwargs)
+        if not _enabled:
+            return fn(self, *args, **kwargs)
+        token = _embedding_active.set(True)
+        started = time.perf_counter()
+        provider = getattr(self, "provider", "")
+        model = getattr(self, "model_name", "") or ""
+        attrs: dict[str, Any] = {
+            "mintmory.embed.provider": provider,
+            "gen_ai.request.model": model or None,
+            "mintmory.embed.batch_size": _embedding_batch_size(args, kwargs),
+            "mintmory.embed.dim": getattr(self, "dimensions", None),
+        }
+        try:
+            with _span_context("mintmory.embed", **attrs) as embed_span_obj:
+                try:
+                    return fn(self, *args, **kwargs)
+                except Exception as error:
+                    mark_error(embed_span_obj, type(error).__name__)
+                    raise
+                finally:
+                    _record_embed_latency(provider, model, started)
+        finally:
+            _embedding_active.reset(token)
+
+    return wrapper  # type: ignore[return-value]
+
+
+def set_attributes(**attrs: Any) -> None:
+    """Set attributes on the span that is current when called; never raises.
+
+    A no-op when telemetry is off. None values are dropped, matching :func:`span`. Used to
+    report the ``index-tree`` counters on the command span that is active around the walk.
+    """
+    if not _enabled:
+        return
+    try:
+        from opentelemetry import trace
+
+        current = trace.get_current_span()
+        if current is None or not current.is_recording():
+            return
+        current.set_attributes({key: value for key, value in attrs.items() if value is not None})
+    except Exception:  # noqa: BLE001 - an attribute must never break the caller
+        return
+
+
+def counts_added[F: Callable[..., Any]](fn: F) -> F:
+    """Count ``mintmory.memories.added`` for each record ``fn`` returns, by category.
+
+    ``fn`` is an ``add_memory`` call returning a memory record; the wrapper records the
+    counter with ``category=record.category.value`` and marks itself with
+    ``__mintmory_counter__`` so both storage backends can be checked for the shared
+    decorator. With telemetry off ``add_count`` is already a no-op.
+    """
+
+    @wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        record = fn(*args, **kwargs)
+        try:
+            category = record.category.value
+        except Exception:  # noqa: BLE001 - the counter must never break a write
+            return record
+        try:
+            add_count("mintmory.memories.added", category=category)
+        except Exception:  # noqa: BLE001 - the counter must never break a write
+            return record
+        return record
+
+    wrapper.__mintmory_counter__ = "mintmory.memories.added"  # type: ignore[attr-defined]
+    return wrapper  # type: ignore[return-value]
+
+
+def _set_attribute_safe(span: Any, key: str, value: Any) -> None:
+    """Set one span attribute; never raise into the caller."""
+    try:
+        span.set_attribute(key, value)
+    except Exception:  # noqa: BLE001 - an attribute must never break the wrapped work
+        return
+
+
+@contextmanager
+def file_span(name: str, *, suffix: str, size_bytes: int) -> Iterator[Any]:
+    """Wrap one per-file conversion/caption with ``mintmory.outcome`` and ERROR on failure.
+
+    The span carries ``mintmory.file.suffix`` and ``mintmory.file.size_bytes`` from the start
+    and ``mintmory.outcome=ok`` when the block returns. A failing block is set to
+    ``mintmory.outcome=failed``, marked with ``mark_error`` (the exception class name) and its
+    exception re-raised unchanged, so the command's own ``ConversionError``/``VisionError``
+    handlers still count it. With telemetry off every call is a no-op.
+    """
+    attrs: dict[str, Any] = {
+        "mintmory.file.suffix": suffix,
+        "mintmory.file.size_bytes": size_bytes,
+    }
+    with span(name, **attrs) as file_span_obj:
+        try:
+            yield file_span_obj
+        except Exception as error:
+            _set_attribute_safe(file_span_obj, "mintmory.outcome", "failed")
+            mark_error(file_span_obj, type(error).__name__)
+            raise
+        _set_attribute_safe(file_span_obj, "mintmory.outcome", "ok")
+
+
+def command_span(name: str) -> Callable[[_F], _F]:
+    """Decorate a CLI command so it runs inside a root span ``mintmory.cli.<name>``.
+
+    Spaces in ``name`` become dots. ``typer.Exit`` is a ``RuntimeError`` subclass, so the span
+    is opened with ``record_exception=False`` and ``set_status_on_exception=False`` and marked
+    only through ``mark_error``: an exit with code 0 (``--help``, a clean ``typer.Exit()``) stays
+    UNSET, while a non-zero exit or any other exception becomes ERROR with ``error.type``. With
+    telemetry off every call is a no-op.
+    """
+
+    span_name = "mintmory.cli." + name.replace(" ", ".")
+
+    def deco(fn: _F) -> _F:
+        @wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            with span(
+                span_name,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as command_span_obj:
+                try:
+                    return fn(*args, **kwargs)
+                except BaseException as error:
+                    if _command_exit_code(error) != 0:
+                        mark_error(command_span_obj, type(error).__name__)
+                    raise
+
+        return wrapper  # type: ignore[return-value]
+
+    return deco
+
+
+def _command_exit_code(error: BaseException) -> int:
+    """The exit code of a ``typer.Exit``/``SystemExit``; any other exception counts non-zero."""
+    code = getattr(error, "exit_code", None)
+    if code is None and isinstance(error, SystemExit):
+        code = error.code
+    if code is None:
+        return 1
+    if isinstance(code, int):
+        return code
+    return 1

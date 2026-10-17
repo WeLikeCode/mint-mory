@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import telemetry
 from mintmory.core.entities import extract_entities
-from mintmory.core.hybrid_search import fuse_and_rank, fuse_and_search
+from mintmory.core.hybrid_search import collect_scores, fuse_and_rank, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.scoring import (
     STALE_INCREMENT,
@@ -415,6 +415,7 @@ class PostgresBackend:
     # MemoryRecord CRUD
     # ------------------------------------------------------------------
 
+    @telemetry.counts_added
     @telemetry.traced("mintmory.add_memory")
     def add_memory(
         self,
@@ -925,6 +926,7 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     @telemetry.traced("mintmory.search")
+    @telemetry.timed_phase("total")
     def search(
         self,
         request: SearchRequest,
@@ -932,11 +934,16 @@ class PostgresBackend:
     ) -> SearchResponse:
         """Hybrid search: FTS + trigram + vector via shared fuse_and_search."""
         pool_size = max(request.limit * 5, 50)
+        fts_scores, trigram_scores, vec_scores = collect_scores(
+            fts_fn=lambda: self._fts_scores(request.query, pool_size),
+            trigram_fn=lambda: self._trigram_scores(request.query, pool_size),
+            vector_fn=lambda: self._vector_scores(request.query, query_embedding, pool_size),
+        )
         return fuse_and_search(
             request=request,
-            fts_scores=self._fts_scores(request.query, pool_size),
-            trigram_scores=self._trigram_scores(request.query, pool_size),
-            vector_scores=self._vector_scores(request.query, query_embedding, pool_size),
+            fts_scores=fts_scores,
+            trigram_scores=trigram_scores,
+            vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
             load_memories_fn=self._load_memories,
             bump_retrieval_fn=self._bump_retrieval,
@@ -950,6 +957,7 @@ class PostgresBackend:
         )
 
     @telemetry.traced("mintmory.search_around")
+    @telemetry.timed_phase("graph")
     def search_around(
         self,
         anchor_ids: list[str],
