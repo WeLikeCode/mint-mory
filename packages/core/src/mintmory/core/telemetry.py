@@ -544,6 +544,10 @@ def init_telemetry(
     injected = span_exporter is not None or metric_reader is not None
     if injected:
         if not _sdk_available():
+            _LOGGER.warning(
+                "OpenTelemetry export requested but the SDK is missing; "
+                "install 'mintmory-core[otel]'"
+            )
             return False
         traces_exporter = "injected" if span_exporter is not None else "none"
         metrics_exporter = "injected" if metric_reader is not None else "none"
