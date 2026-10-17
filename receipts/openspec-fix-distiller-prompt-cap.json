@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T07:27:37Z",
+  "integrated_revision": "079d93288a3d682a7771fb480ef9baf49e782d8e",
+  "merge_commit": "079d93288a3d682a7771fb480ef9baf49e782d8e",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 18,
+  "receipt_id": "telemetry-and-fixes/openspec:fix-distiller-prompt-cap/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "079d93288a3d682a7771fb480ef9baf49e782d8e",
+  "spec_digest": "835070beb38903ab",
+  "target": "staging",
+  "unit_id": "openspec:fix-distiller-prompt-cap"
+}
