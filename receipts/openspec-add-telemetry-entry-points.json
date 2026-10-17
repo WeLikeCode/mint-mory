@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T02:37:13Z",
+  "integrated_revision": "40691bd6a09afdead8a38a37711e6b812744951c",
+  "merge_commit": "40691bd6a09afdead8a38a37711e6b812744951c",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 14,
+  "receipt_id": "telemetry-and-fixes/openspec:add-telemetry-entry-points/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "40691bd6a09afdead8a38a37711e6b812744951c",
+  "spec_digest": "789bcdb1ff52fcb9",
+  "target": "staging",
+  "unit_id": "openspec:add-telemetry-entry-points"
+}
