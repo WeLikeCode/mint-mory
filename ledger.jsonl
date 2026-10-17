@@ -114,3 +114,4 @@
 {"at":"2026-10-17T02:12:41Z","attempt":1,"cost_usd":0.146257,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T02:12:41Z","run":"r-20261017T0212Z-9f3b","type":"unit.dispatched","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T02:36:06Z","head":"40691bd6a09afdead8a38a37711e6b812744951c","pr":14,"target_before":"0628584c680d3c1811e20668b27c84fec8d2118f","type":"unit.merge_requested","unit":"openspec:add-telemetry-entry-points"}
+{"at":"2026-10-17T02:36:11Z","head":"40691bd6a09afdead8a38a37711e6b812744951c","merge_commit":"40691bd6a09afdead8a38a37711e6b812744951c","pr":14,"type":"unit.merged","unit":"openspec:add-telemetry-entry-points"}
