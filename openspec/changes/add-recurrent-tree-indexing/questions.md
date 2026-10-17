@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | answered | none | verdict | Criterion C-b54f84ac (ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download): accept as satisfied? |
 | Q-002 | answered | none | verdict | Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied? |
-| Q-003 | open | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
+| Q-003 | answered | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
 | Q-004 | open | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
 | Q-005 | open | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
 | Q-006 | open | none | verdict | Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied? |
@@ -89,7 +89,7 @@ accept: satisfied as it stands. test_render_file_record_includes_type_location_a
 
 ## Q-003: Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -117,6 +117,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: satisfied as it stands. test_index_tree_is_idempotent shows a second run over an unchanged tree adds no memory; test_index_tree_reindexes_changed_file shows the changed a.md has exactly one active record and the old one archived (replaced, not duplicated); index_tree calls store.manifest_upsert for each re-indexed file, and the new test_index_tree_content_run_upgrades_metadata_row_without_force checks the manifest row after a re-index.
 ---
 
 ## Q-004: Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied?
