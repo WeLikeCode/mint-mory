@@ -49,7 +49,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
   packages/cli/tests/test_index_tree_cochange_cli.py -k non_sqlite`; all four fail.
 
 ## 2. Fix
-- [ ] 2.1 `cochange.py`: add the module-level constant
+- [x] 2.1 `cochange.py`: add the module-level constant
   `COCHANGE_SQLITE_ONLY_MESSAGE: str = "co-change is SQLite-only: set MINTMORY_STORAGE_BACKEND=sqlite to use it"`
   (exact text) near the top, after the imports.
 - [ ] 2.2 `server.py` `docs_changed_with` (:677-690): change the return annotation to
