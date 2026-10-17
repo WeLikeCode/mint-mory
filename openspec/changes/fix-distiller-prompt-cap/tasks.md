@@ -5,7 +5,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
 `staging` a08aee3. `mypy packages` (strict) also checks the tests.
 
 ## 1. Failing tests first
-- [ ] 1.1 In the test module, import `_elide_transcript` (add it to the existing
+- [x] 1.1 In the test module, import `_elide_transcript` (add it to the existing
   `from mintmory.core.history.distill import (...)` block) and
   `from mintmory.core.prompts import HISTORY_SEGMENT_PROMPT`. `_elide_transcript(redacted_lines: list[tuple[str, str]], max_prompt_chars: int) -> str` renders each tuple as `f"[{role.upper()}] {text}"` itself. Add one test per
   scenario of `specs/agent-history/spec.md`, calling `_elide_transcript` directly

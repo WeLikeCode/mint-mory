@@ -191,18 +191,25 @@ def distill_segment_deterministic(
     )
 
 
+def _render(lines: list[str], kept_sorted: list[int]) -> str:
+    """Render kept lines with elision markers inserted at the gaps."""
+    return _insert_elision_markers(lines, kept_sorted, 0)
+
+
 def _elide_transcript(
     redacted_lines: list[tuple[str, str]],
     max_prompt_chars: int,
 ) -> str:
     """Assemble a transcript from (role, safe_text) pairs, eliding to fit max_prompt_chars.
 
-    Rules (from design.md §3) — boundedness is the HARD guarantee:
-    - The first user turn (the ask) and the last turn MUST always survive.
-    - Drop/shorten assistant/tool turns in the middle FIRST. User turns are kept
-      unless the user turns ALONE exceed max_prompt_chars, in which case keep the
-      first ask + last + as many remaining user turns as fit; the rest are elided
-      with a '… [N turns elided] …' marker. The result is always <= max_prompt_chars.
+    Rules (from design.md §3) — boundedness is the HARD guarantee: every budget check
+    counts the rendered text, markers and newlines included. The first and last turns
+    MAY be shortened when they alone exceed the cap (and '… [N turns elided] …' markers
+    are counted); the first ask and last turn otherwise always survive.
+    - Drop assistant/tool turns in the middle FIRST. User turns are kept unless the user
+      turns ALONE exceed max_prompt_chars, in which case keep the first ask + last + as
+      many remaining user turns as fit; the rest are elided with a marker. The result is
+      always <= max_prompt_chars.
     """
     if not redacted_lines:
         return ""
@@ -228,54 +235,37 @@ def _elide_transcript(
     # Sort droppable by distance from middle (middle-first).
     droppable_sorted = sorted(droppable, key=lambda i: abs(i - (n // 2)))
 
-    dropped_count = 0
     for idx in droppable_sorted:
-        candidate_kept = kept - {idx}
-        candidate_text = "\n".join(lines[i] for i in sorted(candidate_kept))
-        kept = candidate_kept
-        dropped_count += 1
-        if len(candidate_text) <= max_prompt_chars:
-            # Within budget — stop dropping.
-            break
+        kept.discard(idx)
+        if len(_render(lines, sorted(kept))) <= max_prompt_chars:
+            return _render(lines, sorted(kept))
 
-    # Check if we are now within budget.
-    kept_sorted = sorted(kept)
-    candidate_text = "\n".join(lines[i] for i in kept_sorted)
-    if len(candidate_text) <= max_prompt_chars:
-        # Insert elision marker where consecutive missing indices appear.
-        return _insert_elision_markers(lines, kept_sorted, dropped_count)
+    # All droppable turns are gone; keep the protected lines if they fit.
+    protected_sorted = sorted(protected)
+    if len(_render(lines, protected_sorted)) <= max_prompt_chars:
+        return _render(lines, protected_sorted)
 
-    # Still over budget after dropping all non-protected turns.
-    # Now we must build head+tail from protected lines with a marker.
-    # Include all user turns + first + last; drop remaining turns to fit.
-    # If still over, insert elision marker between head and tail.
-    all_protected = sorted(protected)
-    protected_text_lines = [lines[i] for i in all_protected]
-    # Try to fit all protected lines.
-    protected_text = "\n".join(protected_text_lines)
-    if len(protected_text) <= max_prompt_chars:
-        # Count what we dropped.
-        dropped = n - len(all_protected)
-        return _insert_elision_markers(lines, all_protected, dropped)
-
-    # Even user turns alone are over budget. Keep first + last + as many user turns as fit.
-    # Always keep index 0 (first) and index n-1 (last).
-    head_line = lines[0]
-    tail_line = lines[n - 1]
-    marker_budget = 30  # approx length of " … [N turns elided] …"
-    remaining = max_prompt_chars - len(head_line) - len(tail_line) - marker_budget - 2  # 2 newlines
-    # Collect middle user turns in order.
-    middle_user = [i for i in user_indices if i != 0 and i != n - 1]
-    kept_middle: list[int] = []
+    # Last resort: even user turns alone are over budget. Keep first + last + as many
+    # middle user turns (ascending index order) as fit, markers counted.
+    kept_final: set[int] = {0, n - 1}
+    middle_user = sorted(i for i in user_indices if i != 0 and i != n - 1)
     for idx in middle_user:
-        line_len = len(lines[idx]) + 1  # +1 for newline
-        if remaining >= line_len:
-            kept_middle.append(idx)
-            remaining -= line_len
+        candidate = kept_final | {idx}
+        if len(_render(lines, sorted(candidate))) <= max_prompt_chars:
+            kept_final = candidate
 
-    kept_final = sorted({0, n - 1} | set(kept_middle))
-    dropped_final = n - len(kept_final)
-    return _insert_elision_markers(lines, kept_final, dropped_final)
+    kept_final_sorted = sorted(kept_final)
+    if len(_render(lines, kept_final_sorted)) <= max_prompt_chars:
+        return _render(lines, kept_final_sorted)
+
+    # Final guard: the first and last turns alone do not fit — shorten them.
+    if n == 1:
+        return lines[0][:max_prompt_chars]
+    marker = [f"… [{n - 2} turns elided] …"] if n > 2 else []
+    avail = max_prompt_chars - sum(len(m) for m in marker) - (len(marker) + 1)
+    h = min(len(lines[0]), max(avail // 2, avail - len(lines[n - 1])))
+    t = min(len(lines[n - 1]), avail - h)
+    return "\n".join([lines[0][:h], *marker, lines[n - 1][:t]])[:max_prompt_chars]
 
 
 def _insert_elision_markers(lines: list[str], kept_sorted: list[int], dropped_count: int) -> str:
