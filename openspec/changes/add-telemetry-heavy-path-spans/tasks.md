@@ -66,7 +66,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 
 ## 5. Worker threads, counters, privacy
 - [x] 5.1 Test "Threads stay in the trace" (the test opens `root-a` / `root-b` with `telemetry.span`).
-- [ ] 5.2 `history/ingest.py` `backfill` and `sync` (each has its own `ThreadPoolExecutor`): `prepare =
+- [x] 5.2 `history/ingest.py` `backfill` and `sync` (each has its own `ThreadPoolExecutor`): `prepare =
   telemetry.run_in_context(_prepare_session)` once, submit `prepare` (the `mintmory.cli.history.*` root spans cover the
   commands; no extra history span). `dreaming.py` `generate_summaries`: `pool.map(telemetry.run_in_context(lambda sel:
   summarizer(sel.concept, sel.contents)), prepared)`.
