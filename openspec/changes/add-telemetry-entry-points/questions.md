@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.4 | technical | packages/mcp/tests/test_telemetry_init.py:25 rejects the new init_telemetry signature |
+| Q-001 | accepted | 1.4 | technical | packages/mcp/tests/test_telemetry_init.py:25 rejects the new init_telemetry signature |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/mcp/tests/test_telemetry_init.py:25 rejects the new init_telemetry signature
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 1.4
 - **Kind:** technical
 - **Asked:** 2026-10-17T02:08Z by deepseek, run r-20261017T0137Z-49a4, task 1.4
