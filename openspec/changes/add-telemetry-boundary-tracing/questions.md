@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 2.1 | technical | packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes |
+| Q-001 | accepted | 2.1 | technical | packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 2.1
 - **Kind:** technical
 - **Asked:** 2026-10-17T20:38Z by deepseek, run r-20261017T1947Z-9dba, task 2.1
