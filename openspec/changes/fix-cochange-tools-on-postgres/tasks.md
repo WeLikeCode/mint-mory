@@ -32,7 +32,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
   - `test_docs_timeline_non_sqlite_store_returns_error`: scenario "docs_timeline on
     a non-SQLite store" (both `{}` and `{"since": "bogus"}`).
   Today both raise a `ToolError` from the client (the tool hits `AttributeError`).
-- [ ] 1.3 CLI tests in `packages/cli/tests/test_index_tree_cochange_cli.py`, using its
+- [x] 1.3 CLI tests in `packages/cli/tests/test_index_tree_cochange_cli.py`, using its
   `cli_db` fixture (it sets `COLUMNS=200`) and `_make_tree` / `_store` / `_doc_meta`
   helpers (that module calls `pytest.importorskip("sklearn")` at import, so it is
   skipped without the `cochange` extra; the gates install it with `--extra cochange`).
