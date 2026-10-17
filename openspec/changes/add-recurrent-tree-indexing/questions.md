@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | none | verdict | Criterion C-b54f84ac (ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download): accept as satisfied? |
 | Q-002 | answered | none | verdict | Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied? |
 | Q-003 | answered | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
-| Q-004 | open | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
+| Q-004 | answered | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
 | Q-005 | open | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
 | Q-006 | open | none | verdict | Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied? |
 | Q-007 | open | none | verdict | Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done |
@@ -122,7 +122,7 @@ accept: satisfied as it stands. test_index_tree_is_idempotent shows a second run
 
 ## Q-004: Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -150,6 +150,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: satisfied as it stands. index_tree stops binary and content reads once the --max-download-mb budget is spent (budget_hit), the remaining files fall back to metadata-only, and the report prints the row budget: reached - remaining files metadata-only. The new test_index_tree_budget_exhausted_online_only_text_counted runs --content --content-types txt --max-download-mb 0.000001 and asserts exactly one file read, one content and one metadata manifest row, and the budget row printed.
 ---
 
 ## Q-005: Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied?
