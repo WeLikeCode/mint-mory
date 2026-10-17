@@ -82,6 +82,9 @@ class _NoopSpan:
     def record_exception(self, exc: BaseException) -> None:
         return None
 
+    def update_name(self, name: str) -> None:
+        raise NotImplementedError
+
 
 def is_enabled() -> bool:
     return _enabled
@@ -757,3 +760,7 @@ def mark_error(span: Any, error_type: str) -> None:
             set_attribute("error.type", error_type)
     except Exception:  # noqa: BLE001 - marking must never raise
         return
+
+
+def run_in_context(fn: Callable[..., Any]) -> Callable[..., Any]:
+    raise NotImplementedError
