@@ -1008,3 +1008,7 @@ def counts_added[F: Callable[..., Any]](fn: F) -> F:
 
     wrapper.__mintmory_counter__ = "mintmory.memories.added"  # type: ignore[attr-defined]
     return wrapper  # type: ignore[return-value]
+
+
+def command_span(name: str) -> Callable[[_F], _F]:
+    raise NotImplementedError
