@@ -37,6 +37,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import unquote, urlparse
@@ -892,6 +893,79 @@ def timed_phase(name: str) -> Callable[[_F], _F]:
         return wrapper  # type: ignore[return-value]
 
     return deco
+
+
+_embedding_active: ContextVar[bool] = ContextVar("mintmory_embedding_active", default=False)
+
+
+def _embedding_batch_size(args: tuple[Any, ...], kwargs: dict[str, Any]) -> int:
+    """The number of texts in an ``embed``/``embed_batch`` call (``embed`` is always one)."""
+    if args:
+        first = args[0]
+    elif kwargs:
+        first = next(iter(kwargs.values()))
+    else:
+        return 0
+    if isinstance(first, str):
+        return 1
+    try:
+        return len(first)
+    except TypeError:
+        return 1
+
+
+def _record_embed_latency(provider: str, model: str, started: float) -> None:
+    """Record the ``mintmory.embed.latency_ms`` point; never raise into the caller."""
+    try:
+        record_value(
+            "mintmory.embed.latency_ms",
+            (time.perf_counter() - started) * 1000.0,
+            unit="ms",
+            provider=provider,
+            model=model or None,
+        )
+    except Exception:  # noqa: BLE001 - a metric must never break an embedding
+        return
+
+
+def embed_span[F: Callable[..., Any]](fn: F) -> F:
+    """Decorate a public ``embed``/``embed_batch`` with one span and latency point per call.
+
+    The embedder supplies its ``provider`` class attribute, ``model_name`` and ``dimensions``.
+    A public method calling another (``embed`` delegating to ``embed_batch`` or the reverse)
+    still records once: a module ``ContextVar`` re-entrancy guard keeps only the outermost call.
+    A failing call marks its span with ``mark_error`` and still records its latency point.
+    """
+
+    @wraps(fn)
+    def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        if _embedding_active.get():
+            return fn(self, *args, **kwargs)
+        if not _enabled:
+            return fn(self, *args, **kwargs)
+        token = _embedding_active.set(True)
+        started = time.perf_counter()
+        provider = getattr(self, "provider", "")
+        model = getattr(self, "model_name", "") or ""
+        attrs: dict[str, Any] = {
+            "mintmory.embed.provider": provider,
+            "gen_ai.request.model": model or None,
+            "mintmory.embed.batch_size": _embedding_batch_size(args, kwargs),
+            "mintmory.embed.dim": getattr(self, "dimensions", None),
+        }
+        try:
+            with _span_context("mintmory.embed", **attrs) as embed_span_obj:
+                try:
+                    return fn(self, *args, **kwargs)
+                except Exception as error:
+                    mark_error(embed_span_obj, type(error).__name__)
+                    raise
+                finally:
+                    _record_embed_latency(provider, model, started)
+        finally:
+            _embedding_active.reset(token)
+
+    return wrapper  # type: ignore[return-value]
 
 
 def set_attributes(**attrs: Any) -> None:

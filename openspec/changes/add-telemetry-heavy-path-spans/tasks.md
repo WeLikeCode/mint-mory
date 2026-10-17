@@ -40,7 +40,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   `@telemetry.traced("mintmory.search")`; both `search_around` get `@telemetry.timed_phase("graph")`.
 
 ## 3. Embeddings (`embedder.py`)
-- [ ] 3.1 Tests: "Hashing embedder is traced", `embed` (batch size 1), and `FakeEmbedder` (its `embed_batch` calls
+- [x] 3.1 Tests: "Hashing embedder is traced", `embed` (batch size 1), and `FakeEmbedder` (its `embed_batch` calls
   `embed`): one span per public call.
 - [ ] 3.2 One shared decorator on `embed` and `embed_batch` of `HashingEmbedder`, `LocalEmbedder`, `OllamaEmbedder`,
   `OpenAIEmbedder`, `FakeEmbedder`, with a module `ContextVar[bool]` re-entrancy guard; class attribute `provider`
