@@ -83,7 +83,7 @@ class _NoopSpan:
         return None
 
     def update_name(self, name: str) -> None:
-        raise NotImplementedError
+        return None
 
 
 def is_enabled() -> bool:
@@ -589,13 +589,40 @@ def init_telemetry(
 
 
 @contextmanager
-def span(name: str, **attrs: Any) -> Iterator[Any]:
-    """Context manager: a real span when enabled, else a cheap no-op."""
+def span(
+    name: str,
+    *,
+    kind: str = "internal",
+    context: Any = None,
+    record_exception: bool = True,
+    set_status_on_exception: bool = True,
+    **attrs: Any,
+) -> Iterator[Any]:
+    """Context manager: a real span when enabled, else a cheap no-op.
+
+    ``kind`` maps ``"internal"``/``"server"``/``"client"`` to ``SpanKind``; any other value
+    maps to INTERNAL. ``context`` makes the span an explicit child of that context.
+    ``record_exception`` and ``set_status_on_exception`` reach the tracer unchanged, so callers
+    can suppress the SDK's automatic exception event and ERROR status.
+    """
     tracer = _tracer
     if not _enabled or tracer is None:
         yield _NoopSpan()
         return
-    with tracer.start_as_current_span(name) as sp:
+    from opentelemetry.trace import SpanKind
+
+    kinds = {
+        "internal": SpanKind.INTERNAL,
+        "server": SpanKind.SERVER,
+        "client": SpanKind.CLIENT,
+    }
+    with tracer.start_as_current_span(
+        name,
+        context=context,
+        kind=kinds.get(kind, SpanKind.INTERNAL),
+        record_exception=record_exception,
+        set_status_on_exception=set_status_on_exception,
+    ) as sp:
         for key, value in attrs.items():
             if value is not None:
                 sp.set_attribute(key, value)
@@ -763,4 +790,25 @@ def mark_error(span: Any, error_type: str) -> None:
 
 
 def run_in_context(fn: Callable[..., Any]) -> Callable[..., Any]:
-    raise NotImplementedError
+    """Wrap ``fn`` so each call runs in a fresh copy of the caller's context.
+
+    A thread-pool worker starts with an empty context, which drops the trace: spans opened
+    there begin a new trace. Capturing the caller's context here and attaching it inside the
+    wrapper keeps the worker's spans in the caller's trace. With telemetry off ``fn`` is
+    returned unchanged, so the no-op shim keeps its zero import cost.
+    """
+    if not _enabled:
+        return fn
+    from opentelemetry import context as otel_context
+
+    captured = otel_context.get_current()
+
+    @wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        token = otel_context.attach(captured)
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            otel_context.detach(token)
+
+    return wrapper

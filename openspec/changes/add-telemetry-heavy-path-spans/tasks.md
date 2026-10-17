@@ -7,7 +7,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 `telemetry.is_enabled()` is False and wraps its metric and attribute calls in `try/except Exception`.
 
 ## 1. Helpers (`telemetry.py`)
-- [ ] 1.1 Tests for "Span kind, parent context and exception options", the helpers on and off, `run_in_context`
+- [x] 1.1 Tests for "Span kind, parent context and exception options", the helpers on and off, `run_in_context`
   with four threads at once.
 - [ ] 1.2 `span()` options (here because `command_span` needs the flags; `add-telemetry-boundary-tracing` uses all
   four): `span(name, *, kind="internal", context=None, record_exception=True, set_status_on_exception=True, **attrs)`,
