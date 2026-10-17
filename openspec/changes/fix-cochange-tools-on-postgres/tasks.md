@@ -80,7 +80,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
   and `run_cochange = False`. This also skips the per-file embeddings collected for
   co-change and the co-change rows of the report. Leave the post-walk block
   (:889-912) as it is.
-- [ ] 2.6 `docs/agent-history-mcp.md` (the `docs_changed_with` / `docs_timeline`
+- [x] 2.6 `docs/agent-history-mcp.md` (the `docs_changed_with` / `docs_timeline`
   bullets, :127-135): add "SQLite-only: on another storage backend both tools return
   `{"error":"not_implemented","message":...}`."
 

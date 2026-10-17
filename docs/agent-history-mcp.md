@@ -133,6 +133,9 @@ The main `mintmory-mcp` server (for working memory) exposes:
   for token safety. A malformed date/since returns `{"error":"bad_request","detail":...}`. Read-only;
   only `source='document'` records appear.
 
+SQLite-only: on another storage backend both tools return
+`{"error":"not_implemented","message":"co-change is SQLite-only: set MINTMORY_STORAGE_BACKEND=sqlite to use it"}`.
+
 ---
 
 ## Keeping it current
