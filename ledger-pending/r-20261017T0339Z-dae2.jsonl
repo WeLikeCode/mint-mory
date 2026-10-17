@@ -2,3 +2,4 @@
 {"ts": "2026-10-17T03:39:42.818379Z", "run_id": "r-20261017T0339Z-dae2", "unit": "openspec:fix-note-bonus-env-name", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 16, "merge_commit": "61ee36d119da2c4e99cf1352c976ec068b4ed7ef"}
 {"ts": "2026-10-17T03:39:47.834020Z", "run_id": "r-20261017T0339Z-dae2", "unit": "openspec:fix-note-bonus-env-name", "seq": 3, "type": "archive.opened", "number": 17, "url": "<forge>/WeLikeCode/mint-mory/pull/17", "branch": "l4/archive/openspec/fix-note-bonus-env-name"}
 {"ts": "2026-10-17T03:39:49.791481Z", "run_id": "r-20261017T0339Z-dae2", "unit": "openspec:fix-note-bonus-env-name", "seq": 4, "type": "archive.merged", "head": "c902d8e86dc79dcd0bd6c54c238ac81a4de21ae2", "number": 17}
+{"ts": "2026-10-17T03:39:51.044261Z", "run_id": "r-20261017T0339Z-dae2", "unit": "openspec:fix-note-bonus-env-name", "seq": 5, "type": "run.finished", "exit_code": 0}
