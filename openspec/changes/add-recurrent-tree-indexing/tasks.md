@@ -22,7 +22,7 @@ Files-On-Demand tree downloads every such placeholder. Owner decision: skip them
 default. A user who wants them can still run `--content --content-types txt,md`
 (budgeted download).
 
-- [ ] 2.1 Failing tests first, in `packages/cli/tests/test_cli.py` (next to
+- [x] 2.1 Failing tests first, in `packages/cli/tests/test_cli.py` (next to
   `test_index_tree_text_content_indexed_by_default`, using the existing `cli_db`
   fixture, `runner`, `app` and `_store` helpers). A real file system cannot produce
   `st_blocks == 0`, so mark a file online-only with

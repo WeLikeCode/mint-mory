@@ -601,6 +601,7 @@ def index_tree(
     scanned = added = updated = unchanged = converted = failed = pruned = 0
     downloaded = 0
     budget_hit = False
+    text_skipped_online_only = 0
     # Vision-specific counters (only relevant when --vision)
     svg_described = 0
     images_queued = 0
@@ -627,12 +628,22 @@ def index_tree(
                 # Plain-text files are cheap to read -> full-text them inline by
                 # default (no markitdown, no download budget). Heavy binary docs
                 # need --content and consume the download budget.
-                text_eligible = (
+                text_candidate = (
                     text_content
                     and entry.suffix in TEXT_SUFFIXES
                     and (text_max_bytes is None or entry.size <= text_max_bytes)
                 )
+                # The inline text pass never reads an online-only placeholder:
+                # reading it would trigger a download. A budgeted --content pass
+                # can still fetch it (want_binary below).
+                text_eligible = text_candidate and not entry.online_only
                 want_binary = content and entry.suffix in ctypes and not budget_hit
+                # One counting rule for text-skipped-online-only: evaluated for
+                # every scanned file, right after want_binary and before the
+                # unchanged check below (unchanged files count too; a file the
+                # budgeted pass reads is not counted).
+                if text_candidate and entry.online_only and not want_binary:
+                    text_skipped_online_only += 1
                 do_content = text_eligible or want_binary
 
                 # Vision: third content mode — separate from text/binary.
@@ -943,6 +954,8 @@ def index_tree(
     ]
     for label, value in base_rows:
         table.add_row(label, value)
+    if text_skipped_online_only:
+        table.add_row("text-skipped-online-only", str(text_skipped_online_only))
     if vision:
         table.add_row("svg-described", str(svg_described))
         if captioner is not None:
