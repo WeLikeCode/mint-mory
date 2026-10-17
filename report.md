@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at 9ec57437a6164921ff21b462601696127b5c96d4
+- Target: staging at f7f25c33b4877f032531695f3e3371611b35f1a8
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-17T09:23:48Z
-- Stopped: unit_escalated (openspec:add-recurrent-tree-indexing): no finding of this round can be converted into a fix task
+- Written: 2026-10-17T11:59:00Z
+- Stopped: unit_halted (openspec:add-telemetry-heavy-path-spans): task 1.3: max_task_attempts (3) reached in red on deepseek (2), glm (3); last failure: vacuous: C-0d312d3f (its tests pass or error against the zero-value stubs: packages.core.tests.test_telemetry_search_phase::test_a_metric_failure_never_reaches_the_caller); a test must fail by assertion on the ans
 
 ## Units
 
@@ -39,10 +39,10 @@
 
 ### openspec:add-telemetry-heavy-path-spans
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/26
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $0.38, 1 run(s), 1 attempt(s)
 - Accepted review findings (accepted by ciprian@spotus.space (agent): Resolve both findings. F-8f538f: type the kind parameter of telemetry.span() as str (an unknown value maps to INTERNAL, as the spec says), so the 'Options reach the span' test with kind='bogus' passes mypy strict without type: ignore or cast. F-b98cfc: add one test per helper failure: an embedder whose embed_batch raises gives one mintmory.embed span with status ERROR (mark_error) and one latency point, and re-raises; a ConversionError in mintmory.convert and a VisionError in mintmory.vision.caption give mintmory.outcome=failed and ERROR; a caught CoChangeUnavailable gives mintmory.outcome=unavailable and no ERROR; the index-tree scenario also asserts mintmory.files.updated, .unchanged and .failed (0, 0, 0 on the first run; after one file is modified and index-tree runs again, updated=1 and unchanged=1).):
   - F-8f538f [contradiction/major] Task 1.2 types `kind` as `Literal["internal","server","client"]`. The scenario "Options reach the span" calls `telemetry.span("d", kind="bogus")`. The tasks note that `mypy packages` (a gate in 6.1) also checks tests in strict mode. The Literal signature and the bogus-value test cannot both pass the mypy gate as written. The spec gives the implementer no way to resolve this: it could widen the type to `str`, or add a `type: ignore` or `cast` in the test.: no answer recorded
   - F-b98cfc [testability/major] The requirement "Span helpers without work or with a failure" says every helper (`search_phase`, the embed decorator, `mintmory.convert`, `mintmory.vision.caption`, `command_span`) marks the span with `mark_error`, records its metric point, and re-raises. Only `search_phase` (the fts failure) and `command_span` have scenarios. Nothing tests a failing embedder, a `ConversionError` or `VisionError` giving `mintmory.outcome=failed` plus ERROR, or `mintmory.outcome=unavailable` when `CoChangeUnavailable` is caught (no ERROR). Nothing tests `mintmory.files.updated`, `.unchanged` or `.failed`; the scenario checks only `scanned` and `added`. These are stated SHALLs without a decidable test.: no answer recorded
@@ -89,11 +89,11 @@
 - Usage: $1.09, 1 run(s), 1 attempt(s)
 
 ### openspec:add-recurrent-tree-indexing
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/23
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $1.07, 2 run(s), 1 attempt(s)
+- Result: integrated at e084d7327d5417569c282ae53fe6e3873478488f
+- Pull request: 23
+- Merge commit: e084d7327d5417569c282ae53fe6e3873478488f
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $2.52, 3 run(s), 1 attempt(s)
 
 ### openspec:deployment-hardening
 - Result: not integrated
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $22.26
+- Cost: $24.10
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 26
+- Runs that dispatched a unit: 28

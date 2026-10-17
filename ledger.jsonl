@@ -165,3 +165,5 @@
 {"at":"2026-10-17T10:41:32Z","attempt":1,"cost_usd":2.524239,"runs":3,"type":"plan.charged","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T10:42:17Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T10:42:17Z","run":"r-20261017T1042Z-74d5","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T11:59:00Z","attempt":1,"cost_usd":0.380786,"runs":1,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T11:59:00Z","detail":"task 1.3: max_task_attempts (3) reached in red on deepseek (2), glm (3); last failure: vacuous: C-0d312d3f (its tests pass or error against the zero-value stubs: packages.core.tests.test_telemetry_search_phase::test_a_metric_failure_never_reaches_the_caller); a test must fail by assertion on the ans","reason":"unit_halted","type":"plan.stopped","unit":"openspec:add-telemetry-heavy-path-spans"}
