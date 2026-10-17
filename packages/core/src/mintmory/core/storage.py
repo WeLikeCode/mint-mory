@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import scoring, telemetry
 from mintmory.core.entities import extract_entities
+from mintmory.core.hybrid_search import collect_scores, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
@@ -868,8 +869,6 @@ class SqliteBackend:
         Fusion/scoring/session logic lives in ``hybrid_search.fuse_and_search``
         so it is shared identically with PostgresBackend.
         """
-        from mintmory.core.hybrid_search import collect_scores, fuse_and_search  # noqa: PLC0415
-
         # Wider candidate pool than the final limit so filtering + scoring have
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
