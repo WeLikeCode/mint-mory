@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T01:36:57Z",
+  "integrated_revision": "ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f",
+  "merge_commit": "ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 6,
+  "receipt_id": "telemetry-and-fixes/openspec:add-telemetry-runtime/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f",
+  "spec_digest": "d28f5d3f9e9c954f",
+  "target": "staging",
+  "unit_id": "openspec:add-telemetry-runtime"
+}
