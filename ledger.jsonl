@@ -96,3 +96,5 @@
 {"at":"2026-10-16T21:49:29Z","run":"r-20261016T2149Z-9379","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-16T21:50:20Z","detail":"openspec:add-telemetry-runtime: F-1619b9 not addressed: no answer recorded; F-0ad188 not addressed: no answer recorded; F-fea82d not addressed: no answer recorded; F-5d64eb not addressed: no answer recorded; F-f4dc92 not addressed: no answer recorded","reason":"accepted_finding_open","type":"plan.waiting","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-17T01:05:47Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-runtime is verifying","type":"plan.resumed"}
+{"at":"2026-10-17T01:05:48Z","attempt":1,"cost_usd":4.582187,"runs":15,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-17T01:05:48Z","run":"r-20261017T0105Z-eac9","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
