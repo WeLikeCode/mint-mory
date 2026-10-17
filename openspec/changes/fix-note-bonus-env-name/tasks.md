@@ -20,7 +20,7 @@ Paths: `config.py` = `packages/core/src/mintmory/core/config.py`, tests in
   Run `.venv/bin/pytest -q --no-cov packages/core/tests/test_config.py -k NoteSettingsEnvNames`.
 
 ## 2. Fix
-- [ ] 2.1 `config.py` `NoteSettings` (:214-225): set
+- [x] 2.1 `config.py` `NoteSettings` (:214-225): set
   `model_config = SettingsConfigDict(env_prefix="MINTMORY_NOTE_", extra="ignore", populate_by_name=True)`
   (`validate_by_name=True` is also acceptable on pydantic ≥ 2.11) and
   `note_bonus: float = Field(default=0.05, ge=0.0, le=1.0, validation_alias=AliasChoices("MINTMORY_NOTE_BONUS", "MINTMORY_NOTE_NOTE_BONUS"))`
