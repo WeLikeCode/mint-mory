@@ -1,4 +1,4 @@
-# Verification: openspec:add-recurrent-tree-indexing: NEEDS_HUMAN (round 1)
+# Verification: openspec:add-recurrent-tree-indexing: FAIL (round 2)
 
 traceability: 8/14 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 8/14 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.3 | base staging@9ec57437a6 contained |
-| 1 | integrity | ok | 0.1 | 7 sub-checks; scope: 4 changed file(s) |
-| 2 | build | ok | 0.8 |  |
-| 3 | tests | ok | 52.5 |  |
-| 4 | traceability | ok | 0.1 | 8/14 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 1.1 | 14/14 criteria judged by jev |
-| 9 | judge | ok | 26.2 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
@@ -111,16 +111,26 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-4c28579c | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-de4a2e51 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-001 accept C-b54f84ac by human: satisfied as it stands. test_is_online_only_detects_placeholder (packages/core/tests/test_tree_index.py) proves placeholder detection; the default text pass no longer reads an online-only file (task 2.2 guard, proven by the new test_index_tree_text_content_skips_online_only_file: the extract_markdow...
+- Q-002 accept C-1ccce576 by human: satisfied as it stands. test_render_file_record_includes_type_location_and_siblings asserts the name, the type label, the size, the folder location, the sibling names and the mtime date; test_render_file_record_flags_online_only asserts the online-only flag; test_index_tree_metadata_only_indexes_eve...
+- Q-003 accept C-99b1ee27 by human: satisfied as it stands. test_index_tree_is_idempotent shows a second run over an unchanged tree adds no memory; test_index_tree_reindexes_changed_file shows the changed a.md has exactly one active record and the old one archived (replaced, not duplicated); index_tree calls store.manifest_upsert for ...
+- Q-004 accept C-4a833fcd by human: satisfied as it stands. index_tree stops binary and content reads once the --max-download-mb budget is spent (budget_hit), the remaining files fall back to metadata-only, and the report prints the row budget: reached - remaining files metadata-only. The new test_index_tree_budget_exhausted_online_on...
+- Q-005 accept C-1474f431 by human: satisfied as it stands. --exclude is a comma-separated glob list (main.py splits it on commas and strips each glob); test_iter_dir_groups_exclude_folder_and_suffix proves Personal/** prunes the whole subtree and *.dll drops the suffix at the walk; test_index_tree_exclude_prunes_subtree proves the ex...
+- Q-006 accept C-475f20f9 by human: satisfied as it stands. test_iter_dir_groups_yields_all_files_by_default shows the default walk yields build.dll with every other file (no default denylist), and index_tree renders every non-text file the same way as a metadata + folder-context record (test_render_file_record_includes_type_location_...
+- Q-007 reject F-b34b9dc3 by human: the finding is right. Task 2.3 also asks to update the --text-content help text and the index_tree docstring to say that online-only files are skipped by this pass; the unit diff changes neither (only the counter and the report row). WHEN mintmory index-tree --help is shown THEN the --text-content h...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
 |---|---|---|---|---|
-| C-b54f84ac | ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download | insufficient_evidence | needs_human | uncovered: no adequate discriminating test traces it |
-| C-1ccce576 | ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours | insufficient_evidence | needs_human | uncovered: no adequate discriminating test traces it |
-| C-99b1ee27 | ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed | insufficient_evidence | needs_human | uncovered: no adequate discriminating test traces it |
-| C-4a833fcd | ingestion › Bounded, opt-in content extraction › Content pass respects the budget | insufficient_evidence | needs_human | uncovered: no adequate discriminating test traces it |
-| C-1474f431 | ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped | insufficient_evidence | needs_human | uncovered: no adequate discriminating test traces it |
-| C-475f20f9 | ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata | insufficient_evidence | needs_human | uncovered: no adequate discriminating test traces it |
+| C-b54f84ac | ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download | insufficient_evidence | pass | accepted by human: satisfied as it stands. test_is_online_only_detects_placeholder (packages/core/tests/test_tree_index.py) proves placeholder detection; the default text pass no longer reads an online-only file (task 2.2 guard, proven by the new test_index_tree_text_content_skips_online_only_file: ... |
+| C-1ccce576 | ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours | insufficient_evidence | pass | accepted by human: satisfied as it stands. test_render_file_record_includes_type_location_and_siblings asserts the name, the type label, the size, the folder location, the sibling names and the mtime date; test_render_file_record_flags_online_only asserts the online-only flag; test_index_tree_metada... |
+| C-99b1ee27 | ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed | insufficient_evidence | pass | accepted by human: satisfied as it stands. test_index_tree_is_idempotent shows a second run over an unchanged tree adds no memory; test_index_tree_reindexes_changed_file shows the changed a.md has exactly one active record and the old one archived (replaced, not duplicated); index_tree calls store.m... |
+| C-4a833fcd | ingestion › Bounded, opt-in content extraction › Content pass respects the budget | insufficient_evidence | pass | accepted by human: satisfied as it stands. index_tree stops binary and content reads once the --max-download-mb budget is spent (budget_hit), the remaining files fall back to metadata-only, and the report prints the row budget: reached - remaining files metadata-only. The new test_index_tree_budget_... |
+| C-1474f431 | ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped | insufficient_evidence | pass | accepted by human: satisfied as it stands. --exclude is a comma-separated glob list (main.py splits it on commas and strips each glob); test_iter_dir_groups_exclude_folder_and_suffix proves Personal/** prunes the whole subtree and *.dll drops the suffix at the walk; test_index_tree_exclude_prunes_su... |
+| C-475f20f9 | ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata | insufficient_evidence | pass | accepted by human: satisfied as it stands. test_iter_dir_groups_yields_all_files_by_default shows the default walk yields build.dll with every other file (no default denylist), and index_tree renders every non-text file the same way as a metadata + folder-context record (test_render_file_record_incl... |
 | C-0c4d71c5 | ingestion › Default text-content pass skips online-only files › An online-only text file is not read by default | pass | pass | the judge passed it and a discriminating test passes |
 | C-70797ec0 | ingestion › Default text-content pass skips online-only files › The count is per run and the row is shown only when non-zero | pass | pass | the judge passed it and a discriminating test passes |
 | C-62e431f2 | ingestion › Default text-content pass skips online-only files › The budgeted content pass can still fetch it on request (fresh DB) | pass | pass | the judge passed it and a discriminating test passes |
@@ -134,7 +144,12 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 - [minor, judge] Help text and docstring not updated: Task 2.3 asks for --text-content help and index_tree docstring to mention online-only skipping; the diff does not change them.
 - [minor, judge] Six section-1 criteria have no discriminating test (criterion C-b54f84ac): Gate traceability marks them uncovered; not judged from the diff.
-- [major, judge] task 2.3 is ticked as already satisfied, but its text is not done: Counter, placement after want_binary and conditional report row are in the diff (main.py), but the task also requires updating the --text-content help text and index_tree docstring, and the diff does not change them (implementer admits this).
+- [major, human] task 2.3 is ticked as already satisfied, but its text is not done: Counter, placement after want_binary and conditional report row are in the diff (main.py), but the task also requires updating the --text-content help text and index_tree docstring, and the diff does not change them (implementer admits this). [rejected by human (the finding is right. Task 2.3 also asks to update the --text-content help text and the index_tree docstring to say that online-only files are skipped by this pass; the unit diff changes neither (only the counter and the report row). WHEN mintmory index-tree --help is shown THEN the --text-content help says that online-only files are s...
+
+## Fix unit
+
+Escalated: no finding of this round can be converted into a fix task
+- not converted: F-b34b9dc3: a scenario for it needs a requirement and the parent has several
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
