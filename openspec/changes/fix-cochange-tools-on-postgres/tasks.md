@@ -52,7 +52,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
 - [x] 2.1 `cochange.py`: add the module-level constant
   `COCHANGE_SQLITE_ONLY_MESSAGE: str = "co-change is SQLite-only: set MINTMORY_STORAGE_BACKEND=sqlite to use it"`
   (exact text) near the top, after the imports.
-- [ ] 2.2 `server.py` `docs_changed_with` (:677-690): change the return annotation to
+- [x] 2.2 `server.py` `docs_changed_with` (:677-690): change the return annotation to
   `list[dict[str, Any]] | dict[str, str]`; body:
   `store = _get_store()`; `if not isinstance(store, SqliteBackend): return {"error": "not_implemented", "message": COCHANGE_SQLITE_ONLY_MESSAGE}`;
   `return changed_with(store, path)` (the `cast` is no longer needed). Add one
