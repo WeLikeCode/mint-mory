@@ -148,3 +148,5 @@
 {"at":"2026-10-17T08:35:13Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"bdec836adcd6cb385b731c5317b37254bf77d6c8","status":"pass","type":"unit.postcheck","unit":"openspec:fix-cochange-tools-on-postgres"}
 {"at":"2026-10-17T08:35:13Z","revision":"bdec836adcd6cb385b731c5317b37254bf77d6c8","type":"unit.integrated","unit":"openspec:fix-cochange-tools-on-postgres"}
 {"at":"2026-10-17T08:35:13Z","attempt":1,"cost_usd":1.089949,"runs":1,"type":"plan.charged","unit":"openspec:fix-cochange-tools-on-postgres"}
+{"at":"2026-10-17T08:35:46Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T08:35:46Z","run":"r-20261017T0835Z-8265","type":"unit.dispatched","unit":"openspec:add-recurrent-tree-indexing"}
