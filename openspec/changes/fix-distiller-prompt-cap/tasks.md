@@ -35,7 +35,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   `… [N turns elided] …` does not change; the third argument `dropped_count` is not
   used by that function's body, so `0` is correct). Every budget check below compares
   `len(_render(...))` with `max_prompt_chars`, never the marker-free join.
-- [ ] 2.2 Keep the early return when `"\n".join(lines)` fits. Drop path: iterate
+- [x] 2.2 Keep the early return when `"\n".join(lines)` fits. Drop path: iterate
   the droppable (non-protected) indices middle-first exactly as today; after
   removing each one, return
   `_render(lines, sorted(kept))` as soon as its length fits. (`protected` = indices 0,
