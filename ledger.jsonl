@@ -111,3 +111,5 @@
 {"at":"2026-10-17T01:37:39Z","run":"r-20261017T0137Z-49a4","type":"unit.dispatched","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T02:09:23Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T02:12:40Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-entry-points is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-17T02:12:41Z","attempt":1,"cost_usd":0.146257,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-entry-points"}
+{"at":"2026-10-17T02:12:41Z","run":"r-20261017T0212Z-9f3b","type":"unit.dispatched","unit":"openspec:add-telemetry-entry-points"}
