@@ -17,3 +17,8 @@
 {"ts": "2026-10-17T07:25:27.223293Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 17, "type": "verify.verdict", "round": 2, "verdict": "PASS", "findings": 3, "criteria_passed": 8, "criteria_total": 8}
 {"ts": "2026-10-17T07:25:27.239188Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 18, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-17T07:25:30.231088Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 19, "type": "pr.labels", "number": 18, "labels": ["l4:verified"]}
+{"ts": "2026-10-17T07:25:33.289791Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 20, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/18", "number": 18, "head": "079d93288a3d682a7771fb480ef9baf49e782d8e"}
+{"ts": "2026-10-17T07:25:33.291058Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 21, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-17T07:25:36.702615Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 22, "type": "pr.labels", "number": 18, "labels": ["l4:in_review"]}
+{"ts": "2026-10-17T07:25:38.309648Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 23, "type": "lock.released"}
+{"ts": "2026-10-17T07:25:38.310582Z", "run_id": "r-20261017T0725Z-8e9f", "unit": "openspec:fix-distiller-prompt-cap", "seq": 24, "type": "run.finished", "exit_code": 0}
