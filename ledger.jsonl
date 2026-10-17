@@ -282,3 +282,8 @@
 {"at":"2026-10-17T18:23:44Z","run":"r-20261017T1823Z-be55","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T18:35:06Z","detail":"awaiting_human: no new answers (verdicts open: Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T19:41:14Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-heavy-path-spans is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-17T19:41:27Z","branch":"l4/openspec/fix-markdown-cleanup-fences","head":"e0d968f6c26f5ff7ffc1d236c4a61137e60bf0dd","type":"unit.branch_deleted","unit":"openspec:fix-markdown-cleanup-fences"}
+{"at":"2026-10-17T19:41:27Z","branch":"l4/archive/openspec/fix-markdown-cleanup-fences","head":"7942c5591c0bcd29f2f50fabefeea04ea99fe9f9","type":"unit.branch_deleted","unit":"openspec:fix-markdown-cleanup-fences"}
+{"at":"2026-10-17T19:41:27Z","branch":"l4/openspec/add-telemetry-runtime","head":"ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f","type":"unit.branch_deleted","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-17T19:41:27Z","branch":"l4/archive/openspec/add-telemetry-runtime","head":"0628584c680d3c1811e20668b27c84fec8d2118f","type":"unit.branch_deleted","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-17T19:41:27Z","branch":"l4/openspec/add-telemetry-entry-points","head":"40691bd6a09afdead8a38a37711e6b812744951c","type":"unit.branch_deleted","unit":"openspec:add-telemetry-entry-points"}
