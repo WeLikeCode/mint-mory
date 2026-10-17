@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at d38532a845733aad8c23768872917f5cd999e8c8
+- Target: staging at 074e0f4f5e294f838578ab210a5175854420ccae
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-17T18:00:02Z
-- Stopped: limit_runs: 80 run(s) used of 80
+- Written: 2026-10-17T23:32:01Z
+- Stopped: unit_halted (openspec:add-telemetry-boundary-tracing): task 3.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)
 
 ## Units
 
@@ -38,11 +38,11 @@
 - Usage: $0.72, 2 run(s), 1 attempt(s)
 
 ### openspec:add-telemetry-heavy-path-spans
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/26
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $2.56, 53 run(s), 1 attempt(s)
+- Result: integrated at 33cddd46861c02ed201c950dd19265f4afb57b50
+- Pull request: 26
+- Merge commit: 33cddd46861c02ed201c950dd19265f4afb57b50
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $5.29, 55 run(s), 1 attempt(s)
 - Accepted review findings (accepted by ciprian@spotus.space (agent): Resolve both findings. F-8f538f: type the kind parameter of telemetry.span() as str (an unknown value maps to INTERNAL, as the spec says), so the 'Options reach the span' test with kind='bogus' passes mypy strict without type: ignore or cast. F-b98cfc: add one test per helper failure: an embedder whose embed_batch raises gives one mintmory.embed span with status ERROR (mark_error) and one latency point, and re-raises; a ConversionError in mintmory.convert and a VisionError in mintmory.vision.caption give mintmory.outcome=failed and ERROR; a caught CoChangeUnavailable gives mintmory.outcome=unavailable and no ERROR; the index-tree scenario also asserts mintmory.files.updated, .unchanged and .failed (0, 0, 0 on the first run; after one file is modified and index-tree runs again, updated=1 and unchanged=1).):
   - F-8f538f [contradiction/major] Task 1.2 types `kind` as `Literal["internal","server","client"]`. The scenario "Options reach the span" calls `telemetry.span("d", kind="bogus")`. The tasks note that `mypy packages` (a gate in 6.1) also checks tests in strict mode. The Literal signature and the bogus-value test cannot both pass the mypy gate as written. The spec gives the implementer no way to resolve this: it could widen the type to `str`, or add a `type: ignore` or `cast` in the test.: no answer recorded
   - F-b98cfc [testability/major] The requirement "Span helpers without work or with a failure" says every helper (`search_phase`, the embed decorator, `mintmory.convert`, `mintmory.vision.caption`, `command_span`) marks the span with `mark_error`, records its metric point, and re-raises. Only `search_phase` (the fts failure) and `command_span` have scenarios. Nothing tests a failing embedder, a `ConversionError` or `VisionError` giving `mintmory.outcome=failed` plus ERROR, or `mintmory.outcome=unavailable` when `CoChangeUnavailable` is caught (no ERROR). Nothing tests `mintmory.files.updated`, `.unchanged` or `.failed`; the scenario checks only `scanned` and `added`. These are stated SHALLs without a decidable test.: no answer recorded
@@ -55,10 +55,10 @@
 
 ### openspec:add-telemetry-boundary-tracing
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/29
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $0.93, 2 run(s), 1 attempt(s)
 
 ### openspec:add-local-observability-stack
 - Result: not integrated
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $26.28
+- Cost: $29.93
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 80
+- Runs that dispatched a unit: 84
