@@ -858,7 +858,9 @@ def main() -> None:
     # Mirrors packages/api/src/mintmory/api/app.py's lifespan: no-op (returns
     # False) when MINTMORY_OTEL_ENABLED is unset/false or the optional
     # opentelemetry SDK is not installed — safe to call unconditionally.
-    init_telemetry(load_settings().otel)
+    # No settings are passed: main() must not validate unrelated config, and
+    # init_telemetry() builds OTelSettings() itself.
+    init_telemetry(default_service_name="mintmory-mcp")
 
     if args.transport == "stdio":
         mcp.run(transport="stdio")

@@ -31,6 +31,7 @@ except ImportError as e:
 
 from mintmory.core.history import query
 from mintmory.core.history.ingest import DEFAULT_HISTORY_DB, _assert_not_working_db
+from mintmory.core.telemetry import init_telemetry
 from mintmory.mcp.concise import concise_history_row
 
 # ---------------------------------------------------------------------------
@@ -309,6 +310,10 @@ def main() -> None:
 
     # Guard: fail fast if the path resolves to the working store
     _assert_not_working_db(_db_path())
+
+    # Initialise OTel once, before serving. No settings: main() must not
+    # validate unrelated config, and init_telemetry() never raises.
+    init_telemetry(default_service_name="mintmory-history-mcp")
 
     if args.transport == "stdio":
         mcp.run(transport="stdio")

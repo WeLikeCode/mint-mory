@@ -22,7 +22,7 @@ def test_main_initialises_telemetry_before_serving(
     """main() must call init_telemetry() before mcp.run() starts handling requests."""
     calls: list[str] = []
 
-    def _fake_init_telemetry(settings: Any = None) -> bool:
+    def _fake_init_telemetry(settings: Any = None, **kwargs: Any) -> bool:
         calls.append("init_telemetry")
         return False
 

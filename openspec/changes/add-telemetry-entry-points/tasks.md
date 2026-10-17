@@ -15,7 +15,7 @@ test first, failing. Tests use `otlp_receiver` by fixture name (no helper import
   also for `mintmory <cmd> --help`, where `auto` may probe once (100 ms).
 - [x] 1.3 `api/app.py` lifespan: `init_telemetry(settings.otel, default_service_name="mintmory-api")`; import
   `shutdown_telemetry` beside `init_telemetry` at module level and call it after `yield`, before `_store.close()`.
-- [ ] 1.4 `mcp/server.py` `main()`: replace `init_telemetry(load_settings().otel)` with
+- [x] 1.4 `mcp/server.py` `main()`: replace `init_telemetry(load_settings().otel)` with
   `init_telemetry(default_service_name="mintmory-mcp")`. `history_server.py`: import `init_telemetry` at module level and
   call `init_telemetry(default_service_name="mintmory-history-mcp")` in `main()` after the `_assert_not_working_db`
   guard, before `mcp.run`. No `try/except` around any call (runtime's contract).
