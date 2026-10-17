@@ -14,6 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
 | Q-002 | answered | none | verdict | Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name |
 | Q-003 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
+| Q-004 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -83,3 +84,24 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why; end
 ### Answer
 <!-- write below this line -->
 reject: an independent full-diff review (51/51 unit tests and the full gate pass; with telemetry off every command matches the base) found two breaks of this spec's rule that recording a metric point or attribute SHALL never raise into the caller (spec.md line 35; tasks.md asks for try/except). (1) telemetry.counts_added (telemetry.py:1006) calls add_count outside its try, and add_count does not guard counter.add or the instrument creation: with a failing meter, storage add_memory (storage.py:468, storage_postgres.py:418) raises RuntimeError after the row is stored, so mintmory add exits non-zero and a retry stores a duplicate. (2) span() sets attributes without a guard (telemetry.py:630), so embed_span and file_span make embed() raise when set_attribute raises. WHEN the meter, a counter's add, a histogram's record or a span's set_attribute raises inside a telemetry helper (counts_added, add_count, record_value, the span attributes of embed_span and file_span) THEN the error stays inside telemetry: add_memory returns the stored record, embed() and the wrapped call run and return normally, and the attribute or point is dropped.
+
+---
+
+## Q-004: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 4, verifier
+
+### Context
+After round 4 the verifier cannot decide on its own: the diff is longer than 120000 characters: the judge saw only the start
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why; end the reason with a sentence WHEN ... THEN ... so that a fix unit can be made.
+
+### Options
+1. accept
+2. reject: <reason>
+
+### Answer
+<!-- write below this line -->
