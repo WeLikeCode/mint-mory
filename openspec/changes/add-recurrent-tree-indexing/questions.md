@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | none | verdict | Criterion C-b54f84ac (ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download): accept as satisfied? |
+| Q-001 | answered | none | verdict | Criterion C-b54f84ac (ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download): accept as satisfied? |
 | Q-002 | open | none | verdict | Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied? |
 | Q-003 | open | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
 | Q-004 | open | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
@@ -24,7 +24,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: Criterion C-b54f84ac (ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -51,6 +51,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: satisfied as it stands. test_is_online_only_detects_placeholder (packages/core/tests/test_tree_index.py) proves placeholder detection; the default text pass no longer reads an online-only file (task 2.2 guard, proven by the new test_index_tree_text_content_skips_online_only_file: the extract_markdown spy never sees cloud.txt and its manifest row stays metadata); binary content is read only with --content (want_binary needs the content flag), so a default run records every placeholder from stat only.
 ---
 
 ## Q-002: Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied?
