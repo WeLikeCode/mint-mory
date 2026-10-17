@@ -89,7 +89,7 @@ default. A user who wants them can still run `--content --content-types txt,md`
   `if text_skipped_online_only: table.add_row("text-skipped-online-only", str(text_skipped_online_only))`.
   Update the `--text-content` help text and the `index_tree` docstring to say
   online-only files are skipped by this pass.
-- [ ] 2.4 Gates: `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+- [x] 2.4 Gates: `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). The OpenSpec
   validation needs Node and network, so it is not a task gate: the author runs
   `openspec validate add-recurrent-tree-indexing --strict` on the spec files before the
