@@ -130,3 +130,8 @@
 {"ts": "2026-10-17T10:39:24.426392Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 130, "type": "verify.verdict", "round": 4, "verdict": "PASS", "findings": 1, "criteria_passed": 15, "criteria_total": 15}
 {"ts": "2026-10-17T10:39:24.436887Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 131, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-17T10:39:27.592601Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 132, "type": "pr.labels", "number": 23, "labels": ["l4:verified"]}
+{"ts": "2026-10-17T10:39:31.192151Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 133, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/23", "number": 23, "head": "e084d7327d5417569c282ae53fe6e3873478488f"}
+{"ts": "2026-10-17T10:39:31.193040Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 134, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-17T10:39:34.438153Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 135, "type": "pr.labels", "number": 23, "labels": ["l4:in_review"]}
+{"ts": "2026-10-17T10:39:36.127102Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 136, "type": "lock.released"}
+{"ts": "2026-10-17T10:39:36.127734Z", "run_id": "r-20261017T1027Z-b735", "unit": "openspec:add-recurrent-tree-indexing", "seq": 137, "type": "run.finished", "exit_code": 0}
