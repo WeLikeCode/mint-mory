@@ -2,3 +2,4 @@
 {"ts": "2026-10-17T10:42:01.790205Z", "run_id": "r-20261017T1041Z-c43c", "unit": "openspec:add-recurrent-tree-indexing", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 23, "merge_commit": "e084d7327d5417569c282ae53fe6e3873478488f"}
 {"ts": "2026-10-17T10:42:08.522856Z", "run_id": "r-20261017T1041Z-c43c", "unit": "openspec:add-recurrent-tree-indexing", "seq": 3, "type": "archive.opened", "number": 25, "url": "<forge>/WeLikeCode/mint-mory/pull/25", "branch": "l4/archive/openspec/add-recurrent-tree-indexing"}
 {"ts": "2026-10-17T10:42:10.408627Z", "run_id": "r-20261017T1041Z-c43c", "unit": "openspec:add-recurrent-tree-indexing", "seq": 4, "type": "archive.merged", "head": "f7f25c33b4877f032531695f3e3371611b35f1a8", "number": 25}
+{"ts": "2026-10-17T10:42:11.851997Z", "run_id": "r-20261017T1041Z-c43c", "unit": "openspec:add-recurrent-tree-indexing", "seq": 5, "type": "run.finished", "exit_code": 0}
