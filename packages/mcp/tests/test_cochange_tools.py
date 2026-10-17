@@ -10,12 +10,25 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastmcp import Client
 from mintmory.mcp import server
 from mintmory.mcp.server import mcp
+
+
+class _NonSqliteStore:
+    """Wraps a real SqliteBackend but is not one and has no connect() (like PostgresBackend)."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "connect":
+            raise AttributeError(name)
+        return getattr(self._inner, name)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -449,3 +462,55 @@ async def test_main_server_prompt_count_after_mm41(mcp_client: Client[Any]) -> N
         f"Expected 4 mintmory_ prompts, got {len(mintmory_prompts)}: "
         f"{[p.name for p in mintmory_prompts]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Co-change tools on a non-SQLite store (spec: mcp delta)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-51a21242", "C-9635acb2")
+async def test_docs_changed_with_non_sqlite_store_returns_error(
+    mcp_client: Client[Any],
+) -> None:
+    """SQLite peers still resolve; a non-SQLite store returns the not_implemented dict."""
+    store = server._get_store()
+    _seed_cochange_pair(store, path_a="/repo/a.py", path_b="/repo/b.py")
+    peers = await mcp_client.call_tool("docs_changed_with", {"path": "/repo/a.py"})
+    assert isinstance(peers.data, list)
+    assert len(peers.data) == 1
+    assert peers.data[0]["path"] == "/repo/b.py"
+    empty = await mcp_client.call_tool("docs_changed_with", {"path": "/not/indexed.py"})
+    assert empty.data == []
+
+    server._store = cast(Any, _NonSqliteStore(server._get_store()))
+    res = await mcp_client.call_tool(
+        "docs_changed_with", {"path": "/repo/a.py"}, raise_on_error=False
+    )
+    assert res.data == {
+        "error": "not_implemented",
+        "message": "co-change is SQLite-only: set MINTMORY_STORAGE_BACKEND=sqlite to use it",
+    }
+
+
+@pytest.mark.l4("C-d2f427d6", "C-9635acb2")
+async def test_docs_timeline_non_sqlite_store_returns_error(mcp_client: Client[Any]) -> None:
+    """SQLite clamp/bad_request still work; a non-SQLite store returns the not_implemented dict."""
+    store = server._get_store()
+    for i in range(205):
+        _add_doc_memory(store, path=f"/clamp{i:03d}.py", mtime=1_000_000.0 + i)
+    clamped = await mcp_client.call_tool("docs_timeline", {"limit": 999999})
+    assert isinstance(clamped.data, list)
+    assert len(clamped.data) == 200
+    bad = await mcp_client.call_tool("docs_timeline", {"since": "bogus"})
+    assert isinstance(bad.data, dict)
+    assert bad.data.get("error") == "bad_request"
+
+    server._store = cast(Any, _NonSqliteStore(server._get_store()))
+    expected = {
+        "error": "not_implemented",
+        "message": "co-change is SQLite-only: set MINTMORY_STORAGE_BACKEND=sqlite to use it",
+    }
+    for args in ({}, {"since": "bogus"}):
+        res = await mcp_client.call_tool("docs_timeline", args, raise_on_error=False)
+        assert res.data == expected

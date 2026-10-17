@@ -74,6 +74,18 @@ def _doc_meta(store: Any, abs_path: str) -> dict[str, Any]:
     return meta
 
 
+class _NonSqliteStore:
+    """Wraps a real SqliteBackend but is not one and has no connect() (like PostgresBackend)."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "connect":
+            raise AttributeError(name)
+        return getattr(self._inner, name)
+
+
 # ---------------------------------------------------------------------------
 # Recency through the real walk (no sklearn needed)
 # ---------------------------------------------------------------------------
@@ -449,3 +461,72 @@ def test_index_tree_cochange_truncation_surfaced(
     result = runner.invoke(app, ["index-tree", str(root), "--cochange"])
     assert result.exit_code == 0, result.output
     assert "truncated_from_blocks" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Non-SQLite store behaviour (spec: ingestion delta)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-45ae5acf", "C-7fbee527")
+def test_docs_commands_non_sqlite_store_exit_cleanly(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On SQLite the docs commands still list documents; a non-SQLite store exits 1 cleanly."""
+    root = tmp_path / "corpus"
+    _make_tree(root)
+    assert runner.invoke(app, ["index-tree", str(root), "--no-cochange"]).exit_code == 0
+    timeline_ok = runner.invoke(app, ["docs", "timeline"])
+    assert timeline_ok.exit_code == 0, timeline_ok.output
+    assert "document(s)" in timeline_ok.output
+
+    stub = _NonSqliteStore(_store(cli_db))
+    monkeypatch.setattr("mintmory.cli.main._get_store", lambda: stub)
+
+    timeline = runner.invoke(app, ["docs", "timeline"])
+    assert timeline.exit_code == 1, timeline.output
+    assert "co-change is SQLite-only" in timeline.output
+    assert not isinstance(timeline.exception, AttributeError)
+
+    changed = runner.invoke(app, ["docs", "changed-with", "/any/path"])
+    assert changed.exit_code == 1, changed.output
+    assert "co-change is SQLite-only" in changed.output
+    assert not isinstance(changed.exception, AttributeError)
+
+
+@pytest.mark.l4("C-f756fbd5", "C-7fbee527")
+def test_index_tree_non_sqlite_store_skips_cochange(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On SQLite index-tree assigns change-sets; a non-SQLite store skips the pass and finishes."""
+    sqlite_db = tmp_path / "sqlite_cochange.db"
+    sqlite_root = tmp_path / "corpus_sqlite"
+    _make_tree(sqlite_root)
+    monkeypatch.setenv("MINTMORY_DB", str(sqlite_db))
+    sqlite_run = runner.invoke(app, ["index-tree", str(sqlite_root), "--cochange"])
+    assert sqlite_run.exit_code == 0, sqlite_run.output
+    sqlite_store = _store(sqlite_db)
+    cs = {
+        rel: _doc_meta(sqlite_store, str(sqlite_root / rel)).get("changeset_id") for rel in _BURST
+    }
+    assert all(cs[rel] is not None for rel in _BURST), cs
+    assert cs["folder_a/f1.txt"] == cs["folder_a/f2.txt"]
+    assert cs["folder_b/f3.txt"] == cs["folder_b/f4.txt"]
+    assert cs["folder_a/f1.txt"] != cs["folder_b/f3.txt"]
+
+    monkeypatch.setenv("MINTMORY_DB", str(cli_db))
+    root = tmp_path / "corpus"
+    _make_tree(root)
+    stub = _NonSqliteStore(_store(cli_db))
+    monkeypatch.setattr("mintmory.cli.main._get_store", lambda: stub)
+
+    result = runner.invoke(app, ["index-tree", str(root), "--cochange"])
+    assert result.exit_code == 0, result.output
+    assert "co-change skipped" in result.output
+    assert "co-change is SQLite-only" in result.output
+    assert "scanned" in result.output
+    assert "changesets" not in result.output
+
+    store = _store(cli_db)
+    for rel in _BURST:
+        assert "changeset_id" not in _doc_meta(store, str(root / rel))
