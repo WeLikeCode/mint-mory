@@ -2,3 +2,4 @@
 {"ts": "2026-10-17T07:28:06.778492Z", "run_id": "r-20261017T0728Z-9f3a", "unit": "openspec:fix-distiller-prompt-cap", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 18, "merge_commit": "079d93288a3d682a7771fb480ef9baf49e782d8e"}
 {"ts": "2026-10-17T07:28:13.154822Z", "run_id": "r-20261017T0728Z-9f3a", "unit": "openspec:fix-distiller-prompt-cap", "seq": 3, "type": "archive.opened", "number": 20, "url": "<forge>/WeLikeCode/mint-mory/pull/20", "branch": "l4/archive/openspec/fix-distiller-prompt-cap"}
 {"ts": "2026-10-17T07:28:14.988361Z", "run_id": "r-20261017T0728Z-9f3a", "unit": "openspec:fix-distiller-prompt-cap", "seq": 4, "type": "archive.merged", "head": "84c5f3cb6cd8d6ad846c4b32d9aae88f4d0d3fcd", "number": 20}
+{"ts": "2026-10-17T07:28:16.371760Z", "run_id": "r-20261017T0728Z-9f3a", "unit": "openspec:fix-distiller-prompt-cap", "seq": 5, "type": "run.finished", "exit_code": 0}
