@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
 | Q-002 | answered | none | verdict | Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name |
 | Q-003 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
-| Q-004 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
+| Q-004 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -89,7 +89,7 @@ reject: an independent full-diff review (51/51 unit tests and the full gate pass
 
 ## Q-004: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 4, verifier
@@ -105,3 +105,4 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why; end
 
 ### Answer
 <!-- write below this line -->
+accept: the hold is only about the diff's length (2.2 MB, of which about 202 kB is code and tests; the rest is the harness's own ledger and verification files). Since the full-diff review that rejected round 3 (Q-003), the unit changed only by fix-2: a new test file (test_telemetry_helper_guards.py, no pre-existing test touched) and telemetry.py, where add_count and record_value now wrap instrument creation and add/record in try/except, counts_added guards its add_count call, and span() sets attributes through _set_attribute_safe; the one other set_attribute call (_set_result_count) was already guarded, and no other module sets span attributes. Both defects named in Q-003 are closed, and round 4 passes every gate (setup, ruff, format, mypy, pytest) with 22/22 criteria covered.
