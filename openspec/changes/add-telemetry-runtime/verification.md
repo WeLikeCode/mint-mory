@@ -1,40 +1,40 @@
-# Verification: openspec:add-telemetry-runtime: PASS (round 7)
+# Verification: openspec:add-telemetry-runtime: PASS (round 8)
 
 traceability: 33/33 criteria covered by a discriminating test
 
-- Base: `f222a941339553edb6a5172fa32b4bcaf529f6be`
-- Head: `dc31486655e4973b0910f564b161144ca640bba2`
+- Base: `e3703e558fc3365ae0eacccb9ee4d1ea326e6236`
+- Head: `9f5458fd1aea69fe0d4ea95b4a412574072d0f58`
 - Implementer profiles: deepseek
-- Judge: claude-judge (claude-sonnet-5-5), 1 call(s), prompt sha256 `4abd0c3ab0f12d00852fa182c85d3cf5d0e675d08c423de3180d4c0267f75bb6`
-- Judge replies of claude-judge (this unit, all rounds): valid 3, repaired 0, retried 0, discarded 0; this round: valid
+- Judge: claude-judge (claude-sonnet-5-5), 2 call(s), prompt sha256 `7432a7848171f00e35ff1fdb59503a72f328b37ef611dfc78b976446209b963a`
+- Judge replies of claude-judge (this unit, all rounds): valid 3, repaired 0, retried 1, discarded 0; this round: retried
 - independence: declared (unverified): claude-judge anthropic (served claude-sonnet-5-5), deepseek deepseek (declared)
-- Cost: $0.7031
+- Cost: $1.3996
 
 ## Ladder
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | reused | 0.0 | reused (round 6) |
-| 1 | integrity | reused | 0.0 | reused (round 6) |
-| 2 | build | reused | 0.0 | reused (round 6) |
-| 3 | tests | reused | 0.0 | reused (round 6) |
-| 4 | traceability | reused | 0.0 | reused (round 6) |
+| 0 | preconditions | ok | 1.3 | base merged: staging@e3703e558f as 9f5458fd1a (1 commit) |
+| 1 | integrity | ok | 1.4 | 7 sub-checks (+2 unfrozen by human answers); scope: 91 changed file(s) |
+| 2 | build | ok | 18.9 |  |
+| 3 | tests | ok | 58.1 |  |
+| 4 | traceability | ok | 0.2 | 33/33 criteria covered |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | reused | 0.0 | reused (round 6) |
-| 8 | s1 judge | reused | 0.0 | reused (round 6) |
-| 9 | judge | reused | 0.0 | reused (round 6) |
+| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
+| 8 | s1 judge | ok | 3.4 | 32/33 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
+| 9 | judge | ok | 44.8 | 2 call(s) |
 | 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
 | Gate | Status | Command | Log |
 |---|---|---|---|
-| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261016T2129Z-cb47/041-setup.log |
-| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261016T2129Z-cb47/042-lint.log |
-| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261016T2129Z-cb47/043-lint.log |
-| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261016T2129Z-cb47/044-typecheck.log |
-| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261016T2129Z-cb47/045-test.log |
+| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261017T0105Z-eac9/001-setup.log |
+| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261017T0105Z-eac9/002-lint.log |
+| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261017T0105Z-eac9/003-lint.log |
+| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261017T0105Z-eac9/004-typecheck.log |
+| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261017T0105Z-eac9/005-test.log |
 
 ## Integrity
 
@@ -64,38 +64,38 @@ Declared suppressions:
 
 | Id | Criterion | State | Tests (status, proof) | Not evidence | S1 p |
 |---|---|---|---|---|---|
-| C-2190b9f3 | observability › Telemetry enablement modes › Auto with no collector stays off | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_auto_without_collector_stays_off_in_a_fresh_process (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_auto_without_a_collector_stays_off_in_a_fresh_process (passed, zero_value); packages.core.tests.test_telemetr... | - | 0.94 |
+| C-2190b9f3 | observability › Telemetry enablement modes › Auto with no collector stays off | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_auto_without_collector_stays_off_in_a_fresh_process (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_auto_without_a_collector_stays_off_in_a_fresh_process (passed, zero_value); packages.core.tests.test_telemetr... | - | 0.93 |
 | C-aba1a372 | observability › Telemetry enablement modes › Auto turns on with a collector | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_auto_turns_on_with_a_collector (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_auto_with_a_reachable_endpoint_turns_on_and_probes (passed, zero_value); packages.core.tests.test_telemetry_enablement::test_auto_... | - | 0.91 |
 | C-9d8f8f9c | observability › Telemetry enablement modes › Explicit off wins | covered | packages.api.tests.test_health_and_otel_runtime::test_explicit_false_enabled_returns_false_without_probing (passed, pre_satisfied); packages.core.tests.test_telemetry_acceptance_gate::test_gate_explicit_off_wins (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_explicit_of... | - | 0.91 |
 | C-ead28cef | observability › Telemetry enablement modes › SDK missing | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_sdk_missing_warns_only_with_a_hint (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_sdk_missing_stays_off_and_warns_only_with_a_hint (passed, zero_value); packages.core.tests.test_telemetry_helpers::test_resolv... | - | 0.91 |
-| C-4d7716fe | observability › Exporter selection and endpoint resolution › Console output never reaches stdout | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_console_output_never_reaches_stdout (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_console_exporter_writes_to_stderr_never_stdout (passed, zero_value) | - | 0.91 |
+| C-4d7716fe | observability › Exporter selection and endpoint resolution › Console output never reaches stdout | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_console_output_never_reaches_stdout (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_console_exporter_writes_to_stderr_never_stdout (passed, zero_value) | - | 0.90 |
 | C-6fc7f4c6 | observability › Exporter selection and endpoint resolution › One signal switched off | covered | packages.api.tests.test_health_and_otel_runtime::test_configured_otlp_span_exporter_chain_ends_at_the_otlp_http_exporter (passed, pre_satisfied); packages.core.tests.test_telemetry_acceptance_gate::test_gate_one_signal_switched_off_builds_no_provider_for_it[console-none-metric] (passed, pre_satisfie... | - | 0.95 |
 | C-690840ae | observability › Exporter selection and endpoint resolution › Both signals off | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_both_signals_off_returns_false_without_a_warning (passed, pre_satisfied); packages.core.tests.test_telemetry_enablement::test_both_signals_off_returns_false_without_a_warning (passed, zero_value) | - | 0.92 |
-| C-5412bab8 | observability › Export never blocks or floods when the collector is absent › Export runs off the caller's thread | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_export_runs_off_the_calling_thread (passed, pre_satisfied); packages.core.tests.test_telemetry_resilience::test_export_runs_off_the_caller_thread (passed, zero_value); packages.core.tests.test_telemetry_timeouts::test_a_per_signal_timeout... | - | 0.90 |
+| C-5412bab8 | observability › Export never blocks or floods when the collector is absent › Export runs off the caller's thread | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_export_runs_off_the_calling_thread (passed, pre_satisfied); packages.core.tests.test_telemetry_resilience::test_export_runs_off_the_caller_thread (passed, zero_value); packages.core.tests.test_telemetry_timeouts::test_a_per_signal_timeout... | - | 0.89 |
 | C-18efd0f6 | observability › Export never blocks or floods when the collector is absent › Unreachable collector logs once | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_unreachable_collector_logs_once (passed, pre_satisfied); packages.core.tests.test_telemetry_resilience::test_unreachable_collector_warns_once_and_mutes_the_exporter_logger (passed, zero_value); packages.core.tests.test_telemetry_timeouts:... | - | 0.91 |
 | C-cd710a4c | observability › Export never blocks or floods when the collector is absent › Once per signal per streak | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_guard_logs_once_per_signal_per_streak (passed, pre_satisfied); packages.core.tests.test_telemetry_guards::test_guards_keep_inner_and_the_metric_guard_is_a_metric_exporter (passed, red_assertion); packages.core.tests.test_telemetry_resilie... | - | 0.94 |
 | C-e1c42220 | observability › Invalid MintMory telemetry settings fall back › Bad MintMory values fall back | covered | packages.api.tests.test_health_and_otel_runtime::test_enabled_setting_normalises_booleans_and_case (passed, pre_satisfied); packages.core.tests.test_otel_settings::test_bad_mintmory_values_fall_back_with_one_warning_each (passed, red_assertion); packages.core.tests.test_otel_settings::test_boolean_a... | - | 0.71 |
 | C-3852f755 | observability › Invalid standard OpenTelemetry variables fall back › Bad standard values fall back | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_bad_standard_values_fall_back (passed, pre_satisfied); packages.core.tests.test_telemetry_resilience::test_bad_standard_values_fall_back (passed, zero_value) | - | 0.89 |
-| C-c724dabe | observability › Telemetry init never raises › An exporter cannot be built | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_init_failure_turns_telemetry_off (passed, pre_satisfied); packages.core.tests.test_telemetry_init_failure::test_a_failed_build_after_the_tracer_is_up_tears_everything_down (passed, pre_satisfied); packages.core.tests.test_telemetry_resili... | - | 0.91 |
-| C-044e54eb | observability › Telemetry init never raises › Another settings group is invalid | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_another_settings_group_is_invalid (passed, pre_satisfied); packages.core.tests.test_telemetry_init_failure::test_init_does_not_read_another_settings_group (passed, pre_satisfied); packages.core.tests.test_telemetry_resilience::test_init_i... | - | 0.54 |
-| C-b7126d33 | observability › Bounded flush on exit › Exit is bounded when export hangs | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_exit_is_bounded_when_export_hangs (passed, pre_satisfied); packages.core.tests.test_telemetry_shutdown::test_shutdown_is_bounded_when_a_provider_shutdown_hangs (passed, pre_satisfied); packages.core.tests.test_telemetry_teardown::test_tea... | - | 0.91 |
-| C-16b8c487 | observability › Bounded flush on exit › Pending spans are delivered on exit | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_pending_spans_are_delivered_on_exit (passed, pre_satisfied); packages.core.tests.test_telemetry_exporters::test_otlp_exporters_default_to_the_local_collector_with_signal_paths (passed, red_assertion); packages.core.tests.test_telemetry_ex... | - | 0.87 |
+| C-c724dabe | observability › Telemetry init never raises › An exporter cannot be built | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_init_failure_turns_telemetry_off (passed, pre_satisfied); packages.core.tests.test_telemetry_init_failure::test_a_failed_build_after_the_tracer_is_up_tears_everything_down (passed, pre_satisfied); packages.core.tests.test_telemetry_resili... | - | 0.89 |
+| C-044e54eb | observability › Telemetry init never raises › Another settings group is invalid | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_another_settings_group_is_invalid (passed, pre_satisfied); packages.core.tests.test_telemetry_init_failure::test_init_does_not_read_another_settings_group (passed, pre_satisfied); packages.core.tests.test_telemetry_resilience::test_init_i... | - | 0.59 |
+| C-b7126d33 | observability › Bounded flush on exit › Exit is bounded when export hangs | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_exit_is_bounded_when_export_hangs (passed, pre_satisfied); packages.core.tests.test_telemetry_shutdown::test_shutdown_is_bounded_when_a_provider_shutdown_hangs (passed, pre_satisfied); packages.core.tests.test_telemetry_teardown::test_tea... | - | 0.89 |
+| C-16b8c487 | observability › Bounded flush on exit › Pending spans are delivered on exit | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_pending_spans_are_delivered_on_exit (passed, pre_satisfied); packages.core.tests.test_telemetry_exporters::test_otlp_exporters_default_to_the_local_collector_with_signal_paths (passed, red_assertion); packages.core.tests.test_telemetry_ex... | - | 0.86 |
 | C-1d2bd9a4 | observability › Bounded flush on exit › The exporter logger level is restored | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_exporter_logger_level_is_restored (passed, pre_satisfied); packages.core.tests.test_telemetry_logger_level::test_otlp_exporter_logger_is_critical_while_running_and_restored_after_shutdown (passed, pre_satisfied); packages.core.tests.test_... | - | 0.94 |
 | C-fa66b065 | observability › Bounded flush on exit › One atexit hook, none from the SDK | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_one_atexit_hook_none_from_the_sdk (passed, pre_satisfied); packages.core.tests.test_telemetry_shutdown::test_a_false_init_registers_no_atexit_hook (passed, pre_satisfied); packages.core.tests.test_telemetry_shutdown::test_one_atexit_hook_... | - | 0.94 |
-| C-a58004cf | observability › Resource identifies the process › The caller's default name | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_resource_uses_the_callers_default_name (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_service_name_resolution_order (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_service_version_is_... | - | 0.86 |
-| C-a556a3c6 | observability › Resource identifies the process › Standard variables win | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_standard_variables_win (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_parsed_attributes_overlay_mintmory_defaults (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_resource_attributes_f... | - | 0.94 |
+| C-a58004cf | observability › Resource identifies the process › The caller's default name | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_resource_uses_the_callers_default_name (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_service_name_resolution_order (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_service_version_is_... | - | 0.88 |
+| C-a556a3c6 | observability › Resource identifies the process › Standard variables win | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_standard_variables_win (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_parsed_attributes_overlay_mintmory_defaults (passed, pre_satisfied); packages.core.tests.test_telemetry_resource::test_resource_attributes_f... | - | 0.95 |
 | C-19d78666 | observability › Sampling and propagation follow the OpenTelemetry environment › Context propagates by default | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_context_propagates_by_default (passed, pre_satisfied); packages.core.tests.test_telemetry_resource_sampling::test_context_propagates_by_default (passed, pre_satisfied) | - | 0.72 |
 | C-50f410cd | observability › Sampling and propagation follow the OpenTelemetry environment › Sampling switched off | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_sampling_switched_off (passed, pre_satisfied); packages.core.tests.test_telemetry_resource_sampling::test_sampler_always_off_exports_nothing_while_the_default_exports (passed, pre_satisfied) | - | 0.93 |
 | C-1457e823 | observability › Exported spans carry no exception message › A library's exception is scrubbed | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_library_exception_is_scrubbed (passed, pre_satisfied); packages.core.tests.test_telemetry_scrubbing::test_library_span_exception_is_scrubbed (passed, red_assertion); packages.core.tests.test_telemetry_scrubbing::test_mintmory_span_excepti... | - | 0.93 |
 | C-65be7944 | observability › One error-marking helper › Marking a span on and off | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_marking_a_span_off (passed, pre_satisfied); packages.core.tests.test_telemetry_acceptance_gate::test_gate_marking_a_span_on (passed, pre_satisfied); packages.core.tests.test_telemetry_mark_error::test_mark_error_on_a_noop_span_does_nothin... | - | 0.93 |
 | C-e8aa74fe | observability › Telemetry test seam › Injection beats the suite's off default | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_injection_beats_the_suites_off_default (passed, pre_satisfied); packages.core.tests.test_telemetry_seam_and_globals::test_injection_beats_the_sdk_kill_switch (passed, pre_satisfied); packages.core.tests.test_telemetry_seam_and_globals::te... | - | 0.89 |
-| C-90d20140 | observability › Telemetry test seam › Single injection builds no network exporter | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_single_injection_builds_no_network_exporter (passed, pre_satisfied); packages.core.tests.test_telemetry_seam_and_globals::test_single_injection_builds_no_network_exporter (passed, pre_satisfied) | - | 0.80 |
-| C-29c6c2b6 | observability › Shared telemetry test fixtures › A CLI-package test uses the receiver | covered | packages.cli.tests.test_telemetry_acceptance_gate::test_gate_cli_package_test_uses_the_shared_receiver (passed, pre_satisfied); packages.cli.tests.test_telemetry_shared_fixtures::test_cli_tests_can_request_the_shared_telemetry_fixtures (passed, red_assertion); packages.cli.tests.test_telemetry_share... | - | 0.84 |
-| C-59c09ecd | observability › Global providers and repeated init › A second init changes nothing | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_a_second_init_changes_nothing (passed, pre_satisfied); packages.core.tests.test_telemetry_global_providers::test_a_second_init_keeps_the_first_provider_and_tracer (passed, pre_satisfied); packages.core.tests.test_telemetry_global_provider... | - | 0.91 |
-| C-836e8777 | observability › Global providers and repeated init › Re-initialisation after shutdown | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_reinitialisation_after_shutdown (passed, pre_satisfied); packages.core.tests.test_telemetry_global_providers::test_reinit_after_shutdown_installs_a_new_global_provider (passed, pre_satisfied); packages.core.tests.test_telemetry_seam_and_g... | - | 0.92 |
-| C-248f68ba | observability › _sdk_available must catch ImportError and ValueError from — feedback FB-001 › _sdk_available must catch ImportError and ValueError from | covered | packages.core.tests.test_telemetry_sdk_probe::test_module_not_found_from_find_spec_is_caught_and_warns_once (passed, red_assertion); packages.core.tests.test_telemetry_sdk_probe::test_value_error_from_find_spec_is_caught_and_auto_stays_silent (passed, red_assertion) | - | 0.87 |
+| C-90d20140 | observability › Telemetry test seam › Single injection builds no network exporter | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_single_injection_builds_no_network_exporter (passed, pre_satisfied); packages.core.tests.test_telemetry_seam_and_globals::test_single_injection_builds_no_network_exporter (passed, pre_satisfied) | - | 0.81 |
+| C-29c6c2b6 | observability › Shared telemetry test fixtures › A CLI-package test uses the receiver | covered | packages.cli.tests.test_telemetry_acceptance_gate::test_gate_cli_package_test_uses_the_shared_receiver (passed, pre_satisfied); packages.cli.tests.test_telemetry_shared_fixtures::test_cli_tests_can_request_the_shared_telemetry_fixtures (passed, red_assertion); packages.cli.tests.test_telemetry_share... | - | 0.83 |
+| C-59c09ecd | observability › Global providers and repeated init › A second init changes nothing | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_a_second_init_changes_nothing (passed, pre_satisfied); packages.core.tests.test_telemetry_global_providers::test_a_second_init_keeps_the_first_provider_and_tracer (passed, pre_satisfied); packages.core.tests.test_telemetry_global_provider... | - | 0.90 |
+| C-836e8777 | observability › Global providers and repeated init › Re-initialisation after shutdown | covered | packages.core.tests.test_telemetry_acceptance_gate::test_gate_reinitialisation_after_shutdown (passed, pre_satisfied); packages.core.tests.test_telemetry_global_providers::test_reinit_after_shutdown_installs_a_new_global_provider (passed, pre_satisfied); packages.core.tests.test_telemetry_seam_and_g... | - | 0.93 |
+| C-248f68ba | observability › _sdk_available must catch ImportError and ValueError from — feedback FB-001 › _sdk_available must catch ImportError and ValueError from | covered | packages.core.tests.test_telemetry_sdk_probe::test_module_not_found_from_find_spec_is_caught_and_warns_once (passed, red_assertion); packages.core.tests.test_telemetry_sdk_probe::test_value_error_from_find_spec_is_caught_and_auto_stays_silent (passed, red_assertion) | - | 0.89 |
 | C-0f789a7e | observability › _build_meter_provider must wrap the configured metric exporter with — feedback FB-002 › _build_meter_provider must wrap the configured metric exporter with | covered | packages.core.tests.test_telemetry_metric_guard_wiring::test_metric_guard_wraps_the_console_exporter (passed, red_assertion); packages.core.tests.test_telemetry_metric_guard_wiring::test_metric_guard_wraps_the_otlp_exporter (passed, red_assertion); packages.core.tests.test_telemetry_metric_guard_wir... | - | 0.92 |
-| C-1d1f7ab8 | observability › init_telemetry: one set of providers when two threads init at once — feedback FB-003 › init_telemetry: one set of providers when two threads init at once | covered | packages.core.tests.test_telemetry_concurrent_init::test_two_threads_init_at_once_build_one_provider (passed, red_assertion) | - | 0.82 |
+| C-1d1f7ab8 | observability › init_telemetry: one set of providers when two threads init at once — feedback FB-003 › init_telemetry: one set of providers when two threads init at once | covered | packages.core.tests.test_telemetry_concurrent_init::test_two_threads_init_at_once_build_one_provider (passed, red_assertion) | - | 0.87 |
 | C-2261ae94 | observability › MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before — feedback FB-004 › MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before | covered | packages.core.tests.test_otel_settings_enabled_spellings::test_boolean_spelling_maps_without_a_warning[0-false0] (passed, red_assertion); packages.core.tests.test_otel_settings_enabled_spellings::test_boolean_spelling_maps_without_a_warning[0-false1] (passed, red_assertion); packages.core.tests.test... | - | - |
 
 ## Evidence
@@ -108,6 +108,7 @@ Declared suppressions:
 
 | Path | Module | Label | Why |
 |---|---|---|---|
+| `.serena/memories/harness/lessons.md` |  | none | exempt: harness, spec or documentation path |
 | `conftest.py` |  | relevant | named in the spec |
 | `openspec/changes/add-telemetry-runtime-fix-1/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime-fix-1/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
@@ -133,6 +134,12 @@ Declared suppressions:
 | `openspec/changes/add-telemetry-runtime/.l4/evidence/round-4/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/evidence/round-5/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/evidence/round-5/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/evidence/round-6/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/evidence/round-6/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/evidence/round-6/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/evidence/round-7/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/evidence/round-7/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/evidence/round-7/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0449Z-8f57.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0514Z-60f2.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0849Z-8d03.jsonl` |  | none | exempt: harness, spec or documentation path |
@@ -153,6 +160,8 @@ Declared suppressions:
 | `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1948Z-479c.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T2129Z-3075.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T2129Z-cb47.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T2149Z-9379.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261017T0104Z-21cd.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/.l4/review-accepted.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/feedback.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-runtime/questions.md` |  | none | exempt: harness, spec or documentation path |
@@ -205,38 +214,38 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 | Criterion | Status | p | Model | Engine | Note |
 |---|---|---|---|---|---|
-| C-2190b9f3 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-2190b9f3 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-aba1a372 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-9d8f8f9c | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-ead28cef | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-4d7716fe | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-4d7716fe | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-6fc7f4c6 | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-690840ae | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-5412bab8 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-5412bab8 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-18efd0f6 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-cd710a4c | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e1c42220 | ok | 0.710 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-3852f755 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-c724dabe | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-044e54eb | ok | 0.540 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-b7126d33 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-16b8c487 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-c724dabe | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-044e54eb | ok | 0.590 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-b7126d33 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-16b8c487 | ok | 0.860 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-1d2bd9a4 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-fa66b065 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-a58004cf | ok | 0.860 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-a556a3c6 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-a58004cf | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-a556a3c6 | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-19d78666 | ok | 0.720 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-50f410cd | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-1457e823 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-65be7944 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e8aa74fe | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-90d20140 | ok | 0.800 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-29c6c2b6 | ok | 0.840 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-59c09ecd | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-836e8777 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-248f68ba | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-90d20140 | ok | 0.810 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-29c6c2b6 | ok | 0.830 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-59c09ecd | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-836e8777 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-248f68ba | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-0f789a7e | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-1d1f7ab8 | ok | 0.820 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-1d1f7ab8 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-2261ae94 | unavailable | - | - | jev | the state does not fit 450 tokens even without the excerpt |
 
 ## Human verdicts
@@ -283,14 +292,8 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 ## Findings
 
-- [minor, judge] Unchecked: init_telemetry state check outside lock in injected path (spec gap) (criterion C-ead28cef): Double-checked lock is present; SDK-missing path for injected exporters logs nothing, which is not pinned by a scenario.
-
-## Feedback
-
-- FB-001: addressed at dc31486655: telemetry.py _sdk_available catches (ImportError, ValueError); test_telemetry_sdk_probe tests pass
-- FB-002: addressed at dc31486655: telemetry.py _build_meter_provider wraps via _guarded_metric_exporter_class()(exporter); api test unwraps _inner
-- FB-003: addressed at dc31486655: telemetry.py init_telemetry: `with _shutdown_lock: if _enabled: return True`
-- FB-004: addressed at dc31486655: config.py _TRUE_SPELLINGS/_FALSE_SPELLINGS in _normalise_enabled
+- [minor, judge] Unspecified: unknown OTEL exporter warns even when telemetry is off (spec gap) (criterion C-3852f755): _resolve_exporter runs before _resolve_state, so an invalid OTEL_TRACES_EXPORTER logs a WARNING even when telemetry is disabled.
+- [minor, judge] Unspecified: mark_error on a no-op span imports opentelemetry (spec gap) (criterion C-65be7944): mark_error imports opentelemetry.trace before checking the span type.
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
