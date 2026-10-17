@@ -28,4 +28,4 @@ test first, failing. Tests use `otlp_receiver` by fixture name (no helper import
   `test_routes.py` reads no telemetry state.
 
 ## 2. Checks
-- [ ] 2.1 `ruff check`, `ruff format --check`, `mypy packages`, full suite with coverage at or above 80%.
+- [x] 2.1 `ruff check`, `ruff format --check`, `mypy packages`, full suite with coverage at or above 80%.
