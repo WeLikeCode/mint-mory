@@ -6,7 +6,7 @@ no `uv.lock` change; import `opentelemetry` lazily. Tests: `pytest.importorskip(
 exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode = "auto"`. Each test first, failing.
 
 ## 1. Telemetry helpers (`core/telemetry.py`)
-- [ ] 1.1 Tests for the header helpers on and off (`extract_context` of `garbage` returns, `inject_trace_headers` off
+- [x] 1.1 Tests for the header helpers on and off (`extract_context` of `garbage` returns, `inject_trace_headers` off
   returns the dict unchanged).
 - [ ] 1.2 `inject_trace_headers(headers)`: `TraceContextTextMapPropagator().inject(headers)` when enabled, returns
   `headers`. `extract_context(carrier)`: `opentelemetry.propagate.extract(carrier)` when enabled, else `None`. Both in

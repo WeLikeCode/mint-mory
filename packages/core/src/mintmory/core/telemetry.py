@@ -1095,9 +1095,47 @@ def _command_exit_code(error: BaseException) -> int:
     return 1
 
 
+_trace_context_propagator: Any = None
+
+
+def _fixed_trace_context_propagator() -> Any:
+    """The fixed W3C trace-context propagator used for outbound headers (never ``baggage``)."""
+    global _trace_context_propagator
+    if _trace_context_propagator is None:
+        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+        _trace_context_propagator = TraceContextTextMapPropagator()
+    return _trace_context_propagator
+
+
 def inject_trace_headers(headers: dict[str, str]) -> dict[str, str]:
-    raise NotImplementedError
+    """Write the current span's ``traceparent``/``tracestate`` into ``headers``; never raises.
+
+    A fixed W3C trace-context propagator is used, so an inbound ``baggage`` (which may carry user
+    data) is never forwarded to a possibly third-party endpoint. With telemetry off the carrier is
+    returned untouched.
+    """
+    if not _enabled:
+        return headers
+    try:
+        _fixed_trace_context_propagator().inject(headers)
+    except Exception:  # noqa: BLE001 - a header helper must never break a request
+        return headers
+    return headers
 
 
 def extract_context(carrier: Mapping[str, str]) -> Any:
-    raise NotImplementedError
+    """Extract the W3C context from an inbound ``carrier``; ``None`` when telemetry is off.
+
+    The global propagator is used (trace context and baggage). A missing or malformed
+    ``traceparent`` extracts to a context with no valid span, so the request starts a new trace.
+    Never raises.
+    """
+    if not _enabled:
+        return None
+    try:
+        from opentelemetry.propagate import extract
+
+        return extract(carrier)
+    except Exception:  # noqa: BLE001 - extraction must never break a request
+        return None
