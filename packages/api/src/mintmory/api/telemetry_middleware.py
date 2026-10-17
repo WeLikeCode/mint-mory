@@ -13,7 +13,7 @@ import logging
 import os
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable
 from typing import Any
 
 from mintmory.core import telemetry
@@ -30,18 +30,17 @@ _RESPONSE_STATUS = "http.response.status_code"
 _INTERNAL_ERROR_STATUS = 500
 
 
-def _debug(error: BaseException) -> None:
-    """One DEBUG record naming only the exception class; telemetry never changes a response."""
-    _LOGGER.debug("telemetry middleware: %s", type(error).__name__)
+def _safe(step: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """Run one telemetry step; drop its failure at DEBUG so the request is unaffected.
 
-
-@contextlib.contextmanager
-def _guard() -> Iterator[None]:
-    """Run one telemetry step; drop its failure at DEBUG so the request is unaffected."""
+    The step's result comes back unchanged. A raising step is dropped with one DEBUG record on
+    ``mintmory.telemetry`` naming only the exception class, and ``None`` comes back.
+    """
     try:
-        yield
+        return step(*args, **kwargs)
     except Exception as error:  # noqa: BLE001 - a telemetry step must never alter the request
-        _debug(error)
+        _LOGGER.debug("telemetry: http middleware step failed (%s)", type(error).__name__)
+        return None
 
 
 @functools.cache
@@ -67,9 +66,8 @@ def _is_excluded(path: str) -> bool:
     """Whether ``path`` is a health probe or matches an ``OTEL_PYTHON_EXCLUDED_URLS`` regex."""
     if path in _HEALTH_PATHS:
         return True
-    patterns: tuple[re.Pattern[str], ...] = ()
-    with _guard():
-        patterns = _compile_excluded(os.environ.get(_EXCLUDED_URLS_VARIABLE, ""))
+    value = os.environ.get(_EXCLUDED_URLS_VARIABLE, "")
+    patterns: tuple[re.Pattern[str], ...] = _safe(_compile_excluded, value) or ()
     return any(pattern.search(path) is not None for pattern in patterns)
 
 
@@ -94,30 +92,21 @@ class TelemetryMiddleware:
 
         method = scope.get("method", "")
 
-        headers: dict[str, str] = {}
-        with _guard():
-            headers = _decode_headers(scope.get("headers") or [])
+        headers = _safe(_decode_headers, scope.get("headers") or []) or {}
+        context = _safe(telemetry.extract_context, headers)
 
-        context = None
-        with _guard():
-            context = telemetry.extract_context(headers)
-
-        span_cm = None
-        with _guard():
-            span_cm = telemetry.span(
-                method,
-                kind="server",
-                context=context,
-                record_exception=False,
-                set_status_on_exception=False,
-            )
-
-        span = None
-        if span_cm is not None:
-            with _guard():
-                span = span_cm.__enter__()
-
+        stack = contextlib.ExitStack()
+        span_cm = _safe(
+            telemetry.span,
+            method,
+            kind="server",
+            context=context,
+            record_exception=False,
+            set_status_on_exception=False,
+        )
+        span = None if span_cm is None else _safe(stack.enter_context, span_cm)
         if span is None:
+            _safe(stack.close)
             await self.app(scope, receive, send)
             return
 
@@ -129,47 +118,40 @@ class TelemetryMiddleware:
                 sent.append(message.get("status"))
             await send(message)
 
-        error_raised: BaseException | None = None
+        error: Exception | None = None
         try:
             await self.app(scope, receive, wrapped_send)
-        except BaseException as error:  # noqa: BLE001 - every way a request ends is handled
-            error_raised = error
-
-        route_path: str | None = None
-        with _guard():
+        except Exception as exc:
+            error = exc
+        finally:
             route = scope.get("route")
             route_path = None if route is None else route.path
+            if route_path is not None:
+                _safe(span.update_name, f"{method} {route_path}")
 
-        if route_path is not None:
-            with _guard():
-                span.update_name(f"{method} {route_path}")
+            status = sent[0] if sent else None
+            if status is None and error is not None:
+                status = _INTERNAL_ERROR_STATUS
 
-        status: int | None = sent[0] if sent else None
-        if status is None and isinstance(error_raised, Exception):
-            status = _INTERNAL_ERROR_STATUS
+            attributes: dict[str, Any] = {_REQUEST_METHOD: method}
+            if route_path is not None:
+                attributes[_ROUTE] = route_path
+            if status is not None:
+                attributes[_RESPONSE_STATUS] = status
+            _safe(span.set_attributes, attributes)
 
-        attributes: dict[str, Any] = {_REQUEST_METHOD: method}
-        if route_path is not None:
-            attributes[_ROUTE] = route_path
-        if status is not None:
-            attributes[_RESPONSE_STATUS] = status
-        with _guard():
-            span.set_attributes(attributes)
+            if error is not None:
+                _safe(telemetry.mark_error, span, type(error).__name__)
+            elif status is not None and status >= _INTERNAL_ERROR_STATUS:
+                _safe(telemetry.mark_error, span, str(status))
 
-        if isinstance(error_raised, Exception):
-            with _guard():
-                telemetry.mark_error(span, type(error_raised).__name__)
-        elif error_raised is None and status is not None and status >= _INTERNAL_ERROR_STATUS:
-            with _guard():
-                telemetry.mark_error(span, str(status))
-
-        metric_attributes: dict[str, Any] = {_REQUEST_METHOD: method}
-        if route_path is not None:
-            metric_attributes[_ROUTE] = route_path
-        if status is not None:
-            metric_attributes[_RESPONSE_STATUS] = status
-        with _guard():
-            telemetry.record_histogram(
+            metric_attributes: dict[str, Any] = {_REQUEST_METHOD: method}
+            if route_path is not None:
+                metric_attributes[_ROUTE] = route_path
+            if status is not None:
+                metric_attributes[_RESPONSE_STATUS] = status
+            _safe(
+                telemetry.record_histogram,
                 _DURATION_HISTOGRAM,
                 time.perf_counter() - started,
                 unit="s",
@@ -177,12 +159,7 @@ class TelemetryMiddleware:
                 **metric_attributes,
             )
 
-        with _guard():
-            span_cm.__exit__(None, None, None)
+            _safe(stack.close)
 
-        if error_raised is not None:
-            raise error_raised
-
-
-def _safe(step: Any, *args: Any) -> Any:
-    raise NotImplementedError
+        if error is not None:
+            raise error

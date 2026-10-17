@@ -21,7 +21,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   the `client` fixture of `packages/api/tests/test_routes.py` (`MINTMORY_DB` in `tmp_path`, `app_module._store` reset,
   `TestClient(app_module.app)` in `with`), telemetry initialised first; assert inside the block. `/test-raise` via
   `app_module.app.add_api_route`, removed from `app.router.routes` at teardown.
-- [ ] 2.2 Call helpers as `telemetry.<name>` so tests can patch them. Pass through: non-`http` scope, telemetry off,
+- [x] 2.2 Call helpers as `telemetry.<name>` so tests can patch them. Pass through: non-`http` scope, telemetry off,
   `/healthz`, `/readyz`, excluded paths. `_safe(step, *args)` runs one step in `try/except Exception`, logging DEBUG
   `telemetry: http middleware step failed (<class>)`. Headers decoded with `latin-1`; the span entered with
   `contextlib.ExitStack.enter_context` (failure: `return await self.app(...)`); `time.perf_counter()` around
