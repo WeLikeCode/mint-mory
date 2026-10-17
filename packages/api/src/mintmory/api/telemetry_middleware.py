@@ -182,3 +182,7 @@ class TelemetryMiddleware:
 
         if error_raised is not None:
             raise error_raised
+
+
+def _safe(step: Any, *args: Any) -> Any:
+    raise NotImplementedError
