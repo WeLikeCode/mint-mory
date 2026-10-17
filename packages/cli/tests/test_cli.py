@@ -1014,6 +1014,36 @@ def test_index_tree_budget_exhausted_online_only_text_counted(
     assert "budget" in result.output
 
 
+def _index_tree_option_help(option_name: str) -> str:
+    """The help string of one ``index-tree`` option, read from the Click command it registers."""
+    from typer.main import get_command
+
+    command = get_command(app)
+    index_tree_command = getattr(command, "commands", {})["index-tree"]
+    for parameter in index_tree_command.params:
+        if getattr(parameter, "name", None) == option_name:
+            return getattr(parameter, "help", "") or ""
+    raise AssertionError(f"index-tree registers no option named {option_name!r}")
+
+
+@pytest.mark.l4("C-f71c3c7c")
+def test_index_tree_text_content_help_notes_online_only_skip() -> None:
+    shown = runner.invoke(app, ["index-tree", "--help"])
+    assert shown.exit_code == 0, shown.output
+    help_text = _index_tree_option_help("text_content").lower()
+    assert "online-only" in help_text
+    assert "skip" in help_text
+
+
+@pytest.mark.l4("C-f71c3c7c")
+def test_index_tree_docstring_notes_online_only_skip() -> None:
+    from mintmory.cli.main import index_tree
+
+    doc = index_tree.__doc__ or ""
+    sentences = [sentence.lower() for sentence in doc.replace("\n", " ").split(".")]
+    assert any("online-only" in sentence and "skip" in sentence for sentence in sentences)
+
+
 def test_doctor_conversion_row_not_installed(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Force the absent branch deterministically (the 'docs' extra may or may not
     # be installed in the dev env) and assert the actionable install hint.
