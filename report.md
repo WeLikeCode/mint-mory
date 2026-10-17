@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at d5f2b35378596939289aa86b4e0ccb1057b71d9f
+- Target: staging at c902d8e86dc79dcd0bd6c54c238ac81a4de21ae2
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-16T19:56:59Z
-- Stopped: unit_escalated (openspec:add-telemetry-runtime): no finding of this round can be converted into a fix task
+- Written: 2026-10-17T03:54:06Z
+- Stopped: unit_halted (openspec:fix-distiller-prompt-cap): secret in the outgoing commits, push blocked: packages/core/tests/test_history_distill_phase2.py (mintkey)
 
 ## Units
 
@@ -18,24 +18,24 @@
 - Usage: $0.65, 1 run(s), 1 attempt(s)
 
 ### openspec:add-telemetry-runtime
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/6
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $3.84, 12 run(s), 1 attempt(s)
+- Result: integrated at ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f
+- Pull request: 6
+- Merge commit: ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $6.70, 16 run(s), 1 attempt(s)
 - Accepted review findings (accepted by ciprian@spotus.space (agent): Resolve both findings while writing the tests. F-1619b9: a shared standard variable is validated once, where it is read: one WARNING per bad variable on mintmory.telemetry, never one per signal; OTEL_EXPORTER_OTLP_PROTOCOL is checked once when any signal uses OTLP, so 'Bad standard values fall back' expects exactly two WARNINGs (OTEL_TRACES_EXPORTER and OTEL_EXPORTER_OTLP_PROTOCOL). F-0ad188: _Scrubbing keeps the exporter it wraps in _inner, as _GuardedSpanExporter does; the exporter-type test follows _inner until an object has none and asserts the innermost exporter's type (the OTLP HTTP span exporter).):
-  - F-1619b9 [testability/major] Scenario 'Bad standard values fall back' needs exactly two WARNINGs on `mintmory.telemetry`: `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_PROTOCOL`. In that scenario traces use console. Metrics use the default `otlp` exporter, because `MINTMORY_OTEL_EXPORTER` is unset. The spec does not say whether the protocol is checked for each signal or only for a signal that uses OTLP. It also does not say whether one invalid shared variable warns once or once per signal. Checking per signal gives three WARNINGs and the assertion fails. The implementer has to guess the rule.: no answer recorded
-  - F-0ad188 [interfaces/major] Task 7.1 says the exporter-type test checks `captured[-1]._inner`. Task 4b.2 makes `_Scrubbing` the outermost wrapper on every span exporter, and task 4.3 puts the OTLP exporter behind `_GuardedSpanExporter._inner`. So the exporter handed to the processor is `_Scrubbing`, and one `_inner` hop reaches the guard, not the OTLP exporter. The spec does not say whether `_Scrubbing` keeps an `_inner` attribute. It also does not say which object `captured` holds or how many hops the test follows. The edit to the existing test therefore cannot be implemented as written.: no answer recorded
-  - F-fea82d [interfaces/minor] `OTEL_TRACES_EXPORTER` and `OTEL_METRICS_EXPORTER` can be comma lists. The spec defines only the fallback for an unknown list, 'first known item'. It does not say what a fully valid multi-item list such as `console,otlp` does: use the first item only, or build several exporters. The signatures of `_service_name`, `_resolve_state` and `_traces_endpoint` appear only in tasks, and part 4 reuses them.: no answer recorded
-  - F-5d64eb [failure_cases/minor] Several cases are not stated. (1) Another component has already set a global tracer or meter provider, so `set_tracer_provider` is a no-op while the spec promises library spans reach the same exporters. (2) Injected exporters with the SDK missing: is there a WARNING? (3) `MINTMORY_OTEL_ENABLED=true` together with `OTEL_SDK_DISABLED=true` and the SDK missing: does it warn? (4) A guard's `shutdown` or `force_flush` raising inside the shutdown daemon thread. (5) `span()` or `add_count` running while `shutdown_telemetry` clears `_tracer` and `_meter`.: no answer recorded
-  - F-f4dc92 [testability/minor] Scenario 'Exit is bounded when export hangs' leaves a live thread blocked on an Event that is never set. It does not say the test must set the Event at the end, so the thread leaks past the test and the autouse reset. Scenario 'Auto with no collector stays off' runs in a subprocess. It does not say the subprocess must unset `MINTMORY_OTEL_ENABLED`, which the root conftest defaults to `false` and a child process inherits. It also does not say how `_endpoint_reachable` is patched in the child. `otlp_receiver.spans()` returns tuples, but the scenarios say it 'contains `x`' without saying whether that means the name or the tuple.: no answer recorded
+  - F-1619b9 [testability/major] Scenario 'Bad standard values fall back' needs exactly two WARNINGs on `mintmory.telemetry`: `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_PROTOCOL`. In that scenario traces use console. Metrics use the default `otlp` exporter, because `MINTMORY_OTEL_EXPORTER` is unset. The spec does not say whether the protocol is checked for each signal or only for a signal that uses OTLP. It also does not say whether one invalid shared variable warns once or once per signal. Checking per signal gives three WARNINGs and the assertion fails. The implementer has to guess the rule.: addressed by the verifier
+  - F-0ad188 [interfaces/major] Task 7.1 says the exporter-type test checks `captured[-1]._inner`. Task 4b.2 makes `_Scrubbing` the outermost wrapper on every span exporter, and task 4.3 puts the OTLP exporter behind `_GuardedSpanExporter._inner`. So the exporter handed to the processor is `_Scrubbing`, and one `_inner` hop reaches the guard, not the OTLP exporter. The spec does not say whether `_Scrubbing` keeps an `_inner` attribute. It also does not say which object `captured` holds or how many hops the test follows. The edit to the existing test therefore cannot be implemented as written.: addressed by the verifier
+  - F-fea82d [interfaces/minor] `OTEL_TRACES_EXPORTER` and `OTEL_METRICS_EXPORTER` can be comma lists. The spec defines only the fallback for an unknown list, 'first known item'. It does not say what a fully valid multi-item list such as `console,otlp` does: use the first item only, or build several exporters. The signatures of `_service_name`, `_resolve_state` and `_traces_endpoint` appear only in tasks, and part 4 reuses them.: addressed by the verifier
+  - F-5d64eb [failure_cases/minor] Several cases are not stated. (1) Another component has already set a global tracer or meter provider, so `set_tracer_provider` is a no-op while the spec promises library spans reach the same exporters. (2) Injected exporters with the SDK missing: is there a WARNING? (3) `MINTMORY_OTEL_ENABLED=true` together with `OTEL_SDK_DISABLED=true` and the SDK missing: does it warn? (4) A guard's `shutdown` or `force_flush` raising inside the shutdown daemon thread. (5) `span()` or `add_count` running while `shutdown_telemetry` clears `_tracer` and `_meter`.: addressed by the verifier
+  - F-f4dc92 [testability/minor] Scenario 'Exit is bounded when export hangs' leaves a live thread blocked on an Event that is never set. It does not say the test must set the Event at the end, so the thread leaks past the test and the autouse reset. Scenario 'Auto with no collector stays off' runs in a subprocess. It does not say the subprocess must unset `MINTMORY_OTEL_ENABLED`, which the root conftest defaults to `false` and a child process inherits. It also does not say how `_endpoint_reachable` is patched in the child. `otlp_receiver.spans()` returns tuples, but the scenarios say it 'contains `x`' without saying whether that means the name or the tuple.: addressed by the verifier
 
 ### openspec:add-telemetry-entry-points
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 40691bd6a09afdead8a38a37711e6b812744951c
+- Pull request: 14
+- Merge commit: 40691bd6a09afdead8a38a37711e6b812744951c
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $0.72, 2 run(s), 1 attempt(s)
 
 ### openspec:add-telemetry-heavy-path-spans
 - Result: not integrated
@@ -68,18 +68,18 @@
 - Usage: $0.00, 0 run(s), 1 attempt(s)
 
 ### openspec:fix-note-bonus-env-name
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 61ee36d119da2c4e99cf1352c976ec068b4ed7ef
+- Pull request: 16
+- Merge commit: 61ee36d119da2c4e99cf1352c976ec068b4ed7ef
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $0.57, 1 run(s), 1 attempt(s)
 
 ### openspec:fix-distiller-prompt-cap
 - Result: not integrated
 - Pull request: none
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $0.11, 1 run(s), 1 attempt(s)
 
 ### openspec:fix-cochange-tools-on-postgres
 - Result: not integrated
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $15.19
+- Cost: $19.46
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 13
+- Runs that dispatched a unit: 21
