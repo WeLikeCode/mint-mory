@@ -55,7 +55,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   set_status_on_exception=False)` (task 1.2; `typer.Exit` is a `RuntimeError`, so the defaults would mark exit 0);
   `mark_error(span, type(exc).__name__)` for `typer.Exit`/`SystemExit` with a non-zero code or any other exception;
   re-raise. Set the `index-tree` counts with `telemetry.set_attributes`.
-- [ ] 4.3 `index_tree` (locate by name; `add-recurrent-tree-indexing` adds `text_candidate` but keeps `text_eligible`,
+- [x] 4.3 `index_tree` (locate by name; `add-recurrent-tree-indexing` adds `text_candidate` but keeps `text_eligible`,
   `want_binary` and the single `extract_markdown` call): `mintmory.index_tree.scan` around `for root in roots:`;
   `.prune` inside `if prune:`; `.cochange` inside `if run_cochange and len(changed_docs) >= 2:` around the `try` (set
   `mintmory.outcome=unavailable` in the `except CoChangeUnavailable` branch); `mintmory.convert` around
