@@ -44,7 +44,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   fixtures here, at most 400 turns, that is fine.)
 - [x] 2.3 When all droppable turns are gone, return `_render(lines, sorted(protected))`
   if it fits.
-- [ ] 2.4 Last-resort path: start from `kept = sorted({0, n - 1})`; for each middle
+- [x] 2.4 Last-resort path: start from `kept = sorted({0, n - 1})`; for each middle
   user index in ascending order (`sorted(...)`, not set order), keep it only if
   `len(_render(lines, sorted(set(kept) | {idx}))) <= max_prompt_chars`. Remove
   `marker_budget` and the `remaining` arithmetic. Return the render if it fits.
