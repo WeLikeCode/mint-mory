@@ -141,3 +141,5 @@
 {"at":"2026-10-17T07:27:37Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"079d93288a3d682a7771fb480ef9baf49e782d8e","status":"pass","type":"unit.postcheck","unit":"openspec:fix-distiller-prompt-cap"}
 {"at":"2026-10-17T07:27:37Z","revision":"079d93288a3d682a7771fb480ef9baf49e782d8e","type":"unit.integrated","unit":"openspec:fix-distiller-prompt-cap"}
 {"at":"2026-10-17T07:27:37Z","attempt":1,"cost_usd":0.751632,"runs":3,"type":"plan.charged","unit":"openspec:fix-distiller-prompt-cap"}
+{"at":"2026-10-17T07:28:21Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:fix-cochange-tools-on-postgres"}
+{"at":"2026-10-17T07:28:21Z","run":"r-20261017T0728Z-9d62","type":"unit.dispatched","unit":"openspec:fix-cochange-tools-on-postgres"}
