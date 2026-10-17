@@ -30,7 +30,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 - [x] 2.1 Tests for "Search phase spans and latency" (SQLite; Postgres per its scenario: `PostgresBackend(...)` with
   every method `search` calls that touches the database patched on the instance) and "Span helpers without work or
   with a failure"; a note added with anchoring records no `mintmory.search.*` span or point.
-- [ ] 2.2 `hybrid_search.collect_scores(*, fts_fn, trigram_fn, vector_fn) -> tuple[dict[str, float], dict[str, float],
+- [x] 2.2 `hybrid_search.collect_scores(*, fts_fn, trigram_fn, vector_fn) -> tuple[dict[str, float], dict[str, float],
   dict[str, float]]` (zero-argument callables; returns `(fts, trigram, vector)`): each call inside
   `search_phase("fts"|"substring"|"vector")` with `set_count(len(result))` (substring search off means `_trigram_scores`
   returns `{}`, count 0). Both backends' `search` (`storage.py` and `storage_postgres.py`) call it with lambdas over
