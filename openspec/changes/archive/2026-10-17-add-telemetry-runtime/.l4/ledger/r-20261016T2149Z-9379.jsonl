@@ -23,3 +23,8 @@
 {"ts": "2026-10-16T21:49:41.971340Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 23, "type": "lessons.curated", "action": "created", "id": "L-f63ee119", "origin": "guard_violation_repeated"}
 {"ts": "2026-10-16T21:49:43.070844Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 24, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-16T21:49:45.926557Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 25, "type": "pr.labels", "number": 6, "labels": ["l4:verified"]}
+{"ts": "2026-10-16T21:49:49.127546Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 26, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/6", "number": 6, "head": "a42976ebe95a832287b043710f43ed5f0ea306ef"}
+{"ts": "2026-10-16T21:49:49.128551Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 27, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-16T21:49:51.824478Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 28, "type": "pr.labels", "number": 6, "labels": ["l4:in_review"]}
+{"ts": "2026-10-16T21:49:53.014653Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 29, "type": "lock.released"}
+{"ts": "2026-10-16T21:49:53.015324Z", "run_id": "r-20261016T2149Z-9379", "unit": "openspec:add-telemetry-runtime", "seq": 30, "type": "run.finished", "exit_code": 0}
