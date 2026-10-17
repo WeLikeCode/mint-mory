@@ -168,3 +168,5 @@
 {"at":"2026-10-17T11:59:00Z","attempt":1,"cost_usd":0.380786,"runs":1,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T11:59:00Z","detail":"task 1.3: max_task_attempts (3) reached in red on deepseek (2), glm (3); last failure: vacuous: C-0d312d3f (its tests pass or error against the zero-value stubs: packages.core.tests.test_telemetry_search_phase::test_a_metric_failure_never_reaches_the_caller); a test must fail by assertion on the ans","reason":"unit_halted","type":"plan.stopped","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T13:20:30Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"unit add-telemetry-heavy-path-spans retried on harness 0.4.11, whose zero-value variant of a context manager enters (the 0.4.10 halt was an L4 defect, L4-IMP-026)","type":"plan.resumed"}
+{"at":"2026-10-17T13:21:00Z","attempt":1,"cost_usd":0.380786,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T13:21:00Z","run":"r-20261017T1320Z-5212","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
