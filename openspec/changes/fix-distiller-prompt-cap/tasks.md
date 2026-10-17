@@ -64,7 +64,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   redaction order, or `SegmentSettings`.
 
 ## 3. Gates
-- [ ] 3.1 The existing tests in `test_history_distill_phase2.py`,
+- [x] 3.1 The existing tests in `test_history_distill_phase2.py`,
   `test_llm_distiller.py` and `test_history_ingest.py` pass unedited (except 1.2).
 - [ ] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). These are the real gates of `.l4/config.yaml` (uv sync, ruff, mypy,
