@@ -158,3 +158,4 @@
 {"at":"2026-10-17T10:26:49Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"unit add-recurrent-tree-indexing retried on harness 0.4.10, which converts its rejected finding into a fix task (the 0.4.8 escalation was an L4 defect, fixed in 0.4.10)","type":"plan.resumed"}
 {"at":"2026-10-17T10:27:26Z","attempt":1,"cost_usd":1.070455,"runs":3,"type":"plan.charged","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T10:27:26Z","run":"r-20261017T1027Z-b735","type":"unit.dispatched","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T10:40:12Z","head":"e084d7327d5417569c282ae53fe6e3873478488f","pr":23,"target_before":"0aaa527e1cec8c429d0e8c3210abf61d3bcd14ef","type":"unit.merge_requested","unit":"openspec:add-recurrent-tree-indexing"}
