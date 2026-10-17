@@ -30,7 +30,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   Keep its other assertions.
 
 ## 2. Fix `_elide_transcript` (`distill.py:194-278`)
-- [ ] 2.1 Add a private helper `_render(lines: list[str], kept_sorted: list[int]) -> str`
+- [x] 2.1 Add a private helper `_render(lines: list[str], kept_sorted: list[int]) -> str`
   that returns `_insert_elision_markers(lines, kept_sorted, 0)` (the marker text
   `… [N turns elided] …` does not change; the third argument `dropped_count` is not
   used by that function's body, so `0` is correct). Every budget check below compares
