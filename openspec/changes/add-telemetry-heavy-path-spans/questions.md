@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
+| Q-001 | answered | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 4.1
 - **Kind:** technical
 - **Asked:** 2026-10-17T15:11Z by deepseek, run r-20261017T1320Z-5212, task 4.1
@@ -37,3 +37,4 @@ Edit `packages/cli/tests/test_telemetry_cli_heavy_paths.py`: change the sort key
 
 ### Answer
 <!-- write below this line -->
+Edit packages/cli/tests/test_telemetry_cli_heavy_paths.py: the test bug is the ordering, not the assertions. Sorting ascending by mintmory.files.added always puts the second run (added=0) first. Order the two index-tree spans by when they started, which is the real order of the two runs: by_start = sorted(spans, key=lambda s: s.start_time), then first_run, second_run = _attributes(by_start[0]), _attributes(by_start[1]). Keep every assertion unchanged (first run 2 added, 0 updated, 0 unchanged, 0 failed; second run 1 updated, 1 unchanged, 0 failed). Do not sort by another counter.
