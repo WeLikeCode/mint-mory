@@ -20,7 +20,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   `mintmory.search.latency_ms` (`phase=name`, histogram `unit="ms"`, pass `unit` through `_instrument`) in a `finally`;
   on an exception calls `mark_error(span, type(exc).__name__)` and re-raises. `timed_phase(name)`: the same as a
   decorator with `span=False`.
-- [ ] 1.4 `run_in_context(fn)`: `ctx = contextvars.copy_context()` on the calling thread, returns a callable running
+- [x] 1.4 `run_in_context(fn)`: `ctx = contextvars.copy_context()` on the calling thread, returns a callable running
   `ctx.copy().run(fn, *a, **kw)` (one `Context` cannot be entered by two threads at once).
 - [ ] 1.5 `set_attributes(**attrs)` on the current span; `counts_added(fn)`: after `fn` returns a record, calls
   `add_count("mintmory.memories.added", category=record.category.value)` and sets
