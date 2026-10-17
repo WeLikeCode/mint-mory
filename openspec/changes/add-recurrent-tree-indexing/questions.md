@@ -17,7 +17,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-004 | answered | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
 | Q-005 | answered | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
 | Q-006 | answered | none | verdict | Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied? |
-| Q-007 | open | none | verdict | Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done |
+| Q-007 | answered | none | verdict | Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done |
 <!-- l4:index:end -->
 
 ---
@@ -219,7 +219,7 @@ accept: satisfied as it stands. test_iter_dir_groups_yields_all_files_by_default
 
 ## Q-007: Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -238,3 +238,4 @@ Answer `accept` to waive the finding, or `reject` and say why: a rejected findin
 
 ### Answer
 <!-- write below this line -->
+reject: the finding is right. Task 2.3 also asks to update the --text-content help text and the index_tree docstring to say that online-only files are skipped by this pass; the unit diff changes neither (only the counter and the report row). WHEN mintmory index-tree --help is shown THEN the --text-content help says that online-only files are skipped by the inline text pass, and the index_tree docstring says the same.
