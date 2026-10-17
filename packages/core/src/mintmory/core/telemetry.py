@@ -35,7 +35,7 @@ import sys
 import threading
 import uuid
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import unquote, urlparse
@@ -812,3 +812,13 @@ def run_in_context(fn: Callable[..., Any]) -> Callable[..., Any]:
             otel_context.detach(token)
 
     return wrapper
+
+
+def search_phase(name: str, *, span: bool = True) -> AbstractContextManager[Any]:
+    """Time a search stage; record its span, result count and latency point (task 1.3)."""
+    raise NotImplementedError
+
+
+def timed_phase(name: str) -> Callable[[_F], _F]:
+    """Time a search stage without opening a span (task 1.3)."""
+    raise NotImplementedError
