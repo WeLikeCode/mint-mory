@@ -627,7 +627,7 @@ def span(
     ) as sp:
         for key, value in attrs.items():
             if value is not None:
-                sp.set_attribute(key, value)
+                _set_attribute_safe(sp, key, value)
         yield sp
 
 
@@ -662,18 +662,24 @@ def add_count(name: str, value: int = 1, **attrs: Any) -> None:
     meter = _meter
     if not _enabled or meter is None:
         return
-    counter = _instrument("counter", "create_counter", name, meter)
-    if counter is not None:
-        counter.add(value, {k: v for k, v in attrs.items() if v is not None})
+    try:
+        counter = _instrument("counter", "create_counter", name, meter)
+        if counter is not None:
+            counter.add(value, {k: v for k, v in attrs.items() if v is not None})
+    except Exception:  # noqa: BLE001 - a metric must never break the caller
+        return
 
 
 def record_value(name: str, value: float, *, unit: str | None = None, **attrs: Any) -> None:
     meter = _meter
     if not _enabled or meter is None:
         return
-    hist = _instrument("histogram", "create_histogram", name, meter, unit)
-    if hist is not None:
-        hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+    try:
+        hist = _instrument("histogram", "create_histogram", name, meter, unit)
+        if hist is not None:
+            hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+    except Exception:  # noqa: BLE001 - a metric must never break the caller
+        return
 
 
 def _teardown(timeout_s: float) -> None:
@@ -1003,7 +1009,10 @@ def counts_added[F: Callable[..., Any]](fn: F) -> F:
             category = record.category.value
         except Exception:  # noqa: BLE001 - the counter must never break a write
             return record
-        add_count("mintmory.memories.added", category=category)
+        try:
+            add_count("mintmory.memories.added", category=category)
+        except Exception:  # noqa: BLE001 - the counter must never break a write
+            return record
         return record
 
     wrapper.__mintmory_counter__ = "mintmory.memories.added"  # type: ignore[attr-defined]
