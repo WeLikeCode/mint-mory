@@ -14,6 +14,8 @@ verification round, turns them into a fix unit and checks that each one was addr
 | FB-002 | addressed | behaviour |  | _build_meter_provider must wrap the configured metric exporter with |
 | FB-003 | addressed | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | init_telemetry: one set of providers when two threads init at once |
 | FB-004 | addressed | behaviour | packages/core/src/mintmory/core/config.py:220 | MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before |
+| FB-005 | submitted | refactor | packages/core/src/mintmory/core/telemetry.py:585 | span, add_count and record_value read _tracer and _meter once |
+| FB-006 | submitted | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | an injected exporter without the SDK says why telemetry is off |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -145,3 +147,95 @@ On staging, the setting was a pydantic bool, so 1, yes and on (any case) meant t
 ### Outcome
 <!-- written by the harness -->
 Addressed in round 7 at dc31486655: config.py _TRUE_SPELLINGS/_FALSE_SPELLINGS in _normalise_enabled
+
+---
+
+## FB-005: span, add_count and record_value read _tracer and _meter once
+
+- **Status:** submitted
+- **Kind:** refactor
+- **Where:** `packages/core/src/mintmory/core/telemetry.py:585-595`
+- **Where:** `packages/core/src/mintmory/core/telemetry.py:613-635`
+- **Lesson:** no
+- **By:** CiprianSpot, 2026-10-17T01:24:11Z
+
+### Code
+`packages/core/src/mintmory/core/telemetry.py:585-595`
+```python
+def span(name: str, **attrs: Any) -> Iterator[Any]:
+    """Context manager: a real span when enabled, else a cheap no-op."""
+    if not _enabled or _tracer is None:
+        yield _NoopSpan()
+        return
+    with _tracer.start_as_current_span(name) as sp:
+        for key, value in attrs.items():
+            if value is not None:
+                sp.set_attribute(key, value)
+        yield sp
+```
+`packages/core/src/mintmory/core/telemetry.py:613-635`
+```python
+def _instrument(kind: str, factory_name: str, name: str) -> Any:
+    inst = _instruments.get(name)
+    if inst is None and _meter is not None:
+        inst = getattr(_meter, factory_name)(name)
+        _instruments[name] = inst
+    return inst
+
+
+def add_count(name: str, value: int = 1, **attrs: Any) -> None:
+    if not _enabled or _meter is None:
+        return
+    counter = _instrument("counter", "create_counter", name)
+    if counter is not None:
+        counter.add(value, {k: v for k, v in attrs.items() if v is not None})
+
+
+def record_value(name: str, value: float, **attrs: Any) -> None:
+    if not _enabled or _meter is None:
+        return
+    hist = _instrument("histogram", "create_histogram", name)
+    if hist is not None:
+        hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+```
+
+### Feedback
+span(), add_count() and record_value() check _enabled and _tracer or _meter, then read the module global again to use it, and _instrument() reads _meter once more. A shutdown_telemetry() on another thread between the check and the use sets the global to None, and the call raises AttributeError ('NoneType' object has no attribute 'start_as_current_span' or 'create_counter'), although telemetry must never break its caller. Read each global once into a local and use only the local: span() reads _tracer once; add_count() and record_value() read _meter once and pass it to _instrument(), which takes the meter as a parameter instead of reading _meter. No lock is needed: a tracer or meter taken before the shutdown stays usable, and its provider drops what it gets after the shutdown. Behaviour is otherwise unchanged and the existing tests stay as they are.
+
+### Outcome
+<!-- written by the harness -->
+
+---
+
+## FB-006: an injected exporter without the SDK says why telemetry is off
+
+- **Status:** submitted
+- **Kind:** behaviour
+- **Where:** `packages/core/src/mintmory/core/telemetry.py:541-551`
+- **Lesson:** no
+- **By:** CiprianSpot, 2026-10-17T01:24:12Z
+
+### Code
+```python
+    if _enabled:
+        return True
+
+    injected = span_exporter is not None or metric_reader is not None
+    if injected:
+        if not _sdk_available():
+            return False
+        traces_exporter = "injected" if span_exporter is not None else "none"
+        metrics_exporter = "injected" if metric_reader is not None else "none"
+    else:
+        traces_exporter = _resolve_exporter(settings, "TRACES")
+```
+
+### Feedback
+init_telemetry() with span_exporter or metric_reader returns False silently when the OpenTelemetry SDK is missing. The caller asked for telemetry with its own exporter, so say why it is off, as the MINTMORY_OTEL_ENABLED=true branch already does: one WARNING on mintmory.telemetry that names the missing SDK and the extra to install.
+
+### When / Then
+- **When:** init_telemetry() is called with a span_exporter or a metric_reader and the OpenTelemetry SDK is not installed (_sdk_available() returns False)
+- **Then:** it returns False, installs no provider, and logs exactly one WARNING on the mintmory.telemetry logger that names the missing SDK and mintmory-core[otel]
+
+### Outcome
+<!-- written by the harness -->
