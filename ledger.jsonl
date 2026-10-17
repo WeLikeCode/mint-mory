@@ -152,3 +152,5 @@
 {"at":"2026-10-17T08:35:46Z","run":"r-20261017T0835Z-8265","type":"unit.dispatched","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T09:15:16Z","detail":"awaiting_human: no new answers (verdicts open: Q-001, Q-002, Q-003, Q-004, Q-005, Q-006, Q-007)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T09:22:59Z","by":"harness","reason":"the cause is gone: openspec:add-recurrent-tree-indexing is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-17T09:23:00Z","attempt":1,"cost_usd":1.070455,"runs":2,"type":"plan.charged","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T09:23:00Z","run":"r-20261017T0922Z-5dcd","type":"unit.dispatched","unit":"openspec:add-recurrent-tree-indexing"}
