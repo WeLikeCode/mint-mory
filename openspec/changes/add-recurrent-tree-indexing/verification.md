@@ -1,40 +1,40 @@
-# Verification: openspec:add-recurrent-tree-indexing: FAIL (round 2)
+# Verification: openspec:add-recurrent-tree-indexing: FAIL (round 3)
 
 traceability: 8/14 criteria covered by a discriminating test
 
-- Base: `9ec57437a6164921ff21b462601696127b5c96d4`
-- Head: `d680d4283cd4824fc4510ec1f4022e77f8c74fb6`
+- Base: `0aaa527e1cec8c429d0e8c3210abf61d3bcd14ef`
+- Head: `b434bd217b14127ddbeeacb7c3bab820331613de`
 - Implementer profiles: deepseek
-- Judge: claude-judge (claude-sonnet-5-5), 2 call(s), prompt sha256 `131f2d213f94cb55d42a6602a58fe44e4c6fbfd8febcfcd3a012aaada5b299fa`
-- Judge replies of claude-judge (this unit, all rounds): valid 0, repaired 0, retried 1, discarded 0; this round: retried
+- Judge: claude-judge (claude-sonnet-5-5), 1 call(s), prompt sha256 `bbd21d96e7c639c32cc98b1150d8e0a553eb3fc68e780519691e87fd6800d038`
+- Judge replies of claude-judge (this unit, all rounds): valid 1, repaired 0, retried 1, discarded 0; this round: valid
 - independence: declared (unverified): claude-judge anthropic (served claude-sonnet-5-5), deepseek deepseek (declared)
-- Cost: $0.8607
+- Cost: $0.4623
 
 ## Ladder
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | reused | 0.0 | reused (round 1) |
-| 1 | integrity | reused | 0.0 | reused (round 1) |
-| 2 | build | reused | 0.0 | reused (round 1) |
-| 3 | tests | reused | 0.0 | reused (round 1) |
-| 4 | traceability | reused | 0.0 | reused (round 1) |
+| 0 | preconditions | ok | 0.3 | base merged: staging@0aaa527e1c as b434bd217b (1 commit) |
+| 1 | integrity | ok | 0.2 | 7 sub-checks; scope: 14 changed file(s) |
+| 2 | build | ok | 17.1 |  |
+| 3 | tests | ok | 50.6 |  |
+| 4 | traceability | ok | 0.1 | 8/14 criteria covered |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | reused | 0.0 | reused (round 1) |
-| 8 | s1 judge | reused | 0.0 | reused (round 1) |
-| 9 | judge | reused | 0.0 | reused (round 1) |
+| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
+| 8 | s1 judge | ok | 1.6 | 14/14 criteria judged by jev |
+| 9 | judge | ok | 15.3 | 1 call(s) |
 | 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
 | Gate | Status | Command | Log |
 |---|---|---|---|
-| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261017T0835Z-8265/046-setup.log |
-| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261017T0835Z-8265/047-lint.log |
-| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261017T0835Z-8265/048-lint.log |
-| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261017T0835Z-8265/049-typecheck.log |
-| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261017T0835Z-8265/050-test.log |
+| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261017T1027Z-b735/001-setup.log |
+| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261017T1027Z-b735/002-lint.log |
+| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261017T1027Z-b735/003-lint.log |
+| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261017T1027Z-b735/004-typecheck.log |
+| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261017T1027Z-b735/005-test.log |
 
 ## Integrity
 
@@ -52,20 +52,20 @@ traceability: 8/14 criteria covered by a discriminating test
 
 | Id | Criterion | State | Tests (status, proof) | Not evidence | S1 p |
 |---|---|---|---|---|---|
-| C-b54f84ac | ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download | uncovered | - | - | 0.24 |
-| C-1ccce576 | ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours | uncovered | - | - | 0.11 |
-| C-99b1ee27 | ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed | uncovered | - | - | 0.12 |
-| C-4a833fcd | ingestion › Bounded, opt-in content extraction › Content pass respects the budget | uncovered | - | - | 0.20 |
-| C-1474f431 | ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped | uncovered | - | - | 0.12 |
-| C-475f20f9 | ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata | uncovered | - | - | 0.15 |
-| C-0c4d71c5 | ingestion › Default text-content pass skips online-only files › An online-only text file is not read by default | covered | packages.cli.tests.test_cli::test_index_tree_text_content_skips_online_only_file (passed, red_assertion) | - | 0.94 |
-| C-70797ec0 | ingestion › Default text-content pass skips online-only files › The count is per run and the row is shown only when non-zero | covered | packages.cli.tests.test_cli::test_index_tree_online_only_skip_counted_per_run (passed, red_assertion) | - | 0.87 |
-| C-62e431f2 | ingestion › Default text-content pass skips online-only files › The budgeted content pass can still fetch it on request (fresh DB) | covered | packages.cli.tests.test_cli::test_index_tree_content_pass_reads_online_only_text_on_request (passed, red_assertion) | - | 0.89 |
-| C-85ba8c03 | ingestion › One counting rule for text-skipped-online-only › Read is not counted; stopped by the budget or unchanged is counted | covered | packages.cli.tests.test_cli::test_index_tree_budget_exhausted_online_only_text_counted (passed, red_assertion); packages.cli.tests.test_cli::test_index_tree_online_only_skip_counted_per_run (passed, red_assertion) | - | 0.90 |
-| C-1935acc7 | ingestion › A metadata row is upgraded by a later content run without --force › Default run, then a content run, upgrades the file without --force | covered | packages.cli.tests.test_cli::test_index_tree_content_run_upgrades_metadata_row_without_force (passed, red_assertion) | - | 0.87 |
-| C-5cd92e1a | ingestion › A metadata row is upgraded by a later content run without --force › A content row is not downgraded by a later default run | covered | packages.cli.tests.test_cli::test_index_tree_content_run_upgrades_metadata_row_without_force (passed, red_assertion) | - | 0.78 |
-| C-4c28579c | ingestion › A metadata row is upgraded by a later content run without --force › Budget exhausted, online-only text falls back to metadata | covered | packages.cli.tests.test_cli::test_index_tree_budget_exhausted_online_only_text_counted (passed, red_assertion) | - | 0.92 |
-| C-de4a2e51 | ingestion › A metadata row is upgraded by a later content run without --force › Empty tree | covered | packages.cli.tests.test_cli::test_index_tree_empty_tree_has_no_online_only_row (passed, red_assertion) | - | 0.91 |
+| C-b54f84ac | ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download | uncovered | - | - | 0.08 |
+| C-1ccce576 | ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours | uncovered | - | - | 0.05 |
+| C-99b1ee27 | ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed | uncovered | - | - | 0.04 |
+| C-4a833fcd | ingestion › Bounded, opt-in content extraction › Content pass respects the budget | uncovered | - | - | 0.03 |
+| C-1474f431 | ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped | uncovered | - | - | 0.04 |
+| C-475f20f9 | ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata | uncovered | - | - | 0.04 |
+| C-0c4d71c5 | ingestion › Default text-content pass skips online-only files › An online-only text file is not read by default | covered | packages.cli.tests.test_cli::test_index_tree_text_content_skips_online_only_file (passed, red_assertion) | - | 0.93 |
+| C-70797ec0 | ingestion › Default text-content pass skips online-only files › The count is per run and the row is shown only when non-zero | covered | packages.cli.tests.test_cli::test_index_tree_online_only_skip_counted_per_run (passed, red_assertion) | - | 0.85 |
+| C-62e431f2 | ingestion › Default text-content pass skips online-only files › The budgeted content pass can still fetch it on request (fresh DB) | covered | packages.cli.tests.test_cli::test_index_tree_content_pass_reads_online_only_text_on_request (passed, red_assertion) | - | 0.88 |
+| C-85ba8c03 | ingestion › One counting rule for text-skipped-online-only › Read is not counted; stopped by the budget or unchanged is counted | covered | packages.cli.tests.test_cli::test_index_tree_budget_exhausted_online_only_text_counted (passed, red_assertion); packages.cli.tests.test_cli::test_index_tree_online_only_skip_counted_per_run (passed, red_assertion) | - | 0.87 |
+| C-1935acc7 | ingestion › A metadata row is upgraded by a later content run without --force › Default run, then a content run, upgrades the file without --force | covered | packages.cli.tests.test_cli::test_index_tree_content_run_upgrades_metadata_row_without_force (passed, red_assertion) | - | 0.90 |
+| C-5cd92e1a | ingestion › A metadata row is upgraded by a later content run without --force › A content row is not downgraded by a later default run | covered | packages.cli.tests.test_cli::test_index_tree_content_run_upgrades_metadata_row_without_force (passed, red_assertion) | - | 0.72 |
+| C-4c28579c | ingestion › A metadata row is upgraded by a later content run without --force › Budget exhausted, online-only text falls back to metadata | covered | packages.cli.tests.test_cli::test_index_tree_budget_exhausted_online_only_text_counted (passed, red_assertion) | - | 0.91 |
+| C-de4a2e51 | ingestion › A metadata row is upgraded by a later content run without --force › Empty tree | covered | packages.cli.tests.test_cli::test_index_tree_empty_tree_has_no_online_only_row (passed, red_assertion) | - | 0.92 |
 
 ## Evidence
 
@@ -77,8 +77,18 @@ traceability: 8/14 criteria covered by a discriminating test
 
 | Path | Module | Label | Why |
 |---|---|---|---|
+| `openspec/changes/add-recurrent-tree-indexing/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/evidence/round-2/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/evidence/round-2/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/evidence/round-2/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-recurrent-tree-indexing/.l4/ledger/r-20261017T0835Z-8265.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/ledger/r-20261017T0922Z-5dcd.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/.l4/ledger/r-20261017T1026Z-6dcc.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/questions.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-recurrent-tree-indexing/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-recurrent-tree-indexing/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `packages/cli/src/mintmory/cli/main.py` | cli | relevant | named in the spec |
 | `packages/cli/tests/test_cli.py` |  | relevant | named in the spec |
 
@@ -96,20 +106,20 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 | Criterion | Status | p | Model | Engine | Note |
 |---|---|---|---|---|---|
-| C-b54f84ac | ok | 0.240 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-1ccce576 | ok | 0.110 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-99b1ee27 | ok | 0.120 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-4a833fcd | ok | 0.200 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-1474f431 | ok | 0.120 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-475f20f9 | ok | 0.150 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-0c4d71c5 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-70797ec0 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-62e431f2 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-85ba8c03 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-1935acc7 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-5cd92e1a | ok | 0.780 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-4c28579c | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-de4a2e51 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-b54f84ac | ok | 0.080 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-1ccce576 | ok | 0.050 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-99b1ee27 | ok | 0.040 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-4a833fcd | ok | 0.030 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-1474f431 | ok | 0.040 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-475f20f9 | ok | 0.040 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-0c4d71c5 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-70797ec0 | ok | 0.850 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-62e431f2 | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-85ba8c03 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-1935acc7 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-5cd92e1a | ok | 0.720 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-4c28579c | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-de4a2e51 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
 ## Human verdicts
 
@@ -142,14 +152,13 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 ## Findings
 
-- [minor, judge] Help text and docstring not updated: Task 2.3 asks for --text-content help and index_tree docstring to mention online-only skipping; the diff does not change them.
-- [minor, judge] Six section-1 criteria have no discriminating test (criterion C-b54f84ac): Gate traceability marks them uncovered; not judged from the diff.
-- [major, human] task 2.3 is ticked as already satisfied, but its text is not done: Counter, placement after want_binary and conditional report row are in the diff (main.py), but the task also requires updating the --text-content help text and index_tree docstring, and the diff does not change them (implementer admits this). [rejected by human (the finding is right. Task 2.3 also asks to update the --text-content help text and the index_tree docstring to say that online-only files are skipped by this pass; the unit diff changes neither (only the counter and the report row). WHEN mintmory index-tree --help is shown THEN the --text-content help says that online-only files are s...
+- [major, judge] Task 2.3 help text and docstring not updated: Task 2.3 requires the --text-content help and index_tree docstring to state online-only files are skipped; the diff changes neither.
+- [major, human] task 2.3 is ticked as already satisfied, but its text is not done: Counter and row present, but --text-content help text and index_tree docstring not updated in the diff. [rejected by human (the finding is right. Task 2.3 also asks to update the --text-content help text and the index_tree docstring to say that online-only files are skipped by this pass; the unit diff changes neither (only the counter and the report row). WHEN mintmory index-tree --help is shown THEN the --text-content help says that online-only files are skipped by the inline text pass, and the index_tree docstring says the same.)]
 
 ## Fix unit
 
-Escalated: no finding of this round can be converted into a fix task
-- not converted: F-b34b9dc3: a scenario for it needs a requirement and the parent has several
+Fix unit 1 is created for these tasks:
+- F-b34b9dc3 task 2.3 is ticked as already satisfied, but its text is not done
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
