@@ -261,3 +261,8 @@
 {"ts": "2026-10-17T03:37:03.102500Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 261, "type": "verify.verdict", "round": 1, "verdict": "PASS", "findings": 1, "criteria_passed": 5, "criteria_total": 5}
 {"ts": "2026-10-17T03:37:03.112679Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 262, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-17T03:37:06.637378Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 263, "type": "pr.labels", "number": 16, "labels": ["l4:verified"]}
+{"ts": "2026-10-17T03:37:10.212026Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 264, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/16", "number": 16, "head": "61ee36d119da2c4e99cf1352c976ec068b4ed7ef"}
+{"ts": "2026-10-17T03:37:10.215137Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 265, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-17T03:37:14.514847Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 266, "type": "pr.labels", "number": 16, "labels": ["l4:in_review"]}
+{"ts": "2026-10-17T03:37:15.805201Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 267, "type": "lock.released"}
+{"ts": "2026-10-17T03:37:15.806320Z", "run_id": "r-20261017T0237Z-d577", "unit": "openspec:fix-note-bonus-env-name", "seq": 268, "type": "run.finished", "exit_code": 0}
