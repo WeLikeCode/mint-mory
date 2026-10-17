@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from mintmory.api import app as app_module
+from mintmory.core import telemetry
 
 
 @pytest.fixture
@@ -139,3 +141,109 @@ def test_telemetry_metric_exporter_matches_configured_exporter(
         assert isinstance(captured[-1]._inner, export_mod.ConsoleMetricExporter)
     finally:
         _reset()
+
+
+# ---------------------------------------------------------------------------
+# Telemetry — API entry point (deployment › Telemetry activation at API startup)
+# ---------------------------------------------------------------------------
+
+_OTLP_ENDPOINT_VARIABLES = (
+    "OTEL_EXPORTER_OTLP_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+)
+
+
+@pytest.fixture
+def _otel_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Point the API at a throwaway DB and reset the global store before startup."""
+    db_file = tmp_path / "otel_entry_point.db"
+    monkeypatch.setenv("MINTMORY_DB", str(db_file))
+    monkeypatch.setattr(app_module, "_store", None)
+    yield
+    monkeypatch.setattr(app_module, "_store", None)
+
+
+def _record_app_init(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, dict[str, Any]]]:
+    """Wrap ``mintmory.api.app.init_telemetry`` with a recorder that still initialises."""
+    calls: list[tuple[Any, dict[str, Any]]] = []
+    real_init = telemetry.init_telemetry
+
+    def _recording_init(settings: Any = None, **kwargs: Any) -> bool:
+        calls.append((settings, kwargs))
+        return real_init(settings, **kwargs)
+
+    monkeypatch.setattr(app_module, "init_telemetry", _recording_init)
+    return calls
+
+
+@pytest.mark.l4("C-5d7fad0c")
+def test_api_startup_stays_off_by_default(_otel_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    """In ``auto`` with no collector the API activates telemetry but stays a no-op shim.
+
+    The activator is passed the ``mintmory-api`` default service name (a real,
+    non-zero answer) alongside the off result.
+    """
+    monkeypatch.delenv("MINTMORY_OTEL_ENABLED", raising=False)
+    for variable in _OTLP_ENDPOINT_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+
+    def _unreachable(url: str, timeout: float = 0.1) -> bool:
+        return False
+
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", _unreachable)
+
+    calls = _record_app_init(monkeypatch)
+    with TestClient(app_module.app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert telemetry.is_enabled() is False
+        assert calls, "the API lifespan must activate telemetry once at startup"
+        _settings, kwargs = calls[0]
+        assert kwargs.get("default_service_name") == "mintmory-api"
+
+
+@pytest.mark.l4("C-59ff07c0")
+def test_api_startup_activates_when_enabled(
+    _otel_env: None, monkeypatch: pytest.MonkeyPatch, closed_port: int
+) -> None:
+    """``MINTMORY_OTEL_ENABLED=true`` turns the API's telemetry on under ``mintmory-api``."""
+    pytest.importorskip("opentelemetry.sdk")
+    monkeypatch.setenv("MINTMORY_OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", f"http://127.0.0.1:{closed_port}")
+
+    calls = _record_app_init(monkeypatch)
+    with TestClient(app_module.app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert telemetry.is_enabled() is True
+        assert calls, "the API lifespan must activate telemetry once at startup"
+        _settings, kwargs = calls[0]
+        assert kwargs.get("default_service_name") == "mintmory-api"
+
+
+@pytest.mark.l4("C-5fc161bb")
+def test_lifespan_flushes_telemetry_before_closing_store(
+    _otel_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The API lifespan flushes telemetry at shutdown, before it closes the store."""
+    calls: list[str] = []
+
+    class _RecordingStore:
+        def initialise(self) -> None:
+            return None
+
+        def close(self) -> None:
+            calls.append("close")
+
+    def _build_recording_store(*args: Any, **kwargs: Any) -> _RecordingStore:
+        return _RecordingStore()
+
+    def _record_shutdown(*args: Any, **kwargs: Any) -> None:
+        calls.append("shutdown_telemetry")
+
+    monkeypatch.setattr(app_module, "build_storage", _build_recording_store)
+    monkeypatch.setattr(app_module, "shutdown_telemetry", _record_shutdown, raising=False)
+
+    with TestClient(app_module.app) as client:
+        assert client.get("/healthz").status_code == 200
+
+    assert calls == ["shutdown_telemetry", "close"]
