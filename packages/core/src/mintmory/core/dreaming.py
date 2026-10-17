@@ -589,9 +589,10 @@ class DreamingEngine:
         summarizer = self.summarizer
         if ss.concurrency > 1 and len(prepared) > 1:
             with ThreadPoolExecutor(max_workers=ss.concurrency) as pool:
-                summary_texts = list(
-                    pool.map(lambda sel: summarizer(sel.concept, sel.contents), prepared)
+                summarize = telemetry.run_in_context(
+                    lambda sel: summarizer(sel.concept, sel.contents)
                 )
+                summary_texts = list(pool.map(summarize, prepared))
         else:
             summary_texts = [summarizer(sel.concept, sel.contents) for sel in prepared]
 
