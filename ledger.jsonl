@@ -132,3 +132,4 @@
 {"at":"2026-10-17T06:35:53Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"unit fix-distiller-prompt-cap retried on harness 0.4.8, which turns a token-shaped test fixture into a failed attempt with advice instead of a halt","type":"plan.resumed"}
 {"at":"2026-10-17T06:36:34Z","attempt":1,"cost_usd":0.106818,"runs":2,"type":"plan.charged","unit":"openspec:fix-distiller-prompt-cap"}
 {"at":"2026-10-17T06:36:34Z","run":"r-20261017T0636Z-f428","type":"unit.dispatched","unit":"openspec:fix-distiller-prompt-cap"}
+{"at":"2026-10-17T07:19:08Z","detail":"awaiting_human: no new answers (verdicts open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:fix-distiller-prompt-cap"}
