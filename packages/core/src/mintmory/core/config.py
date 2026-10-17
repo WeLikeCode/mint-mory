@@ -273,11 +273,23 @@ class OTelSettings(BaseSettings):
 # applies to is_note=1; auto_include only adds ANNOTATES-linked notes).
 # ---------------------------------------------------------------------------
 class NoteSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MINTMORY_NOTE_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="MINTMORY_NOTE_", extra="ignore", populate_by_name=True
+    )
 
     # Additive authority boost in effective_score for is_note rows. Same scale as
     # the recency bonus (DECAY_BONUS_MAX = 0.1); a tie-breaker, not a hammer.
-    note_bonus: float = Field(default=0.05, ge=0.0, le=1.0)
+    # Accepts the documented MINTMORY_NOTE_BONUS first, then the legacy
+    # MINTMORY_NOTE_NOTE_BONUS (from the env prefix); the documented name wins.
+    note_bonus: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices(
+            "MINTMORY_NOTE_BONUS",  # documented name
+            "MINTMORY_NOTE_NOTE_BONUS",  # legacy alias
+        ),
+    )
     # Max annotating notes auto-included per search result (reverse ANNOTATES
     # traversal). 0 disables auto-include.
     auto_include_cap: int = Field(default=3, ge=0, le=20)

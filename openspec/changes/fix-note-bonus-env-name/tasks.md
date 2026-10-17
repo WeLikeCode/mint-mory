@@ -4,7 +4,7 @@ Paths: `config.py` = `packages/core/src/mintmory/core/config.py`, tests in
 `packages/core/tests/test_config.py`. Line numbers are as of `staging` a08aee3.
 
 ## 1. Failing tests first
-- [ ] 1.1 In `test_config.py` add `class TestNoteSettingsEnvNames` (the file groups
+- [x] 1.1 In `test_config.py` add `class TestNoteSettingsEnvNames` (the file groups
   tests in classes; import `NoteSettings` and `load_settings` from
   `mintmory.core.config`). Every test takes `monkeypatch: pytest.MonkeyPatch`, starts
   with `monkeypatch.delenv("MINTMORY_NOTE_BONUS", raising=False)` and
