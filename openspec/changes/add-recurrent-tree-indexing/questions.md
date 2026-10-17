@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | none | verdict | Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied? |
 | Q-003 | answered | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
 | Q-004 | answered | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
-| Q-005 | open | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
+| Q-005 | answered | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
 | Q-006 | open | none | verdict | Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied? |
 | Q-007 | open | none | verdict | Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done |
 <!-- l4:index:end -->
@@ -155,7 +155,7 @@ accept: satisfied as it stands. index_tree stops binary and content reads once t
 
 ## Q-005: Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -182,6 +182,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: satisfied as it stands. --exclude is a comma-separated glob list (main.py splits it on commas and strips each glob); test_iter_dir_groups_exclude_folder_and_suffix proves Personal/** prunes the whole subtree and *.dll drops the suffix at the walk; test_index_tree_exclude_prunes_subtree proves the excluded photo.jpg produces no memory through the CLI; test_index_tree_metadata_only_indexes_every_file asserts every produced memory carries the collection tag.
 ---
 
 ## Q-006: Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied?
