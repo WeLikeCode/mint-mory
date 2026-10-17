@@ -1093,3 +1093,11 @@ def _command_exit_code(error: BaseException) -> int:
     if isinstance(code, int):
         return code
     return 1
+
+
+def inject_trace_headers(headers: dict[str, str]) -> dict[str, str]:
+    raise NotImplementedError
+
+
+def extract_context(carrier: Mapping[str, str]) -> Any:
+    raise NotImplementedError
