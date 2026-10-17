@@ -103,3 +103,4 @@
 {"at":"2026-10-17T01:25:19Z","attempt":1,"cost_usd":5.98182,"runs":16,"type":"plan.charged","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-17T01:25:19Z","run":"r-20261017T0125Z-4ab2","type":"unit.dispatched","unit":"openspec:add-telemetry-runtime"}
 {"at":"2026-10-17T01:36:00Z","head":"ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f","pr":6,"target_before":"e3703e558fc3365ae0eacccb9ee4d1ea326e6236","type":"unit.merge_requested","unit":"openspec:add-telemetry-runtime"}
+{"at":"2026-10-17T01:36:04Z","head":"ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f","merge_commit":"ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f","pr":6,"type":"unit.merged","unit":"openspec:add-telemetry-runtime"}
