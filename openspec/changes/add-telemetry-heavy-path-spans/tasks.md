@@ -50,7 +50,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 - [x] 4.1 Tests for "CLI commands are traced end to end" and "Indexing and conversion phases are traced" (every
   scenario, "Exit code 0 is not an error" included), plus: `mintmory add` gives `mintmory.cli.add` with
   `mintmory.add_memory` as child. The co-change scenarios need no `importorskip("sklearn")` (fallback path).
-- [ ] 4.2 `telemetry.command_span(name)`: a decorator under `@app.command()` (keep `functools.wraps`; Typer follows
+- [x] 4.2 `telemetry.command_span(name)`: a decorator under `@app.command()` (keep `functools.wraps`; Typer follows
   `__wrapped__`) opening `mintmory.cli.<name>` through `telemetry.span(..., record_exception=False,
   set_status_on_exception=False)` (task 1.2; `typer.Exit` is a `RuntimeError`, so the defaults would mark exit 0);
   `mark_error(span, type(exc).__name__)` for `typer.Exit`/`SystemExit` with a non-zero code or any other exception;
