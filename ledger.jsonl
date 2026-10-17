@@ -118,3 +118,5 @@
 {"at":"2026-10-17T02:37:13Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"40691bd6a09afdead8a38a37711e6b812744951c","status":"pass","type":"unit.postcheck","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T02:37:13Z","revision":"40691bd6a09afdead8a38a37711e6b812744951c","type":"unit.integrated","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T02:37:13Z","attempt":1,"cost_usd":0.72278,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-entry-points"}
+{"at":"2026-10-17T02:37:59Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:fix-note-bonus-env-name"}
+{"at":"2026-10-17T02:37:59Z","run":"r-20261017T0237Z-d577","type":"unit.dispatched","unit":"openspec:fix-note-bonus-env-name"}
