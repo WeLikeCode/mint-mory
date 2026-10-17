@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T08:35:13Z",
+  "integrated_revision": "bdec836adcd6cb385b731c5317b37254bf77d6c8",
+  "merge_commit": "bdec836adcd6cb385b731c5317b37254bf77d6c8",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 21,
+  "receipt_id": "telemetry-and-fixes/openspec:fix-cochange-tools-on-postgres/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "bdec836adcd6cb385b731c5317b37254bf77d6c8",
+  "spec_digest": "19aabb692c8ba4ca",
+  "target": "staging",
+  "unit_id": "openspec:fix-cochange-tools-on-postgres"
+}
