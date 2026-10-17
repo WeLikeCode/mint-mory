@@ -1010,5 +1010,77 @@ def counts_added[F: Callable[..., Any]](fn: F) -> F:
     return wrapper  # type: ignore[return-value]
 
 
+def _set_attribute_safe(span: Any, key: str, value: Any) -> None:
+    """Set one span attribute; never raise into the caller."""
+    try:
+        span.set_attribute(key, value)
+    except Exception:  # noqa: BLE001 - an attribute must never break the wrapped work
+        return
+
+
+@contextmanager
+def file_span(name: str, *, suffix: str, size_bytes: int) -> Iterator[Any]:
+    """Wrap one per-file conversion/caption with ``mintmory.outcome`` and ERROR on failure.
+
+    The span carries ``mintmory.file.suffix`` and ``mintmory.file.size_bytes`` from the start
+    and ``mintmory.outcome=ok`` when the block returns. A failing block is set to
+    ``mintmory.outcome=failed``, marked with ``mark_error`` (the exception class name) and its
+    exception re-raised unchanged, so the command's own ``ConversionError``/``VisionError``
+    handlers still count it. With telemetry off every call is a no-op.
+    """
+    attrs: dict[str, Any] = {
+        "mintmory.file.suffix": suffix,
+        "mintmory.file.size_bytes": size_bytes,
+    }
+    with span(name, **attrs) as file_span_obj:
+        try:
+            yield file_span_obj
+        except Exception as error:
+            _set_attribute_safe(file_span_obj, "mintmory.outcome", "failed")
+            mark_error(file_span_obj, type(error).__name__)
+            raise
+        _set_attribute_safe(file_span_obj, "mintmory.outcome", "ok")
+
+
 def command_span(name: str) -> Callable[[_F], _F]:
-    raise NotImplementedError
+    """Decorate a CLI command so it runs inside a root span ``mintmory.cli.<name>``.
+
+    Spaces in ``name`` become dots. ``typer.Exit`` is a ``RuntimeError`` subclass, so the span
+    is opened with ``record_exception=False`` and ``set_status_on_exception=False`` and marked
+    only through ``mark_error``: an exit with code 0 (``--help``, a clean ``typer.Exit()``) stays
+    UNSET, while a non-zero exit or any other exception becomes ERROR with ``error.type``. With
+    telemetry off every call is a no-op.
+    """
+
+    span_name = "mintmory.cli." + name.replace(" ", ".")
+
+    def deco(fn: _F) -> _F:
+        @wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            with span(
+                span_name,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as command_span_obj:
+                try:
+                    return fn(*args, **kwargs)
+                except BaseException as error:
+                    if _command_exit_code(error) != 0:
+                        mark_error(command_span_obj, type(error).__name__)
+                    raise
+
+        return wrapper  # type: ignore[return-value]
+
+    return deco
+
+
+def _command_exit_code(error: BaseException) -> int:
+    """The exit code of a ``typer.Exit``/``SystemExit``; any other exception counts non-zero."""
+    code = getattr(error, "exit_code", None)
+    if code is None and isinstance(error, SystemExit):
+        code = error.code
+    if code is None:
+        return 1
+    if isinstance(code, int):
+        return code
+    return 1

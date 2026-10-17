@@ -131,10 +131,8 @@ def test_index_tree_counter_attributes_track_updated_and_unchanged(
 
     spans = _spans_named(exporter, "mintmory.cli.index-tree")
     assert len(spans) == 2, sorted(s.name for s in exporter.get_finished_spans())
-    by_added = sorted(
-        (_attributes(span) for span in spans), key=lambda a: a.get("mintmory.files.added", 0)
-    )
-    first_run, second_run = by_added[0], by_added[1]
+    by_start = sorted(spans, key=lambda s: s.start_time)
+    first_run, second_run = _attributes(by_start[0]), _attributes(by_start[1])
     assert first_run.get("mintmory.files.scanned") == 2
     assert first_run.get("mintmory.files.added") == 2
     assert first_run.get("mintmory.files.updated") == 0

@@ -47,7 +47,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   (`hashing`, `local`, `ollama`, `openai`, `fake`); model from `self.model_name`.
 
 ## 4. CLI (`cli/main.py`)
-- [ ] 4.1 Tests for "CLI commands are traced end to end" and "Indexing and conversion phases are traced" (every
+- [x] 4.1 Tests for "CLI commands are traced end to end" and "Indexing and conversion phases are traced" (every
   scenario, "Exit code 0 is not an error" included), plus: `mintmory add` gives `mintmory.cli.add` with
   `mintmory.add_memory` as child. The co-change scenarios need no `importorskip("sklearn")` (fallback path).
 - [ ] 4.2 `telemetry.command_span(name)`: a decorator under `@app.command()` (keep `functools.wraps`; Typer follows
