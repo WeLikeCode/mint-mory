@@ -1,0 +1,57 @@
+{
+  "schema": "l4/delivery-plan@1",
+  "plan_id": "multi-tenancy",
+  "target": "staging",
+  "merge": "auto",
+  "limits": {
+    "max_unit_attempts": 2,
+    "max_runs": 80,
+    "max_cost_usd": 60
+  },
+  "external_dependencies": [],
+  "batches": [
+    {
+      "id": "foundation",
+      "depends_on": [],
+      "units": [
+        {
+          "id": "kiro:multi-tenancy",
+          "depends_on": []
+        }
+      ]
+    },
+    {
+      "id": "mcp-scope",
+      "depends_on": [
+        "foundation"
+      ],
+      "units": [
+        {
+          "id": "kiro:tenant-scoped-mcp",
+          "depends_on": [
+            "kiro:multi-tenancy"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "copy-and-dreaming",
+      "depends_on": [
+        "mcp-scope"
+      ],
+      "units": [
+        {
+          "id": "kiro:cross-tenant-copy-and-dreaming",
+          "depends_on": [
+            "kiro:multi-tenancy",
+            "kiro:tenant-scoped-mcp"
+          ]
+        }
+      ]
+    }
+  ],
+  "exclude": [
+    "openspec:add-image-understanding",
+    "openspec:add-llm-vision-provider"
+  ]
+}
