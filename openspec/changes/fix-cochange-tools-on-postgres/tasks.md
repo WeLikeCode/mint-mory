@@ -19,7 +19,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
               raise AttributeError(name)
           return getattr(self._inner, name)
   ```
-- [ ] 1.2 MCP tests in `packages/mcp/tests/test_cochange_tools.py`, using the existing
+- [x] 1.2 MCP tests in `packages/mcp/tests/test_cochange_tools.py`, using the existing
   `mcp_client` fixture. In each test first do
   `server._store = cast(Any, _NonSqliteStore(server._get_store()))` (`cast` from
   `typing`: the stub is not a `StorageBackend`, so mypy strict rejects a plain
