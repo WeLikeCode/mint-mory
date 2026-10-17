@@ -28,7 +28,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   `await self.app(scope, receive, wrapped_send)`; `except Exception as exc` keeps `exc` and re-raises; the `finally`
   applies, each through `_safe`, the name, attributes, `mark_error`, `record_histogram(..., unit="s",
   boundaries=_HTTP_BUCKETS)` and `stack.close()`.
-- [ ] 2.3 `app.add_middleware(TelemetryMiddleware)` after the CORS block. Store calls run in
+- [x] 2.3 `app.add_middleware(TelemetryMiddleware)` after the CORS block. Store calls run in
   `anyio.to_thread.run_sync`, which copies the context (anyio 4.13.0), so core spans are children of the server span.
 
 ## 3. MCP (tests only)
