@@ -2,3 +2,4 @@
 {"ts": "2026-10-17T01:37:26.073234Z", "run_id": "r-20261017T0137Z-cf6b", "unit": "openspec:add-telemetry-runtime", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 6, "merge_commit": "ff7e3dae5e2579ecc3c704a7d73f66e6d873d24f"}
 {"ts": "2026-10-17T01:37:34.200708Z", "run_id": "r-20261017T0137Z-cf6b", "unit": "openspec:add-telemetry-runtime", "seq": 3, "type": "archive.opened", "number": 13, "url": "<forge>/WeLikeCode/mint-mory/pull/13", "branch": "l4/archive/openspec/add-telemetry-runtime"}
 {"ts": "2026-10-17T01:37:35.494165Z", "run_id": "r-20261017T0137Z-cf6b", "unit": "openspec:add-telemetry-runtime", "seq": 4, "type": "archive.merged", "head": "0628584c680d3c1811e20668b27c84fec8d2118f", "number": 13}
+{"ts": "2026-10-17T01:37:36.551798Z", "run_id": "r-20261017T0137Z-cf6b", "unit": "openspec:add-telemetry-runtime", "seq": 5, "type": "run.finished", "exit_code": 0}
