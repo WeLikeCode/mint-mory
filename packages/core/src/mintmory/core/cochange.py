@@ -63,6 +63,11 @@ class CoChangeUnavailable(Exception):  # noqa: N818
     """
 
 
+COCHANGE_SQLITE_ONLY_MESSAGE: str = (
+    "co-change is SQLite-only: set MINTMORY_STORAGE_BACKEND=sqlite to use it"
+)
+
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------

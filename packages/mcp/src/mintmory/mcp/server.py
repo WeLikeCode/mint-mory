@@ -30,7 +30,7 @@ Every tool returns a JSON-safe dict (or list of dicts) produced via
 from __future__ import annotations
 
 import os
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
 try:
@@ -40,7 +40,11 @@ except ImportError as e:
 
 from mintmory.core import notes as notes_mod
 from mintmory.core import session as session_mod
-from mintmory.core.cochange import changed_with, documents_timeline
+from mintmory.core.cochange import (
+    COCHANGE_SQLITE_ONLY_MESSAGE,
+    changed_with,
+    documents_timeline,
+)
 from mintmory.core.config import LLMProvider, load_settings
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
@@ -674,7 +678,7 @@ _DOCS_TIMELINE_MAX = 200  # hard cap so a single MCP call cannot pull the whole 
 
 
 @mcp.tool()
-def docs_changed_with(path: str) -> list[dict[str, Any]]:
+def docs_changed_with(path: str) -> list[dict[str, Any]] | dict[str, str]:
     """Documents observed to co-change with <path> (same index-tree change-set).
 
     Returns [{path, strength, observed_at, kind}] — each peer in the same observed
@@ -686,8 +690,13 @@ def docs_changed_with(path: str) -> list[dict[str, Any]]:
 
     To populate this data: run `mintmory index-tree <root> --cochange` first.
     Read-only. Only source='document' records are ever returned.
+    SQLite-only: on another storage backend returns {"error": "not_implemented",
+    "message": ...}.
     """
-    return changed_with(cast(SqliteBackend, _get_store()), path)
+    store = _get_store()
+    if not isinstance(store, SqliteBackend):
+        return {"error": "not_implemented", "message": COCHANGE_SQLITE_ONLY_MESSAGE}
+    return changed_with(store, path)
 
 
 @mcp.tool()
@@ -706,11 +715,16 @@ def docs_timeline(
 
     A malformed `since`/date value returns {"error": "bad_request", "detail": ...}
     instead of raising. Read-only. Only source='document' records appear.
+    SQLite-only: on another storage backend returns {"error": "not_implemented",
+    "message": ...}.
     """
     capped = max(1, min(limit, _DOCS_TIMELINE_MAX))
+    store = _get_store()
+    if not isinstance(store, SqliteBackend):
+        return {"error": "not_implemented", "message": COCHANGE_SQLITE_ONLY_MESSAGE}
     try:
         return documents_timeline(
-            cast(SqliteBackend, _get_store()),
+            store,
             since=since,
             from_iso=from_date,
             to_iso=to_date,

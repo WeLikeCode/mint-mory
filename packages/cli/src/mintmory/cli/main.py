@@ -559,6 +559,13 @@ def index_tree(
     conv = settings.convert
     store = _get_store()
     run_cochange = cochange if cochange is not None else settings.doc.cochange_enabled
+    if run_cochange:
+        from mintmory.core.cochange import COCHANGE_SQLITE_ONLY_MESSAGE
+        from mintmory.core.storage import SqliteBackend as _SqliteBackend
+
+        if not isinstance(store, _SqliteBackend):
+            console.print(f"[yellow]co-change skipped[/yellow]: {COCHANGE_SQLITE_ONLY_MESSAGE}")
+            run_cochange = False
     doc_s = settings.doc
 
     # MM-34 E: detect cold vs incremental BEFORE the walk
@@ -1680,16 +1687,19 @@ def docs_timeline(
     Shows documents indexed by index-tree, ordered by file modified-time
     (recorded as valid_from). Filters source='document' only.
     """
-    from mintmory.core.cochange import documents_timeline
+    from mintmory.core.cochange import COCHANGE_SQLITE_ONLY_MESSAGE, documents_timeline
     from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
     if db:
         os.environ["MINTMORY_DB"] = db
 
     store = _get_store()
+    if not isinstance(store, _SqliteBackend):
+        console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
+        raise typer.Exit(code=1)
     try:
         rows = documents_timeline(
-            cast(_SqliteBackend, store),
+            store,
             since=since,
             from_iso=from_iso,
             to_iso=to_iso,
@@ -1721,14 +1731,17 @@ def docs_changed_with(
     Co-change is inferred from HDBSCAN clustering of the index-tree run that
     processed these files; it is NOT an atomic git change-set.
     """
-    from mintmory.core.cochange import changed_with
+    from mintmory.core.cochange import COCHANGE_SQLITE_ONLY_MESSAGE, changed_with
     from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
     if db:
         os.environ["MINTMORY_DB"] = db
 
     store = _get_store()
-    peers = changed_with(cast(_SqliteBackend, store), path)
+    if not isinstance(store, _SqliteBackend):
+        console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
+        raise typer.Exit(code=1)
+    peers = changed_with(store, path)
 
     console.print(
         "[dim]observed co-change (time+folder+content) — not a version-controlled commit[/dim]"

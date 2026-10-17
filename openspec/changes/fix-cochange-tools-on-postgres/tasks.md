@@ -6,7 +6,7 @@ Paths: `server.py` = `packages/mcp/src/mintmory/mcp/server.py`, `main.py` =
 a08aee3. `mypy packages` (strict) also checks the tests: annotate every function.
 
 ## 1. Failing tests first
-- [ ] 1.1 Shared stub (define it in each test module that needs it; it is a few lines):
+- [x] 1.1 Shared stub (define it in each test module that needs it; it is a few lines):
   ```python
   class _NonSqliteStore:
       """Wraps a real SqliteBackend but is not one and has no connect() (like PostgresBackend)."""
