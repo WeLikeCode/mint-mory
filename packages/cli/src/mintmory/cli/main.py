@@ -472,7 +472,10 @@ def index_tree(
     text_content: bool = typer.Option(
         True,
         "--text-content/--no-text-content",
-        help="Full-text small plain-text files (.txt/.md/.log/.rst) inline — cheap, no budget",
+        help=(
+            "Full-text small plain-text files (.txt/.md/.log/.rst) inline — cheap, "
+            "no budget; online-only files are skipped by this inline text pass"
+        ),
     ),
     text_max_kb: int = typer.Option(
         2048, help="Max size (KB) for inline text-content; larger text files stay metadata-only"
@@ -522,7 +525,8 @@ def index_tree(
 
     Writes one metadata + folder-context memory per file (stat-only for the walk),
     full-texts small plain-text files inline by default (cheap — .txt/.md/.log/.rst),
-    and optionally downloads+converts heavy binary docs with ``--content`` (bounded
+    skipping online-only files that are not local (the inline text pass never triggers a
+    download), and optionally downloads+converts heavy binary docs with ``--content`` (bounded
     by ``--max-download-mb``). Idempotent via a per-path manifest: re-runs skip
     unchanged files and replace changed ones. Designed for cloud-backed
     (online-only) libraries.
