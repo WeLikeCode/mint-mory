@@ -294,3 +294,4 @@
 {"at":"2026-10-17T19:44:54Z","branch":"l4/archive/openspec/fix-note-bonus-env-name","head":"c902d8e86dc79dcd0bd6c54c238ac81a4de21ae2","type":"unit.branch_deleted","unit":"openspec:fix-note-bonus-env-name"}
 {"at":"2026-10-17T19:44:54Z","branch":"l4/openspec/fix-distiller-prompt-cap","head":"079d93288a3d682a7771fb480ef9baf49e782d8e","type":"unit.branch_deleted","unit":"openspec:fix-distiller-prompt-cap"}
 {"at":"2026-10-17T19:44:54Z","branch":"l4/archive/openspec/fix-distiller-prompt-cap","head":"84c5f3cb6cd8d6ad846c4b32d9aae88f4d0d3fcd","type":"unit.branch_deleted","unit":"openspec:fix-distiller-prompt-cap"}
+{"at":"2026-10-17T19:44:56Z","head":"4323bf73426b1021cc42e735ac6129186db430c0","pr":26,"target_before":"2e0b76e7070daf5adb52bd8b3d9071a8cac89214","type":"unit.merge_requested","unit":"openspec:add-telemetry-heavy-path-spans"}
