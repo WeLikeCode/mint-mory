@@ -30,6 +30,14 @@ profiles:
     model: opencode-go/glm-5.3-flash
     vendor: zhipu
     auth: api_key
+  deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
+    adapter: opencode
+    model: opencode/deepseek-v4.1-flash-free
+    vendor: deepseek
+  glm-free:                 # OpenCode Zen's free GLM 5.3 Flash, no key: the last fallback
+    adapter: opencode
+    model: opencode/glm-5.3-flash-free
+    vendor: zhipu
   jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
     backend: system-one
     engine: jev
@@ -42,9 +50,11 @@ profiles:
     auth: subscription
     vendor: anthropic
 roles:
-  implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited
-  - deepseek
+  implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited; then the free models
+  - deepseek                # (no key) when the OpenCode Go key is rejected or out of credit
   - glm
+  - deepseek-free
+  - glm-free
   judges:
   - claude-judge
   s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
