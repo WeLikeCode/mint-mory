@@ -42,7 +42,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   `n - 1` and every `role == "user"` turn, as today; the droppable ones are assistant
   and tool turns. A render per candidate is O(n) so the path is O(n^2); with the
   fixtures here, at most 400 turns, that is fine.)
-- [ ] 2.3 When all droppable turns are gone, return `_render(lines, sorted(protected))`
+- [x] 2.3 When all droppable turns are gone, return `_render(lines, sorted(protected))`
   if it fits.
 - [ ] 2.4 Last-resort path: start from `kept = sorted({0, n - 1})`; for each middle
   user index in ascending order (`sorted(...)`, not set order), keep it only if
