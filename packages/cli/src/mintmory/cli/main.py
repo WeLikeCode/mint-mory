@@ -41,6 +41,16 @@ app = typer.Typer(name="mintmory", help="MintMory — typed memory for LLM agent
 console = Console()
 
 
+@app.callback()
+def _init_telemetry(ctx: typer.Context) -> None:
+    """Initialise telemetry for CLI commands; ``serve`` and ``mcp-serve`` defer to their servers."""
+    if ctx.invoked_subcommand in ("serve", "mcp-serve"):
+        return
+    from mintmory.core import telemetry
+
+    telemetry.init_telemetry(default_service_name="mintmory-cli")
+
+
 def _get_store() -> StorageBackend:
     from mintmory.core.config import load_settings
     from mintmory.core.embedder import embedder_from_settings

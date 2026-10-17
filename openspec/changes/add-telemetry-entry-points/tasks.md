@@ -5,7 +5,7 @@ Requires `add-telemetry-runtime` (`init_telemetry(settings=None, *, default_serv
 test first, failing. Tests use `otlp_receiver` by fixture name (no helper import).
 
 ## 1. Entry points
-- [ ] 1.1 Tests in `packages/cli/tests/test_telemetry_cli.py` for the CLI scenarios of "Every entry point initialises
+- [x] 1.1 Tests in `packages/cli/tests/test_telemetry_cli.py` for the CLI scenarios of "Every entry point initialises
   telemetry once" (reuse the `cli_db` fixture pattern of `test_cli.py`: `monkeypatch.setenv("MINTMORY_DB", ...)`).
 - [ ] 1.2 `cli/main.py`: add `from mintmory.core import telemetry` at module level (tests patch
   `mintmory.core.telemetry.init_telemetry`) and an `@app.callback()` taking `ctx: typer.Context` (no docstring, so
