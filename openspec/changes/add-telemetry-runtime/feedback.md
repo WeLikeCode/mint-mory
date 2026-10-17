@@ -14,8 +14,8 @@ verification round, turns them into a fix unit and checks that each one was addr
 | FB-002 | addressed | behaviour |  | _build_meter_provider must wrap the configured metric exporter with |
 | FB-003 | addressed | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | init_telemetry: one set of providers when two threads init at once |
 | FB-004 | addressed | behaviour | packages/core/src/mintmory/core/config.py:220 | MINTMORY_OTEL_ENABLED keeps the boolean spellings it accepted before |
-| FB-005 | taken | refactor | packages/core/src/mintmory/core/telemetry.py:585 | span, add_count and record_value read _tracer and _meter once |
-| FB-006 | taken | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | an injected exporter without the SDK says why telemetry is off |
+| FB-005 | addressed | refactor | packages/core/src/mintmory/core/telemetry.py:585 | span, add_count and record_value read _tracer and _meter once |
+| FB-006 | addressed | behaviour | packages/core/src/mintmory/core/telemetry.py:541 | an injected exporter without the SDK says why telemetry is off |
 <!-- l4:feedback-index:end -->
 
 ---
@@ -152,7 +152,7 @@ Addressed in round 7 at dc31486655: config.py _TRUE_SPELLINGS/_FALSE_SPELLINGS i
 
 ## FB-005: span, add_count and record_value read _tracer and _meter once
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** refactor
 - **Where:** `packages/core/src/mintmory/core/telemetry.py:585-595`
 - **Where:** `packages/core/src/mintmory/core/telemetry.py:613-635`
@@ -204,13 +204,13 @@ span(), add_count() and record_value() check _enabled and _tracer or _meter, the
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 9 into add-telemetry-runtime-fix-3
+Addressed in round 10 at 2f0546a73a: telemetry.py span(): `tracer = _tracer`; add_count/record_value: `meter = _meter` passed to _instrument(kind, factory_name, name, meter).
 
 ---
 
 ## FB-006: an injected exporter without the SDK says why telemetry is off
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Where:** `packages/core/src/mintmory/core/telemetry.py:541-551`
 - **Lesson:** no
@@ -240,4 +240,4 @@ init_telemetry() with span_exporter or metric_reader returns False silently when
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 9 into add-telemetry-runtime-fix-3
+Addressed in round 10 at 2f0546a73a: telemetry.py init_telemetry injected branch: `if not _sdk_available(): _LOGGER.warning(... install 'mintmory-core[otel]'); return False`.

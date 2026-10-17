@@ -1,0 +1,1420 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "packages/api/tests/test_health_and_otel.py",
+      "packages/mcp/tests/test_telemetry_init.py",
+      "**/conftest.py",
+      "packages/*/tests",
+      "**/telemetry.py",
+      "**/config.py",
+      "**/uv.lock",
+      "**/ci.yml",
+      "**/captured[-1]._inner",
+      "module api",
+      "module mcp"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": ".serena/memories/harness/lessons.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "conftest.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-1/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-1/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-1/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-1/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-1/specs/observability/spec.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-1/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-2/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-2/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-2/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-2/specs/observability/spec.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-2/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-3/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-3/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-3/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-3/specs/observability/spec.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime-fix-3/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-1/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-1/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-1/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-2/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-2/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-2/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-3/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-3/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-4/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-4/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-4/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-5/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-5/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-6/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-6/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-6/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-7/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-7/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-7/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-8/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-8/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-8/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-9/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/evidence/round-9/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0449Z-8f57.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0514Z-60f2.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0849Z-8d03.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T0920Z-ec4a.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1105Z-f391.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1106Z-95fb.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1215Z-283b.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1216Z-4b11.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1441Z-49c5.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1442Z-fd5b.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1648Z-22fc.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1654Z-e095.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1655Z-d3d9.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1726Z-3acd.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1743Z-fc64.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1744Z-ea0a.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1947Z-81dc.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T1948Z-479c.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T2129Z-3075.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T2129Z-cb47.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261016T2149Z-9379.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261017T0104Z-21cd.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261017T0105Z-eac9.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261017T0125Z-4ab2.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/ledger/r-20261017T0125Z-d62e.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/.l4/review-accepted.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/feedback.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-runtime/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "packages/api/tests/test_health_and_otel.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/api/tests/test_health_and_otel_runtime.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/cli/tests/test_telemetry_acceptance_gate.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/cli/tests/test_telemetry_shared_fixtures.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/config.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/tests/test_otel_settings.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_otel_settings_enabled_spellings.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_acceptance_gate.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_concurrent_init.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_enablement.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_exporters.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_global_providers.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_guards.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_helpers.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_init_failure.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_injected_sdk_missing.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_logger_level.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_mark_error.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_mark_error_span.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_metric_guard_wiring.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_resilience.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_resource.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_resource_sampling.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_scrubbing.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_scrubbing_wiring.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_sdk_probe.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_seam_and_globals.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_shutdown.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_suite_defaults.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_teardown.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_timeouts.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/mcp/tests/test_telemetry_init_runtime.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": {
+    "status": "not_run",
+    "reason": "pytest-cov is active; two coverage measurements would corrupt each other",
+    "percent": 0.0,
+    "unmeasured_files": [],
+    "other_files": [],
+    "functions": [
+      {
+        "path": "packages/core/src/mintmory/core/config.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/config.py",
+        "qualname": "OTelSettings",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/config.py",
+        "qualname": "OTelSettings._normalise_enabled",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/config.py",
+        "qualname": "OTelSettings._normalise_exporter",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/config.py",
+        "qualname": "OTelSettings._normalise_export_timeout",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "<module>",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_sdk_disabled",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_has_endpoint_variable",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_resolve_exporter",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_check_protocol",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_resource_attributes_from_env",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_service_version",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_service_name",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_resource",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_mute_exporter_logger",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_restore_exporter_logger",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_log_export_failure",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_release_globals",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_set_tracer_provider",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_set_meter_provider",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_otlp_exporter_kwargs",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_scrub_span",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_Scrubbing",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_Scrubbing.__init__",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_Scrubbing.export",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_Scrubbing.shutdown",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_Scrubbing.force_flush",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_GuardedSpanExporter",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_GuardedSpanExporter.__init__",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_GuardedSpanExporter.export",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_GuardedSpanExporter.shutdown",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_GuardedSpanExporter.force_flush",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_guarded_metric_exporter",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_guarded_metric_exporter._GuardedMetricExporter",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_guarded_metric_exporter._GuardedMetricExporter.__init__",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_guarded_metric_exporter._GuardedMetricExporter.export",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_guarded_metric_exporter._GuardedMetricExporter.shutdown",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_guarded_metric_exporter._GuardedMetricExporter.force_flush",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "__getattr__",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_guarded_metric_exporter_class",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_tracer_provider",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_build_meter_provider",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_register_atexit",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_activate",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "init_telemetry",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "span",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_instrument",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "add_count",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "record_value",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_teardown",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_teardown._shutdown",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "shutdown_telemetry",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "reset_telemetry",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_sdk_available",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_endpoint_reachable",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_resolve_state",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "_traces_endpoint",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "qualname": "mark_error",
+        "status": "not_run",
+        "executable": 0,
+        "executed": 0,
+        "tests": [],
+        "label": null
+      }
+    ]
+  },
+  "tests_ran": {
+    "tests_ok": true,
+    "summary": {
+      "total": 1849,
+      "passed": 1735,
+      "failed": 0,
+      "errored": 0,
+      "skipped": 114,
+      "new": 149,
+      "new_passed": 149,
+      "skipped_unchanged": [
+        "packages.core.tests.conformance.test_backend::test_anchor_candidates_limit_honoured[postgres]",
+        "packages.core.tests.conformance.test_backend::test_anchor_candidates_returns_sorted_scored_pairs[postgres]",
+        "packages.core.tests.conformance.test_backend::test_anchor_candidates_side_effect_free[postgres]",
+        "packages.core.tests.conformance.test_backend::test_auto_include_archived_notes_excluded[postgres]",
+        "packages.core.tests.conformance.test_backend::test_auto_include_not_counted_in_total_found[postgres]",
+        "packages.core.tests.conformance.test_backend::test_auto_include_populates_notes_on_results[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_missing_id_raises_key_error[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_note_stale_flags_not_penalises[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_note_useful_still_increments[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_stale_increments_staleness[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_stale_threshold_sets_is_stale[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_staleness_cap_at_ten[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_useful_increments_score_and_count[postgres]",
+        "packages.core.tests.conformance.test_backend::test_feedback_usefulness_cap_at_ten[postgres]",
+        "packages.core.tests.conformance.test_backend::test_find_image_file_record_returns_active_match[postgres]",
+        "packages.core.tests.conformance.test_backend::test_find_image_file_record_returns_none_for_miss[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_annotating_descriptions_cap_zero_returns_empty[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_annotating_descriptions_honours_cap[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_annotating_descriptions_returns_description[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_anomaly_flagged_ids[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_anomaly_high_staleness_useful_ids[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_anomaly_never_accessed_ids[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_existing_relates_to_pairs[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_flagged_memories_returns_flagged[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_high_staleness_useful_excludes_notes[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_high_staleness_useful_returns_target[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_never_accessed_stale_excludes_notes[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_never_accessed_stale_returns_target[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_rehabilitable_rows[postgres]",
+        "packages.core.tests.conformance.test_backend::test_get_stale_archivable_ids[postgres]",
+        "packages.core.tests.conformance.test_backend::test_link_add_get_basic[postgres]",
+        "packages.core.tests.conformance.test_backend::test_link_dedup_insert_or_ignore[postgres]",
+        "packages.core.tests.conformance.test_backend::test_link_filter_by_type[postgres]",
+        "packages.core.tests.conformance.test_backend::test_link_symmetric_both_ends_reachable[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_active_memory_ids_includes_only_active[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_image_file_records_excludes_kind_tagged[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_image_file_records_returns_ext_records[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_notes_excludes_archived_by_default[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_notes_includes_archived_when_flag_set[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_notes_overdue_includes_past_due[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_notes_overdue_not_in_upcoming[postgres]",
+        "packages.core.tests.conformance.test_backend::test_list_notes_returns_plain_note[postgres]",
+        "packages.core.tests.conformance.test_backend::test_manifest_delete_removes_path[postgres]",
+        "packages.core.tests.conformance.test_backend::test_manifest_get_missing_returns_none[postgres]",
+        "packages.core.tests.conformance.test_backend::test_manifest_paths_returns_tracked_set[postgres]",
+        "packages.core.tests.conformance.test_backend::test_manifest_upsert_get_all_fields[postgres]",
+        "packages.core.tests.conformance.test_backend::test_manifest_upsert_replaces_existing[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_add_get_round_trip_all_fields[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_archive[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_defaults_after_add[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_entity_extraction_on_add[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_exists_false_for_missing[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_exists_true_for_existing[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_get_nonexistent_returns_none[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_supersede[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_supplied_entities_preserved[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_update_content_reextracts_entities[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_update_missing_id_raises_key_error[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_update_partial_fields[postgres]",
+        "packages.core.tests.conformance.test_backend::test_memory_update_refreshes_updated_at[postgres]",
+        "packages.core.tests.conformance.test_backend::test_mixed_dimension_embedding_survival[postgres]",
+        "packages.core.tests.conformance.test_backend::test_ping_returns_true[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_depth_1[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_depth_2[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_directional_not_reversed[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_empty_anchors[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_link_type_filter[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_min_strength_filters[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_around_symmetric_reverse[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_basic_fts_finds_relevant[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_bumps_retrieval_count[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_creates_query_session[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_excludes_archived_by_default[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_excludes_stale_by_default[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_prefix_matches_compound_word[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_respects_limit[postgres]",
+        "packages.core.tests.conformance.test_backend::test_search_space_split_compound_matches[postgres]",
+        "packages.core.tests.conformance.test_backend::test_session_create_and_get[postgres]",
+        "packages.core.tests.conformance.test_backend::test_session_get_missing_returns_none[postgres]",
+        "packages.core.tests.conformance.test_backend::test_session_mark_concluded[postgres]",
+        "packages.core.tests.conformance.test_backend::test_session_record_query_results[postgres]",
+        "packages.core.tests.conformance.test_backend::test_session_update_feedback_sets_fields[postgres]",
+        "packages.core.tests.conformance.test_backend::test_stats_counts_correct[postgres]",
+        "packages.core.tests.conformance.test_backend::test_summary_get_missing_returns_none[postgres]",
+        "packages.core.tests.conformance.test_backend::test_summary_list_returns_all[postgres]",
+        "packages.core.tests.conformance.test_backend::test_summary_upsert_and_get[postgres]",
+        "packages.core.tests.conformance.test_backend::test_summary_upsert_replaces_existing[postgres]",
+        "packages.core.tests.conformance.test_backend::test_trigram_finds_infix_substring[postgres]",
+        "packages.core.tests.conformance.test_backend::test_trigram_substring_match[postgres]",
+        "packages.core.tests.conformance.test_backend::test_vector_search_available_returns_bool[postgres]",
+        "packages.core.tests.conformance.test_backend::test_vector_search_memory_exists_with_content[postgres]",
+        "packages.core.tests.conformance.test_backend::test_vector_search_returns_non_empty_results[postgres]",
+        "packages.core.tests.conformance.test_backend::test_write_on_one_handle_visible_on_second[postgres]",
+        "packages.core.tests.conformance.test_golden_retrieval::test_golden_corpus_all_memories_searchable[postgres]",
+        "packages.core.tests.conformance.test_golden_retrieval::test_golden_retrieval_recall_at_k[postgres]",
+        "packages.core.tests.conformance.test_golden_retrieval::test_golden_retrieval_total_found_consistent[postgres]",
+        "packages.core.tests.test_migrate.TestMigrationIdempotency::test_dry_run_reports_src_counts",
+        "packages.core.tests.test_migrate.TestMigrationIdempotency::test_dry_run_writes_nothing",
+        "packages.core.tests.test_migrate.TestMigrationIdempotency::test_no_row_duplication_after_force",
+        "packages.core.tests.test_migrate.TestMigrationIdempotency::test_second_run_with_force_succeeds",
+        "packages.core.tests.test_migrate.TestMigrationIdempotency::test_second_run_without_force_raises",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_embedding_vector_round_trip",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_migration_report_all_ok",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_links",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_memory_round_trip",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_session",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_summary",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_list_notes",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_manifest_get",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_search_returns_expected",
+        "packages.core.tests.test_migrate.TestMigrationRoundTrip::test_superseded_by_round_trip",
+        "packages.core.tests.test_pg_soak::test_pg_apply_feedback_lost_update_invariant",
+        "packages.core.tests.test_pg_soak::test_pg_soak_concurrent",
+        "tests.integration.test_round_trip.TestM3Sessions::test_session_feedback_updates_scores"
+      ]
+    },
+    "findings": []
+  }
+}
