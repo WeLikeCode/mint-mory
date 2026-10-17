@@ -342,3 +342,8 @@
 {"ts": "2026-10-17T08:33:08.182731Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 342, "type": "verify.verdict", "round": 1, "verdict": "PASS", "findings": 1, "criteria_passed": 6, "criteria_total": 6}
 {"ts": "2026-10-17T08:33:08.195810Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 343, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-17T08:33:11.399329Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 344, "type": "pr.labels", "number": 21, "labels": ["l4:verified"]}
+{"ts": "2026-10-17T08:33:14.596459Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 345, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/21", "number": 21, "head": "bdec836adcd6cb385b731c5317b37254bf77d6c8"}
+{"ts": "2026-10-17T08:33:14.598977Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 346, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-17T08:33:17.638299Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 347, "type": "pr.labels", "number": 21, "labels": ["l4:in_review"]}
+{"ts": "2026-10-17T08:33:18.860333Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 348, "type": "lock.released"}
+{"ts": "2026-10-17T08:33:18.861015Z", "run_id": "r-20261017T0728Z-9d62", "unit": "openspec:fix-cochange-tools-on-postgres", "seq": 349, "type": "run.finished", "exit_code": 0}
