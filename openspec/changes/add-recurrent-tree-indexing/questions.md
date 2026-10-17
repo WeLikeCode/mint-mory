@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | none | verdict | Criterion C-b54f84ac (ingestion › Online-only-safe tree indexing › Placeholder files are indexed without download): accept as satisfied? |
-| Q-002 | open | none | verdict | Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied? |
+| Q-002 | answered | none | verdict | Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied? |
 | Q-003 | open | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
 | Q-004 | open | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
 | Q-005 | open | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
@@ -56,7 +56,7 @@ accept: satisfied as it stands. test_is_online_only_detects_placeholder (package
 
 ## Q-002: Criterion C-1ccce576 (ingestion › Metadata + folder-context records › An image is indexed by metadata and neighbours): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -84,6 +84,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: satisfied as it stands. test_render_file_record_includes_type_location_and_siblings asserts the name, the type label, the size, the folder location, the sibling names and the mtime date; test_render_file_record_flags_online_only asserts the online-only flag; test_index_tree_metadata_only_indexes_every_file shows photo.jpg recorded by index-tree as a metadata memory.
 ---
 
 ## Q-003: Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied?
