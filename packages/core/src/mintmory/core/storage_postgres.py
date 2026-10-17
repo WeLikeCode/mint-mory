@@ -415,6 +415,7 @@ class PostgresBackend:
     # MemoryRecord CRUD
     # ------------------------------------------------------------------
 
+    @telemetry.counts_added
     @telemetry.traced("mintmory.add_memory")
     def add_memory(
         self,

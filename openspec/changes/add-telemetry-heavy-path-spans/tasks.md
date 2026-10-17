@@ -70,7 +70,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   telemetry.run_in_context(_prepare_session)` once, submit `prepare` (the `mintmory.cli.history.*` root spans cover the
   commands; no extra history span). `dreaming.py` `generate_summaries`: `pool.map(telemetry.run_in_context(lambda sel:
   summarizer(sel.concept, sel.contents)), prepared)`.
-- [ ] 5.3 Test "Counter by category"; `@telemetry.counts_added` on both `add_memory`.
+- [x] 5.3 Test "Counter by category"; `@telemetry.counts_added` on both `add_memory`.
 - [ ] 5.4 Tests of "Telemetry carries no content" (walk span names, span and event attributes, status descriptions,
   metric point attributes); the LLM test server is a `ThreadingHTTPServer` on `127.0.0.1:0`.
 

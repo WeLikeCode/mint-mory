@@ -464,6 +464,7 @@ class SqliteBackend:
             json.dumps(record.metadata),
         )
 
+    @telemetry.counts_added
     @telemetry.traced("mintmory.add_memory")
     def add_memory(
         self,
