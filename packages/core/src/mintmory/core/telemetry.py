@@ -584,10 +584,11 @@ def init_telemetry(
 @contextmanager
 def span(name: str, **attrs: Any) -> Iterator[Any]:
     """Context manager: a real span when enabled, else a cheap no-op."""
-    if not _enabled or _tracer is None:
+    tracer = _tracer
+    if not _enabled or tracer is None:
         yield _NoopSpan()
         return
-    with _tracer.start_as_current_span(name) as sp:
+    with tracer.start_as_current_span(name) as sp:
         for key, value in attrs.items():
             if value is not None:
                 sp.set_attribute(key, value)
@@ -610,26 +611,28 @@ def traced(name: str | None = None) -> Callable[[_F], _F]:
     return deco
 
 
-def _instrument(kind: str, factory_name: str, name: str) -> Any:
+def _instrument(kind: str, factory_name: str, name: str, meter: Any) -> Any:
     inst = _instruments.get(name)
-    if inst is None and _meter is not None:
-        inst = getattr(_meter, factory_name)(name)
+    if inst is None and meter is not None:
+        inst = getattr(meter, factory_name)(name)
         _instruments[name] = inst
     return inst
 
 
 def add_count(name: str, value: int = 1, **attrs: Any) -> None:
-    if not _enabled or _meter is None:
+    meter = _meter
+    if not _enabled or meter is None:
         return
-    counter = _instrument("counter", "create_counter", name)
+    counter = _instrument("counter", "create_counter", name, meter)
     if counter is not None:
         counter.add(value, {k: v for k, v in attrs.items() if v is not None})
 
 
 def record_value(name: str, value: float, **attrs: Any) -> None:
-    if not _enabled or _meter is None:
+    meter = _meter
+    if not _enabled or meter is None:
         return
-    hist = _instrument("histogram", "create_histogram", name)
+    hist = _instrument("histogram", "create_histogram", name, meter)
     if hist is not None:
         hist.record(value, {k: v for k, v in attrs.items() if v is not None})
 
