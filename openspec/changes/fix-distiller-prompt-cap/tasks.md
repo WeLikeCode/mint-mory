@@ -21,7 +21,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   - `test_elide_within_cap_is_unchanged` (passes today, guard)
   Run `.venv/bin/pytest -q --no-cov packages/core/tests/test_history_distill_phase2.py -k elide`;
   the first five must fail today (the four-turn one too: its output is far over 500); the within-cap guard passes.
-- [ ] 1.2 Tighten `test_prompt_bounded_when_user_turns_alone_exceed_budget` (:645-664):
+- [x] 1.2 Tighten `test_prompt_bounded_when_user_turns_alone_exceed_budget` (:645-664):
   replace `assert len(prompt) <= 12000 + 4000, ...` (:659) with
   `overhead = len(HISTORY_SEGMENT_PROMPT.format(prev_context="", transcript="", repo=s.repo))`
   (`s = _make_summary()` is already defined in that test, `s.repo == "myproject"`; the
