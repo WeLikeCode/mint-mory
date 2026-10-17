@@ -394,7 +394,8 @@ def test_cancelled_request_and_no_response_at_all(telemetry_env: tuple[Any, Any]
         assert not span.events
 
     points = _points(reader, _DURATION)
-    assert len(points) == 2, points
+    assert len(points) == 1, points
+    assert points[0].count == 2
     for point in points:
         assert dict(point.attributes) == {"http.request.method": "GET"}
 

@@ -17,7 +17,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   body in `try/except Exception`.
 
 ## 2. HTTP middleware (`api/telemetry_middleware.py`)
-- [ ] 2.1 `packages/api/tests/test_telemetry_http.py`, every scenario of the five HTTP requirements. API setup copies
+- [x] 2.1 `packages/api/tests/test_telemetry_http.py`, every scenario of the five HTTP requirements. API setup copies
   the `client` fixture of `packages/api/tests/test_routes.py` (`MINTMORY_DB` in `tmp_path`, `app_module._store` reset,
   `TestClient(app_module.app)` in `with`), telemetry initialised first; assert inside the block. `/test-raise` via
   `app_module.app.add_api_route`, removed from `app.router.routes` at teardown.

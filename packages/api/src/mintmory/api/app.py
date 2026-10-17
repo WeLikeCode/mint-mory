@@ -30,6 +30,7 @@ from mintmory.api.schemas import (
     SessionFeedback,
     SummaryPut,
 )
+from mintmory.api.telemetry_middleware import TelemetryMiddleware
 from mintmory.core import session as session_module
 from mintmory.core.config import load_settings
 from mintmory.core.dreaming import DreamingEngine
@@ -122,6 +123,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(TelemetryMiddleware)
 
 
 def get_store() -> StorageBackend:
