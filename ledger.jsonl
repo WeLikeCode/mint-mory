@@ -222,3 +222,5 @@
 {"at":"2026-10-17T17:26:32Z","run":"r-20261017T1726Z-3f71","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T17:27:41Z","attempt":1,"cost_usd":2.564299,"runs":26,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T17:27:41Z","run":"r-20261017T1727Z-fbbe","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T17:28:39Z","attempt":1,"cost_usd":2.564299,"runs":27,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T17:28:39Z","run":"r-20261017T1728Z-0a91","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
