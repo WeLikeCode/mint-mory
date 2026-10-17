@@ -77,7 +77,7 @@ default. A user who wants them can still run `--content --content-types txt,md`
   `text_eligible = text_candidate and not entry.online_only`. Leave `want_binary`,
   `do_content`, the vision branch and the budget logic unchanged. Nothing else reads
   an online-only file on the default path.
-- [ ] 2.3 The report counter, following the counting rule of the spec (design.md
+- [x] 2.3 The report counter, following the counting rule of the spec (design.md
   `## Decisions`): add `text_skipped_online_only = 0` next to the other
   counters (around `cli/main.py:584-591`); on the line right after `want_binary` is
   computed (it already contains `not budget_hit`, so files the exhausted budget
