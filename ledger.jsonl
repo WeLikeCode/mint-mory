@@ -289,3 +289,8 @@
 {"at":"2026-10-17T19:41:27Z","branch":"l4/openspec/add-telemetry-entry-points","head":"40691bd6a09afdead8a38a37711e6b812744951c","type":"unit.branch_deleted","unit":"openspec:add-telemetry-entry-points"}
 {"at":"2026-10-17T19:41:28Z","attempt":1,"cost_usd":3.928501,"runs":55,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T19:41:28Z","run":"r-20261017T1941Z-6265","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T19:44:54Z","branch":"l4/archive/openspec/add-telemetry-entry-points","head":"788adf714706d466ffc81fb700014cda202a3b36","type":"unit.branch_deleted","unit":"openspec:add-telemetry-entry-points"}
+{"at":"2026-10-17T19:44:54Z","branch":"l4/openspec/fix-note-bonus-env-name","head":"61ee36d119da2c4e99cf1352c976ec068b4ed7ef","type":"unit.branch_deleted","unit":"openspec:fix-note-bonus-env-name"}
+{"at":"2026-10-17T19:44:54Z","branch":"l4/archive/openspec/fix-note-bonus-env-name","head":"c902d8e86dc79dcd0bd6c54c238ac81a4de21ae2","type":"unit.branch_deleted","unit":"openspec:fix-note-bonus-env-name"}
+{"at":"2026-10-17T19:44:54Z","branch":"l4/openspec/fix-distiller-prompt-cap","head":"079d93288a3d682a7771fb480ef9baf49e782d8e","type":"unit.branch_deleted","unit":"openspec:fix-distiller-prompt-cap"}
+{"at":"2026-10-17T19:44:54Z","branch":"l4/archive/openspec/fix-distiller-prompt-cap","head":"84c5f3cb6cd8d6ad846c4b32d9aae88f4d0d3fcd","type":"unit.branch_deleted","unit":"openspec:fix-distiller-prompt-cap"}
