@@ -278,3 +278,5 @@
 {"at":"2026-10-17T17:59:08Z","run":"r-20261017T1759Z-3ef6","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T18:00:02Z","detail":"80 run(s) used of 80","reason":"limit_runs","type":"plan.stopped"}
 {"at":"2026-10-17T18:23:36Z","by":"the+github@ciprianiacobescu.com","extend":{"runs":10},"reason":"implementer chain now falls back to OpenCode Zen's free DeepSeek and GLM (no key) after the OpenCode Go key was rejected; 10 more runs, bounded until the L4 capacity-loop fix (0.4.14) is pinned","type":"plan.resumed"}
+{"at":"2026-10-17T18:23:44Z","attempt":1,"cost_usd":2.564299,"runs":54,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T18:23:44Z","run":"r-20261017T1823Z-be55","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
