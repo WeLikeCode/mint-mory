@@ -13,7 +13,7 @@ test first, failing. Tests use `otlp_receiver` by fixture name (no helper import
   unless `ctx.invoked_subcommand` is `serve` or `mcp-serve` (for `history backfill` it is `history`, traced). `app` has no
   callback today. Click calls it only when a subcommand is given (not for bare `mintmory` or `mintmory --help`), and
   also for `mintmory <cmd> --help`, where `auto` may probe once (100 ms).
-- [ ] 1.3 `api/app.py` lifespan: `init_telemetry(settings.otel, default_service_name="mintmory-api")`; import
+- [x] 1.3 `api/app.py` lifespan: `init_telemetry(settings.otel, default_service_name="mintmory-api")`; import
   `shutdown_telemetry` beside `init_telemetry` at module level and call it after `yield`, before `_store.close()`.
 - [ ] 1.4 `mcp/server.py` `main()`: replace `init_telemetry(load_settings().otel)` with
   `init_telemetry(default_service_name="mintmory-mcp")`. `history_server.py`: import `init_telemetry` at module level and

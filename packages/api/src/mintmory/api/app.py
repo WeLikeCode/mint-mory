@@ -36,7 +36,7 @@ from mintmory.core.dreaming import DreamingEngine
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
 from mintmory.core.storage_factory import build_storage
-from mintmory.core.telemetry import init_telemetry
+from mintmory.core.telemetry import init_telemetry, shutdown_telemetry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
     CaptionRunReport,
@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # NO embedder — API-added memories get NULL embeddings (asymmetry vs CLI).
     _store = build_storage(settings.storage)
     _store.initialise()
-    init_telemetry(settings.otel)
+    init_telemetry(settings.otel, default_service_name="mintmory-api")
 
     # Startup guard (design §6.3): cap anyio's default thread-limiter to at most
     # pool_max so we never queue more DB threads than the pool can serve.
@@ -100,6 +100,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         limiter.total_tokens = pool_max
 
     yield
+    shutdown_telemetry()
     if _store:
         _store.close()
         _store = None
