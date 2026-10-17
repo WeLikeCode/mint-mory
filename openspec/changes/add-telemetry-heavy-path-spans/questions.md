@@ -1,0 +1,39 @@
+# Questions — add-telemetry-heavy-path-spans
+
+<!-- l4:questions v1
+How to answer: write under "### Answer" and set **Status** to `answered`.
+To accept the clarifier's suggestion as-is, set **Status** to `accepted`.
+Status values: open · answered · accepted · answered-by-clarifier · dismissed · superseded
+Kind values: technical · product · ambiguous · verdict. For a `verdict` question, start the answer with `accept` or
+`reject`, then give your reason.
+Do not change question IDs. Commit and push to the l4/… branch to resume the run. -->
+
+<!-- l4:index:start -->
+| ID | Status | Blocking | Kind | Question |
+|----|--------|----------|------|----------|
+| Q-001 | open | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
+<!-- l4:index:end -->
+
+---
+
+## Q-001: packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2
+
+- **Status:** open
+- **Blocking tasks:** 4.1
+- **Kind:** technical
+- **Asked:** 2026-10-17T15:11Z by deepseek, run r-20261017T1320Z-5212, task 4.1
+
+### Context
+The test collects the two `mintmory.cli.index-tree` attribute dicts and sorts them ascending by `mintmory.files.added`, naming element 0 `first_run`; it then asserts `first_run` has added=2, updated=0, unchanged=0 (the physical first run). The spec requirement and finding F-b98cfc require `.added`, `.updated`, `.unchanged`, `.failed` to mirror `index_tree`'s existing counters (`added`, `updated`, `unchanged`, `failed`): the first run adds 2 files (added=2, updated=0, unchanged=0) and the second run modifies one file and leaves one unchanged (added=0, updated=1, unchanged=1). Ascending-by-added therefore always puts the second run at index 0, so no spec-compliant implementation can make this frozen test pass.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `packages/cli/tests/test_telemetry_cli_heavy_paths.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit add-telemetry-heavy-path-spans`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `packages/cli/tests/test_telemetry_cli_heavy_paths.py`: change the sort key on line 135 from `a.get("mintmory.files.added", 0)` to `a.get("mintmory.files.updated", 0)` so the first run (updated=0) sorts first and every assertion holds.
+2. Edit `packages/cli/tests/test_telemetry_cli_heavy_paths.py`: add `reverse=True` to the `sorted(...)` call on lines 134-136 so the run with added=2 sorts first.
+
+### Clarifier suggestion
+Edit `packages/cli/tests/test_telemetry_cli_heavy_paths.py`: change the sort key on line 135 from `a.get("mintmory.files.added", 0)` to `a.get("mintmory.files.updated", 0)` so the first run (updated=0) sorts first and every assertion holds.
+
+### Answer
+<!-- write below this line -->
