@@ -58,7 +58,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
   `return changed_with(store, path)` (the `cast` is no longer needed). Add one
   docstring line: "SQLite-only: on another storage backend returns
   {"error": "not_implemented", "message": ...}."
-- [ ] 2.3 `server.py` `docs_timeline` (:694-721): the same check right after
+- [x] 2.3 `server.py` `docs_timeline` (:694-721): the same check right after
   `capped = ...` and before the `try`; pass the narrowed `store` instead of
   `cast(SqliteBackend, _get_store())`; same docstring line. Import the constant
   next to `changed_with, documents_timeline` (`server.py:43`). `cast` is used only at
