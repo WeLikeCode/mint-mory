@@ -19,7 +19,7 @@ test first, failing. Tests use `otlp_receiver` by fixture name (no helper import
   `init_telemetry(default_service_name="mintmory-mcp")`. `history_server.py`: import `init_telemetry` at module level and
   call `init_telemetry(default_service_name="mintmory-history-mcp")` in `main()` after the `_assert_not_working_db`
   guard, before `mcp.run`. No `try/except` around any call (runtime's contract).
-- [ ] 1.5 `packages/mcp/tests/test_telemetry_init.py`: `_fake_init_telemetry(settings=None)` becomes
+- [x] 1.5 `packages/mcp/tests/test_telemetry_init.py`: `_fake_init_telemetry(settings=None)` becomes
   `(settings=None, **kwargs)`; assert `settings is None` and `kwargs["default_service_name"] == "mintmory-mcp"`. Add the
   history server test there. Keep runtime's `_endpoint_reachable` patch in `test_main_telemetry_default_off_is_safe`.
 - [ ] 1.6 Deployment scenarios in `packages/api/tests/test_health_and_otel.py`. The file's other tests are unaffected:
