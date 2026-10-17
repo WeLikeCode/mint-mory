@@ -33,9 +33,10 @@ import os
 import socket
 import sys
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import contextmanager
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
 from urllib.parse import unquote, urlparse
@@ -645,10 +646,13 @@ def traced(name: str | None = None) -> Callable[[_F], _F]:
     return deco
 
 
-def _instrument(kind: str, factory_name: str, name: str, meter: Any) -> Any:
+def _instrument(
+    kind: str, factory_name: str, name: str, meter: Any, unit: str | None = None
+) -> Any:
     inst = _instruments.get(name)
     if inst is None and meter is not None:
-        inst = getattr(meter, factory_name)(name)
+        kwargs: dict[str, Any] = {} if unit is None else {"unit": unit}
+        inst = getattr(meter, factory_name)(name, **kwargs)
         _instruments[name] = inst
     return inst
 
@@ -662,11 +666,11 @@ def add_count(name: str, value: int = 1, **attrs: Any) -> None:
         counter.add(value, {k: v for k, v in attrs.items() if v is not None})
 
 
-def record_value(name: str, value: float, **attrs: Any) -> None:
+def record_value(name: str, value: float, *, unit: str | None = None, **attrs: Any) -> None:
     meter = _meter
     if not _enabled or meter is None:
         return
-    hist = _instrument("histogram", "create_histogram", name, meter)
+    hist = _instrument("histogram", "create_histogram", name, meter, unit)
     if hist is not None:
         hist.record(value, {k: v for k, v in attrs.items() if v is not None})
 
@@ -814,11 +818,77 @@ def run_in_context(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def search_phase(name: str, *, span: bool = True) -> AbstractContextManager[Any]:
-    """Time a search stage; record its span, result count and latency point (task 1.3)."""
-    raise NotImplementedError
+class _PhaseHandle:
+    """Reports a timed search stage's result count back to :func:`search_phase`."""
+
+    def __init__(self) -> None:
+        self.count = 0
+
+    def set_count(self, count: int) -> None:
+        self.count = count
+
+
+def _set_result_count(phase_span: Any, count: int) -> None:
+    """Set ``mintmory.result_count`` on the stage span; never raise into the caller."""
+    try:
+        phase_span.set_attribute("mintmory.result_count", count)
+    except Exception:  # noqa: BLE001 - an attribute must never break a search
+        return
+
+
+def _record_search_latency(name: str, started: float) -> None:
+    """Record the ``mintmory.search.latency_ms`` point; never raise into the caller."""
+    try:
+        record_value(
+            "mintmory.search.latency_ms",
+            (time.perf_counter() - started) * 1000.0,
+            unit="ms",
+            phase=name,
+        )
+    except Exception:  # noqa: BLE001 - a metric must never break a search
+        return
+
+
+_span_context = span
+
+
+@contextmanager
+def search_phase(name: str, *, span: bool = True) -> Iterator[_PhaseHandle]:
+    """Time one search stage: its ``mintmory.search.<name>`` span, count and latency point.
+
+    The block reports the stage's result count through ``set_count(n)`` (0 by default). The
+    latency point is recorded even when the block raises; a failing stage is marked with
+    ``mark_error`` before the exception is re-raised. With ``span`` false only the point is
+    recorded, and with telemetry off every call is a no-op.
+    """
+    handle = _PhaseHandle()
+    started = time.perf_counter()
+    if not span:
+        try:
+            yield handle
+        finally:
+            _record_search_latency(name, started)
+        return
+    with _span_context(f"mintmory.search.{name}") as phase_span:
+        try:
+            yield handle
+        except Exception as error:
+            mark_error(phase_span, type(error).__name__)
+            raise
+        finally:
+            _set_result_count(phase_span, handle.count)
+            _record_search_latency(name, started)
 
 
 def timed_phase(name: str) -> Callable[[_F], _F]:
-    """Time a search stage without opening a span (task 1.3)."""
-    raise NotImplementedError
+    """Wrap a search stage so it records only its ``mintmory.search.latency_ms`` point."""
+
+    def deco(func: _F) -> _F:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            with search_phase(name, span=False):
+                return func(*args, **kwargs)
+
+        return wrapper  # type: ignore[return-value]
+
+    return deco

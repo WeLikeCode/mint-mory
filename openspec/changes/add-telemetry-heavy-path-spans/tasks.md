@@ -15,7 +15,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   SpanKind.SERVER, "client": SpanKind.CLIENT}.get(kind, SpanKind.INTERNAL)`; all four passed to
   `_tracer.start_as_current_span`. No `staging` caller passes an attribute with these names (`step=` in
   `dreaming.py`, `gen_ai.*`/`prompt_chars` in `llm.py`). `_NoopSpan.update_name(name)`: a no-op.
-- [ ] 1.3 `search_phase(name, *, span=True)`: context manager yielding an object with `set_count(n)`; times the block
+- [x] 1.3 `search_phase(name, *, span=True)`: context manager yielding an object with `set_count(n)`; times the block
   (`time.perf_counter()`), opens `mintmory.search.<name>` when `span`, sets `mintmory.result_count`, records
   `mintmory.search.latency_ms` (`phase=name`, histogram `unit="ms"`, pass `unit` through `_instrument`) in a `finally`;
   on an exception calls `mark_error(span, type(exc).__name__)` and re-raises. `timed_phase(name)`: the same as a
