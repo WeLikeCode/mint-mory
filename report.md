@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at c902d8e86dc79dcd0bd6c54c238ac81a4de21ae2
+- Target: staging at 9ec57437a6164921ff21b462601696127b5c96d4
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-17T03:54:06Z
-- Stopped: unit_halted (openspec:fix-distiller-prompt-cap): secret in the outgoing commits, push blocked: packages/core/tests/test_history_distill_phase2.py (mintkey)
+- Written: 2026-10-17T09:23:48Z
+- Stopped: unit_escalated (openspec:add-recurrent-tree-indexing): no finding of this round can be converted into a fix task
 
 ## Units
 
@@ -75,25 +75,25 @@
 - Usage: $0.57, 1 run(s), 1 attempt(s)
 
 ### openspec:fix-distiller-prompt-cap
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.11, 1 run(s), 1 attempt(s)
+- Result: integrated at 079d93288a3d682a7771fb480ef9baf49e782d8e
+- Pull request: 18
+- Merge commit: 079d93288a3d682a7771fb480ef9baf49e782d8e
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $0.75, 3 run(s), 1 attempt(s)
 
 ### openspec:fix-cochange-tools-on-postgres
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at bdec836adcd6cb385b731c5317b37254bf77d6c8
+- Pull request: 21
+- Merge commit: bdec836adcd6cb385b731c5317b37254bf77d6c8
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.09, 1 run(s), 1 attempt(s)
 
 ### openspec:add-recurrent-tree-indexing
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/23
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $1.07, 2 run(s), 1 attempt(s)
 
 ### openspec:deployment-hardening
 - Result: not integrated
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $19.46
+- Cost: $22.26
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 21
+- Runs that dispatched a unit: 26

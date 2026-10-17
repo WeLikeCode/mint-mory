@@ -154,3 +154,4 @@
 {"at":"2026-10-17T09:22:59Z","by":"harness","reason":"the cause is gone: openspec:add-recurrent-tree-indexing is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-17T09:23:00Z","attempt":1,"cost_usd":1.070455,"runs":2,"type":"plan.charged","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T09:23:00Z","run":"r-20261017T0922Z-5dcd","type":"unit.dispatched","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T09:23:48Z","detail":"no finding of this round can be converted into a fix task","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:add-recurrent-tree-indexing"}
