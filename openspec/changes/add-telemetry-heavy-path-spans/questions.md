@@ -12,6 +12,8 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
+| Q-002 | open | none | verdict | Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name |
+| Q-003 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -38,3 +40,44 @@ Edit `packages/cli/tests/test_telemetry_cli_heavy_paths.py`: change the sort key
 ### Answer
 <!-- write below this line -->
 Edit packages/cli/tests/test_telemetry_cli_heavy_paths.py: the test bug is the ordering, not the assertions. Sorting ascending by mintmory.files.added always puts the second run (added=0) first. Order the two index-tree spans by when they started, which is the real order of the two runs: by_start = sorted(spans, key=lambda s: s.start_time), then first_run, second_run = _attributes(by_start[0]), _attributes(by_start[1]). Keep every assertion unchanged (first run 2 added, 0 updated, 0 unchanged, 0 failed; second run 1 updated, 1 unchanged, 0 failed). Do not sort by another counter.
+
+---
+
+## Q-002: Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 2, verifier
+
+### Context
+After round 2 the verifier cannot decide on its own: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why: a rejected hold is fixed by a fix unit.
+
+### Options
+1. accept
+2. reject: <reason>
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-003: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 2, verifier
+
+### Context
+After round 2 the verifier cannot decide on its own: the diff is longer than 120000 characters: the judge saw only the start
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why; end the reason with a sentence WHEN ... THEN ... so that a fix unit can be made.
+
+### Options
+1. accept
+2. reject: <reason>
+
+### Answer
+<!-- write below this line -->
