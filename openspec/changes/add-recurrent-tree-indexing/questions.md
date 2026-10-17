@@ -16,7 +16,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-003 | answered | none | verdict | Criterion C-99b1ee27 (ingestion › Incremental, idempotent runs › Re-run skips unchanged and updates changed): accept as satisfied? |
 | Q-004 | answered | none | verdict | Criterion C-4a833fcd (ingestion › Bounded, opt-in content extraction › Content pass respects the budget): accept as satisfied? |
 | Q-005 | answered | none | verdict | Criterion C-1474f431 (ingestion › Scoping, exclusions, and collection tagging › Excluded files and folders are skipped): accept as satisfied? |
-| Q-006 | open | none | verdict | Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied? |
+| Q-006 | answered | none | verdict | Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied? |
 | Q-007 | open | none | verdict | Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done |
 <!-- l4:index:end -->
 
@@ -187,7 +187,7 @@ accept: satisfied as it stands. --exclude is a comma-separated glob list (main.p
 
 ## Q-006: Criterion C-475f20f9 (ingestion › Scoping, exclusions, and collection tagging › Without --exclude, artifacts are indexed as metadata): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -214,6 +214,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: satisfied as it stands. test_iter_dir_groups_yields_all_files_by_default shows the default walk yields build.dll with every other file (no default denylist), and index_tree renders every non-text file the same way as a metadata + folder-context record (test_render_file_record_includes_type_location_and_siblings, test_index_tree_metadata_only_indexes_every_file).
 ---
 
 ## Q-007: Finding F-b34b9dc3: task 2.3 is ticked as already satisfied, but its text is not done
