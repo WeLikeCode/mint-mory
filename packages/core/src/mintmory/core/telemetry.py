@@ -892,3 +892,11 @@ def timed_phase(name: str) -> Callable[[_F], _F]:
         return wrapper  # type: ignore[return-value]
 
     return deco
+
+
+def set_attributes(**attrs: Any) -> None:
+    raise NotImplementedError
+
+
+def counts_added[F: Callable[..., Any]](fn: F) -> F:
+    raise NotImplementedError
