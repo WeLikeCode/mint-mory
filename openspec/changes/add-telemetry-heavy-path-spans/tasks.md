@@ -9,7 +9,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
 ## 1. Helpers (`telemetry.py`)
 - [x] 1.1 Tests for "Span kind, parent context and exception options", the helpers on and off, `run_in_context`
   with four threads at once.
-- [ ] 1.2 `span()` options (here because `command_span` needs the flags; `add-telemetry-boundary-tracing` uses all
+- [x] 1.2 `span()` options (here because `command_span` needs the flags; `add-telemetry-boundary-tracing` uses all
   four): `span(name, *, kind="internal", context=None, record_exception=True, set_status_on_exception=True, **attrs)`,
   `kind` typed `Literal["internal", "server", "client"]` and mapped by `{"internal": SpanKind.INTERNAL, "server":
   SpanKind.SERVER, "client": SpanKind.CLIENT}.get(kind, SpanKind.INTERNAL)`; all four passed to
