@@ -122,3 +122,6 @@
 {"at":"2026-10-17T02:37:59Z","run":"r-20261017T0237Z-d577","type":"unit.dispatched","unit":"openspec:fix-note-bonus-env-name"}
 {"at":"2026-10-17T03:37:48Z","head":"61ee36d119da2c4e99cf1352c976ec068b4ed7ef","pr":16,"target_before":"788adf714706d466ffc81fb700014cda202a3b36","type":"unit.merge_requested","unit":"openspec:fix-note-bonus-env-name"}
 {"at":"2026-10-17T03:37:53Z","head":"61ee36d119da2c4e99cf1352c976ec068b4ed7ef","merge_commit":"61ee36d119da2c4e99cf1352c976ec068b4ed7ef","pr":16,"type":"unit.merged","unit":"openspec:fix-note-bonus-env-name"}
+{"at":"2026-10-17T03:39:16Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"61ee36d119da2c4e99cf1352c976ec068b4ed7ef","status":"pass","type":"unit.postcheck","unit":"openspec:fix-note-bonus-env-name"}
+{"at":"2026-10-17T03:39:16Z","revision":"61ee36d119da2c4e99cf1352c976ec068b4ed7ef","type":"unit.integrated","unit":"openspec:fix-note-bonus-env-name"}
+{"at":"2026-10-17T03:39:16Z","attempt":1,"cost_usd":0.569209,"runs":1,"type":"plan.charged","unit":"openspec:fix-note-bonus-env-name"}

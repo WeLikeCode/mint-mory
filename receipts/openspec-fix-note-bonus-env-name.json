@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T03:39:16Z",
+  "integrated_revision": "61ee36d119da2c4e99cf1352c976ec068b4ed7ef",
+  "merge_commit": "61ee36d119da2c4e99cf1352c976ec068b4ed7ef",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 16,
+  "receipt_id": "telemetry-and-fixes/openspec:fix-note-bonus-env-name/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "61ee36d119da2c4e99cf1352c976ec068b4ed7ef",
+  "spec_digest": "989bb720d85e5136",
+  "target": "staging",
+  "unit_id": "openspec:fix-note-bonus-env-name"
+}
