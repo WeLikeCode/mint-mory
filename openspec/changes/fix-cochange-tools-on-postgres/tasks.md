@@ -64,7 +64,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
   next to `changed_with, documents_timeline` (`server.py:43`). `cast` is used only at
   `server.py:690` and `:713` today, so drop it from `from typing import Any, Literal,
   cast` (`server.py:33`), or ruff reports F401.
-- [ ] 2.4 `main.py` `docs timeline` (:1658-1700) and `docs changed-with` (:1704-1751):
+- [x] 2.4 `main.py` `docs timeline` (:1658-1700) and `docs changed-with` (:1704-1751):
   right after `store = _get_store()` add
   `if not isinstance(store, _SqliteBackend):` →
   `console.print(f"[red]error[/red]: {COCHANGE_SQLITE_ONLY_MESSAGE}")` and
