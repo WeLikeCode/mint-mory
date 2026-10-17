@@ -178,3 +178,5 @@
 {"at":"2026-10-17T17:06:59Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-heavy-path-spans is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-17T17:07:00Z","attempt":1,"cost_usd":2.564299,"runs":4,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T17:07:00Z","run":"r-20261017T1706Z-8d16","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T17:07:59Z","attempt":1,"cost_usd":2.564299,"runs":5,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T17:07:59Z","run":"r-20261017T1707Z-f164","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
