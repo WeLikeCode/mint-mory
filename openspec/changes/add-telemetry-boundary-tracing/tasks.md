@@ -11,7 +11,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
 - [x] 1.2 `inject_trace_headers(headers)`: `TraceContextTextMapPropagator().inject(headers)` when enabled, returns
   `headers`. `extract_context(carrier)`: `opentelemetry.propagate.extract(carrier)` when enabled, else `None`. Both in
   `try/except Exception`.
-- [ ] 1.3 `_instrument(kind, factory_name, name, **options)` passes `options` to the factory on first creation
+- [x] 1.3 `_instrument(kind, factory_name, name, **options)` passes `options` to the factory on first creation
   (heavy-path's `unit` included). `record_histogram(name, value, *, unit, boundaries=None, **attrs)`: through it with
   `unit` and `explicit_bucket_boundaries_advisory=boundaries`, `None` attributes dropped, no-op when metrics are off,
   body in `try/except Exception`.

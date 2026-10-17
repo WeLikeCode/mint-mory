@@ -647,13 +647,10 @@ def traced(name: str | None = None) -> Callable[[_F], _F]:
     return deco
 
 
-def _instrument(
-    kind: str, factory_name: str, name: str, meter: Any, unit: str | None = None
-) -> Any:
+def _instrument(kind: str, factory_name: str, name: str, meter: Any, **options: Any) -> Any:
     inst = _instruments.get(name)
     if inst is None and meter is not None:
-        kwargs: dict[str, Any] = {} if unit is None else {"unit": unit}
-        inst = getattr(meter, factory_name)(name, **kwargs)
+        inst = getattr(meter, factory_name)(name, **options)
         _instruments[name] = inst
     return inst
 
@@ -675,7 +672,8 @@ def record_value(name: str, value: float, *, unit: str | None = None, **attrs: A
     if not _enabled or meter is None:
         return
     try:
-        hist = _instrument("histogram", "create_histogram", name, meter, unit)
+        options: dict[str, Any] = {} if unit is None else {"unit": unit}
+        hist = _instrument("histogram", "create_histogram", name, meter, **options)
         if hist is not None:
             hist.record(value, {k: v for k, v in attrs.items() if v is not None})
     except Exception:  # noqa: BLE001 - a metric must never break the caller
@@ -1149,4 +1147,21 @@ def record_histogram(
     boundaries: Sequence[float] | None = None,
     **attrs: Any,
 ) -> None:
-    raise NotImplementedError
+    """Record one point on the histogram ``name``, with an optional explicit bucket set.
+
+    The histogram is built once through :func:`_instrument`, so the meter's factory receives
+    ``unit`` and ``explicit_bucket_boundaries_advisory=boundaries`` on first creation. ``None``
+    attributes are dropped; with metrics off the meter is never touched; the body never raises.
+    """
+    meter = _meter
+    if not _enabled or meter is None:
+        return
+    try:
+        options: dict[str, Any] = {"unit": unit}
+        if boundaries is not None:
+            options["explicit_bucket_boundaries_advisory"] = boundaries
+        hist = _instrument("histogram", "create_histogram", name, meter, **options)
+        if hist is not None:
+            hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+    except Exception:  # noqa: BLE001 - a metric must never break the caller
+        return
