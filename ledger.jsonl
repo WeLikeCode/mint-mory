@@ -307,3 +307,4 @@
 {"at":"2026-10-17T19:47:28Z","branch":"l4/archive/openspec/add-recurrent-tree-indexing","head":"f7f25c33b4877f032531695f3e3371611b35f1a8","type":"unit.branch_deleted","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T19:47:29Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-17T19:47:29Z","run":"r-20261017T1947Z-9dba","type":"unit.dispatched","unit":"openspec:add-telemetry-boundary-tracing"}
+{"at":"2026-10-17T20:38:52Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-boundary-tracing"}
