@@ -1,40 +1,40 @@
-# Verification: openspec:add-telemetry-heavy-path-spans: NEEDS_HUMAN (round 4)
+# Verification: openspec:add-telemetry-heavy-path-spans: PASS (round 5)
 
 traceability: 22/22 criteria covered by a discriminating test
 
-- Base: `723562a8173c8d805caadba1f7f042ea23bec1fa`
-- Head: `933c79df245e4bfb2cd7f9b821a4cdd6f20d94b8`
+- Base: `2e0b76e7070daf5adb52bd8b3d9071a8cac89214`
+- Head: `2f4fcccdc5cfbea3e242ba7e157de33e06e22219`
 - Implementer profiles: deepseek, glm, deepseek-free
-- Judge: claude-judge (claude-sonnet-5-5), 2 call(s), prompt sha256 `19eaa8345828cae44bfa486b01ab9174c59e0b9a3a111c7dd9b25c263585c34b`
-- Judge replies of claude-judge (this unit, all rounds): valid 0, repaired 0, retried 2, discarded 0; this round: retried
+- Judge: claude-judge (claude-sonnet-5-5), 2 call(s), prompt sha256 `7c005577f19b01270bc90cd1f3d07584ead797dcacd18edc43a3838f12800c1a`
+- Judge replies of claude-judge (this unit, all rounds): valid 0, repaired 0, retried 3, discarded 0; this round: retried
 - independence: declared (unverified): claude-judge anthropic (served claude-sonnet-5-5), deepseek deepseek (declared), glm zhipu (declared), deepseek-free deepseek (declared)
-- Cost: $1.3642
+- Cost: $1.3594
 
 ## Ladder
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.9 | base merged: staging@723562a817 as 933c79df24 (1 commit) |
-| 1 | integrity | ok | 0.9 | 7 sub-checks (+1 unfrozen by human answers); scope: 99 changed file(s), 1 held |
-| 2 | build | ok | 0.8 |  |
-| 3 | tests | ok | 55.3 |  |
+| 0 | preconditions | ok | 1.3 | base merged: staging@2e0b76e707 as 2f4fcccdc5 (1 commit) |
+| 1 | integrity | ok | 1.3 | 7 sub-checks (+1 unfrozen by human answers); scope: 102 changed file(s), 1 held |
+| 2 | build | ok | 19.8 |  |
+| 3 | tests | ok | 67.3 |  |
 | 4 | traceability | ok | 0.1 | 22/22 criteria covered |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
 | 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 2.5 | 22/22 criteria judged by jev |
-| 9 | judge | ok | 38.7 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 8 | s1 judge | ok | 1.6 | 22/22 criteria judged by jev |
+| 9 | judge | ok | 38.5 | 2 call(s) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
 | Gate | Status | Command | Log |
 |---|---|---|---|
-| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261017T1823Z-be55/022-setup.log |
-| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261017T1823Z-be55/023-lint.log |
-| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261017T1823Z-be55/024-lint.log |
-| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261017T1823Z-be55/025-typecheck.log |
-| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261017T1823Z-be55/026-test.log |
+| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261017T1941Z-6265/001-setup.log |
+| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261017T1941Z-6265/002-lint.log |
+| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261017T1941Z-6265/003-lint.log |
+| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261017T1941Z-6265/004-typecheck.log |
+| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261017T1941Z-6265/005-test.log |
 
 ## Integrity
 
@@ -76,25 +76,25 @@ Declared suppressions:
 |---|---|---|---|---|---|
 | C-844f12f2 | observability › Span kind, parent context and exception options › Options reach the span | covered | packages.core.tests.test_telemetry_span_options::test_span_context_sets_an_explicit_parent (passed, zero_value); packages.core.tests.test_telemetry_span_options::test_span_exception_options_reach_the_span (passed, zero_value); packages.core.tests.test_telemetry_span_options::test_span_kind_maps_know... | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.93 |
 | C-f4b27f0d | observability › Search phase spans and latency › A search shows its phases | covered | packages.core.tests.test_telemetry_search_paths::test_note_anchoring_records_no_search_phase (passed, red_assertion); packages.core.tests.test_telemetry_search_paths::test_search_records_the_four_phase_spans_and_latency (passed, red_assertion); packages.core.tests.test_telemetry_search_phase::test_s... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.90 |
-| C-43d72c8b | observability › Search phase spans and latency › Search-around alone records only its graph point | covered | packages.core.tests.test_telemetry_search_paths::test_search_around_alone_records_only_its_graph_point (passed, red_assertion); packages.core.tests.test_telemetry_search_phase::test_timed_phase_records_only_the_phase_point (passed, zero_value) | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.91 |
-| C-c91ee0e7 | observability › Search phase spans and latency › The Postgres backend uses the shared path | covered | packages.core.tests.test_telemetry_search_paths::test_postgres_search_uses_the_shared_phase_path (passed, red_assertion) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.88 |
-| C-c986421b | observability › Span helpers without work or with a failure › A stage with nothing to do | covered | packages.core.tests.test_telemetry_search_paths::test_stage_with_nothing_to_do_records_a_zero_count (passed, red_assertion); packages.core.tests.test_telemetry_search_phase::test_search_phase_records_zero_for_a_stage_with_nothing_to_do (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.92 |
-| C-20646f63 | observability › Span helpers without work or with a failure › A failing stage | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_caption_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_cochange_unavailable_is_an_outcome_not_an_error (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_conversio... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.72 |
+| C-43d72c8b | observability › Search phase spans and latency › Search-around alone records only its graph point | covered | packages.core.tests.test_telemetry_search_paths::test_search_around_alone_records_only_its_graph_point (passed, red_assertion); packages.core.tests.test_telemetry_search_phase::test_timed_phase_records_only_the_phase_point (passed, zero_value) | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.92 |
+| C-c91ee0e7 | observability › Search phase spans and latency › The Postgres backend uses the shared path | covered | packages.core.tests.test_telemetry_search_paths::test_postgres_search_uses_the_shared_phase_path (passed, red_assertion) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.86 |
+| C-c986421b | observability › Span helpers without work or with a failure › A stage with nothing to do | covered | packages.core.tests.test_telemetry_search_paths::test_stage_with_nothing_to_do_records_a_zero_count (passed, red_assertion); packages.core.tests.test_telemetry_search_phase::test_search_phase_records_zero_for_a_stage_with_nothing_to_do (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.91 |
+| C-20646f63 | observability › Span helpers without work or with a failure › A failing stage | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_caption_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_cochange_unavailable_is_an_outcome_not_an_error (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_conversio... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.73 |
 | C-0d312d3f | observability › Span helpers without work or with a failure › A metric failure stays inside telemetry | covered | packages.core.tests.test_telemetry_search_paths::test_a_metric_failure_stays_inside_telemetry (passed, red_assertion); packages.core.tests.test_telemetry_search_phase::test_search_phase_swallows_a_metric_recording_failure (passed, zero_value) | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.89 |
-| C-53f9b64c | observability › Embedding spans and latency › Hashing embedder is traced | covered | packages.core.tests.test_telemetry_embedder::test_a_failing_embed_batch_is_marked_and_re_raised (passed, red_assertion); packages.core.tests.test_telemetry_embedder::test_fake_embed_batch_that_calls_embed_records_once (passed, red_assertion); packages.core.tests.test_telemetry_embedder::test_fake_em... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.91 |
-| C-755ec9f3 | observability › Embedding spans and latency › Network embedders name their model | covered | packages.core.tests.test_telemetry_embedder_network::test_local_embedder_methods_carry_the_shared_decorator (passed, pre_satisfied); packages.core.tests.test_telemetry_embedder_network::test_ollama_embed_names_provider_and_model (passed, pre_satisfied); packages.core.tests.test_telemetry_embedder_ne... | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.87 |
+| C-53f9b64c | observability › Embedding spans and latency › Hashing embedder is traced | covered | packages.core.tests.test_telemetry_embedder::test_a_failing_embed_batch_is_marked_and_re_raised (passed, red_assertion); packages.core.tests.test_telemetry_embedder::test_fake_embed_batch_that_calls_embed_records_once (passed, red_assertion); packages.core.tests.test_telemetry_embedder::test_fake_em... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.92 |
+| C-755ec9f3 | observability › Embedding spans and latency › Network embedders name their model | covered | packages.core.tests.test_telemetry_embedder_network::test_local_embedder_methods_carry_the_shared_decorator (passed, pre_satisfied); packages.core.tests.test_telemetry_embedder_network::test_ollama_embed_names_provider_and_model (passed, pre_satisfied); packages.core.tests.test_telemetry_embedder_ne... | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.90 |
 | C-e9540797 | observability › CLI commands are traced end to end › Command spans and counts | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_add_root_span_contains_the_add_memory_span (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_history_sync_exports_its_root_span (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_index_sear... | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.88 |
 | C-ebe047e9 | observability › CLI commands are traced end to end › A failing command is marked | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_failing_ingest_command_is_marked (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.91 |
-| C-64a88ce0 | observability › CLI commands are traced end to end › Exit code 0 is not an error | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_caption_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_command_span_exit_code_zero_is_not_an_error (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_failing_inges... | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.94 |
-| C-3ce5b739 | observability › Indexing and conversion phases are traced › index-tree phases | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_cochange_unavailable_is_an_outcome_not_an_error (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_index_tree_records_scan_prune_and_cochange_children (passed, zero_value) | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.90 |
+| C-64a88ce0 | observability › CLI commands are traced end to end › Exit code 0 is not an error | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_caption_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_command_span_exit_code_zero_is_not_an_error (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_failing_inges... | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.93 |
+| C-3ce5b739 | observability › Indexing and conversion phases are traced › index-tree phases | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_cochange_unavailable_is_an_outcome_not_an_error (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_index_tree_records_scan_prune_and_cochange_children (passed, zero_value) | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.89 |
 | C-a83f338b | observability › Indexing and conversion phases are traced › No co-change span without co-change work | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_no_cochange_span_when_disabled (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_no_cochange_span_with_one_changed_file (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.92 |
 | C-55bbc2f5 | observability › Indexing and conversion phases are traced › Conversion spans | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_conversion_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_conversion_spans_for_ingest_and_index_tree (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.92 |
-| C-193aef3b | observability › Indexing and conversion phases are traced › Inline caption span | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_caption_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_inline_caption_span (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.69 |
-| C-711e3d68 | observability › Worker threads keep the trace › Threads stay in the trace | covered | packages.core.tests.test_telemetry_span_options::test_run_in_context_keeps_the_trace_across_four_threads (passed, zero_value); packages.core.tests.test_telemetry_worker_threads::test_worker_threads_keep_the_caller_trace (passed, red_assertion) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.40 |
-| C-910cf3ca | observability › Memory counters › Counter by category | covered | packages.core.tests.test_telemetry_memory_counter::test_both_backends_add_memory_carry_the_shared_decorator (passed, red_assertion); packages.core.tests.test_telemetry_memory_counter::test_sqlite_add_memory_counts_each_category (passed, red_assertion); packages.core.tests.test_telemetry_set_attribut... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.89 |
+| C-193aef3b | observability › Indexing and conversion phases are traced › Inline caption span | covered | packages.cli.tests.test_telemetry_cli_heavy_paths::test_caption_failure_span_is_failed (passed, zero_value); packages.cli.tests.test_telemetry_cli_heavy_paths::test_inline_caption_span (passed, zero_value) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.64 |
+| C-711e3d68 | observability › Worker threads keep the trace › Threads stay in the trace | covered | packages.core.tests.test_telemetry_span_options::test_run_in_context_keeps_the_trace_across_four_threads (passed, zero_value); packages.core.tests.test_telemetry_worker_threads::test_worker_threads_keep_the_caller_trace (passed, red_assertion) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.42 |
+| C-910cf3ca | observability › Memory counters › Counter by category | covered | packages.core.tests.test_telemetry_memory_counter::test_both_backends_add_memory_carry_the_shared_decorator (passed, red_assertion); packages.core.tests.test_telemetry_memory_counter::test_sqlite_add_memory_counts_each_category (passed, red_assertion); packages.core.tests.test_telemetry_set_attribut... | packages.core.tests.test_observability_docs::test_metrics_section_lists_the_new_metrics (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.90 |
 | C-28481766 | observability › Telemetry carries no content › No content leaks into telemetry | covered | packages.core.tests.test_telemetry_privacy::test_no_content_leaks_into_telemetry (passed, pre_satisfied) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.87 |
-| C-395d5e72 | observability › Telemetry carries no content › Notes, LLM calls, concept names, headers and indexed files leak nothing | covered | packages.cli.tests.test_telemetry_cli_privacy::test_notes_llm_concepts_headers_and_files_leak_nothing (passed, pre_satisfied) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.95 |
-| C-72a88eb9 | observability › Telemetry carries no content › A failure does not leak its message | covered | packages.core.tests.test_telemetry_privacy::test_a_failure_does_not_leak_its_message (passed, pre_satisfied) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.90 |
+| C-395d5e72 | observability › Telemetry carries no content › Notes, LLM calls, concept names, headers and indexed files leak nothing | covered | packages.cli.tests.test_telemetry_cli_privacy::test_notes_llm_concepts_headers_and_files_leak_nothing (passed, pre_satisfied) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.94 |
+| C-72a88eb9 | observability › Telemetry carries no content › A failure does not leak its message | covered | packages.core.tests.test_telemetry_privacy::test_a_failure_does_not_leak_its_message (passed, pre_satisfied) | packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans (it traces 19 criteria (verifier.max_criteria_per_test=3)) | 0.89 |
 | C-f0d6331e | observability › Rejected hold: the diff is longer than 120000 characters: the judge saw only the start — finding H-e0757174 › Rejected hold: the diff is longer than 120000 characters: the judge saw only the start | covered | packages.core.tests.test_telemetry_helper_guards::test_add_count_survives_a_counter_add_that_raises (passed, red_assertion); packages.core.tests.test_telemetry_helper_guards::test_add_count_survives_a_meter_that_cannot_create_instruments (passed, red_assertion); packages.core.tests.test_telemetry_he... | - | 0.93 |
 
 ## Evidence
@@ -127,6 +127,9 @@ Declared suppressions:
 | `openspec/changes/add-telemetry-heavy-path-spans/.l4/evidence/round-3/evidence.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-heavy-path-spans/.l4/evidence/round-3/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-heavy-path-spans/.l4/evidence/round-3/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-heavy-path-spans/.l4/evidence/round-4/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-heavy-path-spans/.l4/evidence/round-4/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-telemetry-heavy-path-spans/.l4/evidence/round-4/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1042Z-74d5.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1320Z-0e59.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1320Z-5212.jsonl` |  | none | exempt: harness, spec or documentation path |
@@ -224,30 +227,31 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 |---|---|---|---|---|---|
 | C-844f12f2 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-f4b27f0d | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-43d72c8b | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-c91ee0e7 | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-c986421b | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-20646f63 | ok | 0.720 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-43d72c8b | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-c91ee0e7 | ok | 0.860 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-c986421b | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-20646f63 | ok | 0.730 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-0d312d3f | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-53f9b64c | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-755ec9f3 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-53f9b64c | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-755ec9f3 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e9540797 | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-ebe047e9 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-64a88ce0 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-3ce5b739 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-64a88ce0 | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-3ce5b739 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-a83f338b | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-55bbc2f5 | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-193aef3b | ok | 0.690 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-711e3d68 | ok | 0.400 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-910cf3ca | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-193aef3b | ok | 0.640 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-711e3d68 | ok | 0.420 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-910cf3ca | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-28481766 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-395d5e72 | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-72a88eb9 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-395d5e72 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-72a88eb9 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-f0d6331e | ok | 0.930 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
 ## Human verdicts
 
 - Q-002 accept H-8b8cc0d1 by human: in scope. The proposal names history/ingest.py among the files this change edits, and the spec requires that work handed to thread pools in history backfill and sync runs in a fresh copy of the caller's context per task. The diff of packages/core/src/mintmory/core/history/ingest.py is exactly that: ...
+- Q-004 accept H-e0757174 by human: the hold is only about the diff's length (2.2 MB, of which about 202 kB is code and tests; the rest is the harness's own ledger and verification files). Since the full-diff review that rejected round 3 (Q-003), the unit changed only by fix-2: a new test file (test_telemetry_helper_guards.py, no pre-...
 
 ## Criteria
 
@@ -304,10 +308,6 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 - [minor, deterministic] a test is ignored as evidence (criterion C-28481766): packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans: it traces 19 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-395d5e72): packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans: it traces 19 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-72a88eb9): packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans: it traces 19 criteria (verifier.max_criteria_per_test=3)
-
-## Needs a human
-
-- the diff is longer than 120000 characters: the judge saw only the start
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
