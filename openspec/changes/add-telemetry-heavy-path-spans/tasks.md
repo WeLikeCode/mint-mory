@@ -75,5 +75,5 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   metric point attributes); the LLM test server is a `ThreadingHTTPServer` on `127.0.0.1:0`.
 
 ## 6. Checks
-- [ ] 6.1 `docs/OBSERVABILITY.md` sections 4.3 and 4.4 list the new spans and metrics. `ruff check`,
+- [x] 6.1 `docs/OBSERVABILITY.md` sections 4.3 and 4.4 list the new spans and metrics. `ruff check`,
   `ruff format --check`, `mypy packages`, full suite with coverage at or above 80%.

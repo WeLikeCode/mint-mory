@@ -430,16 +430,30 @@ immediately — so instrumented hot paths (`add_memory`, `search`) pay nothing.
 |---|---|---|
 | `mintmory.add_memory` | `StorageAdapter.add_memory` | `category`, `n_entities`, `has_embedding` |
 | `mintmory.search` | `StorageAdapter.search` | `query_len`, `limit`, `n_fts`, `n_vec`, `n_results`, `search_around` |
+| `mintmory.search.fts` / `mintmory.search.substring` / `mintmory.search.vector` / `mintmory.search.fusion` | `hybrid_search.collect_scores` (both storage backends) | `mintmory.result_count` |
 | `mintmory.search_around` | `StorageAdapter.search_around` | `n_anchors`, `depth`, `n_link_types`, `min_strength`, `n_found` |
 | `mintmory.embed` | embedder `embed`/`embed_batch` | `provider`, `model`, `dim`, `batch_size`, `latency_ms` |
 | `mintmory.dream.full` / `.light` | `DreamingEngine.run_*` | `new_links`, `new_summaries`, `resolved`, `archived`, `rehabilitated`, `duration_ms` |
 | `mintmory.dream.step` | each of steps 1–6 | `step` (`anomaly`/`link`/`summary`/`resolve`/`archive`/`rehab`), `count` |
 | `gen_ai.chat` (LLM call) | `LLMClient.chat` | `gen_ai.system`=provider, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `latency_ms`, `ok` |
+| `mintmory.cli.<command>` | each CLI command (`add`, `search`, `ingest`, `index-tree`, `dream`, `history.backfill`, `history.sync`) | `mintmory.files.scanned` / `.added` / `.updated` / `.unchanged` / `.failed` (`index-tree`) |
+| `mintmory.index_tree.scan` / `mintmory.index_tree.prune` / `mintmory.index_tree.cochange` | `index_tree` | `mintmory.outcome` (`ok`/`unavailable`), `mintmory.cochange.changesets` |
+| `mintmory.convert` | each `extract_markdown` call (`ingest`, `index-tree --content`) | `mintmory.file.suffix`, `mintmory.file.size_bytes`, `mintmory.outcome` (`ok`/`failed`) |
+| `mintmory.vision.caption` | each inline `captioner.describe` call (`index-tree --vision`) | `mintmory.file.suffix`, `mintmory.file.size_bytes`, `mintmory.outcome` (`ok`/`failed`) |
 
 Step spans are children of the dream span, and each `gen_ai.chat` span is a child
 of the step that triggered it (summary or resolve) — so a trace shows the whole
 dream tree with per-call model + token + latency, directly answering "why is the
 dream slow / which model / which step".
+
+The four search phase spans are children of `mintmory.search` (measured in the
+`collect_scores` path shared by both backends); search-around alone records no
+phase span. CLI command spans are root spans (spaces become dots); the
+`index_tree` phase spans and the per-file `mintmory.convert` / `mintmory.vision.caption`
+spans are nested inside them. The per-file spans are recorded only for real
+processing (a binary conversion or an inline caption), not for a plain stat or
+text read. Failing spans carry `mintmory.outcome=failed` and `error.type` only —
+no message text.
 
 ### 4.4 Metrics to emit
 
@@ -447,7 +461,7 @@ dream slow / which model / which step".
 |---|---|---|
 | `mintmory.memories.added` | counter | `category` |
 | `mintmory.searches` | counter | `had_vector` |
-| `mintmory.search.latency_ms` | histogram | `phase` (`fts`/`vector`/`graph`/`total`) |
+| `mintmory.search.latency_ms` | histogram | `phase` (`fts`/`substring`/`vector`/`fusion`/`graph`/`total`) |
 | `mintmory.embed.latency_ms` | histogram | `provider`, `model` |
 | `mintmory.llm.calls` | counter | `model`, `kind` (`summary`/`resolve`/`contradiction`/`judge`), `ok` |
 | `mintmory.llm.latency_ms` | histogram | `model`, `kind` |
