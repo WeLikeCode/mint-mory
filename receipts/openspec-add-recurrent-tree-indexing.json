@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T10:41:32Z",
+  "integrated_revision": "e084d7327d5417569c282ae53fe6e3873478488f",
+  "merge_commit": "e084d7327d5417569c282ae53fe6e3873478488f",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 23,
+  "receipt_id": "telemetry-and-fixes/openspec:add-recurrent-tree-indexing/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "e084d7327d5417569c282ae53fe6e3873478488f",
+  "spec_digest": "83aa00e99a8f7df8",
+  "target": "staging",
+  "unit_id": "openspec:add-recurrent-tree-indexing"
+}

@@ -160,3 +160,6 @@
 {"at":"2026-10-17T10:27:26Z","run":"r-20261017T1027Z-b735","type":"unit.dispatched","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T10:40:12Z","head":"e084d7327d5417569c282ae53fe6e3873478488f","pr":23,"target_before":"0aaa527e1cec8c429d0e8c3210abf61d3bcd14ef","type":"unit.merge_requested","unit":"openspec:add-recurrent-tree-indexing"}
 {"at":"2026-10-17T10:40:17Z","head":"e084d7327d5417569c282ae53fe6e3873478488f","merge_commit":"e084d7327d5417569c282ae53fe6e3873478488f","pr":23,"type":"unit.merged","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T10:41:32Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"e084d7327d5417569c282ae53fe6e3873478488f","status":"pass","type":"unit.postcheck","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T10:41:32Z","revision":"e084d7327d5417569c282ae53fe6e3873478488f","type":"unit.integrated","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T10:41:32Z","attempt":1,"cost_usd":2.524239,"runs":3,"type":"plan.charged","unit":"openspec:add-recurrent-tree-indexing"}
