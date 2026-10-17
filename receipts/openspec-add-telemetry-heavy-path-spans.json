@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-17T19:46:32Z",
+  "integrated_revision": "33cddd46861c02ed201c950dd19265f4afb57b50",
+  "merge_commit": "33cddd46861c02ed201c950dd19265f4afb57b50",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 26,
+  "receipt_id": "telemetry-and-fixes/openspec:add-telemetry-heavy-path-spans/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "4323bf73426b1021cc42e735ac6129186db430c0",
+  "spec_digest": "1c7cd1f769da4790",
+  "target": "staging",
+  "unit_id": "openspec:add-telemetry-heavy-path-spans"
+}

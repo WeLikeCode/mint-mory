@@ -297,3 +297,6 @@
 {"at":"2026-10-17T19:44:56Z","head":"4323bf73426b1021cc42e735ac6129186db430c0","pr":26,"target_before":"2e0b76e7070daf5adb52bd8b3d9071a8cac89214","type":"unit.merge_requested","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T19:45:01Z","head":"4323bf73426b1021cc42e735ac6129186db430c0","merge_commit":"33cddd46861c02ed201c950dd19265f4afb57b50","method":"squash","pr":26,"raced":false,"type":"unit.merged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T19:45:05Z","branch":"l4/openspec/add-telemetry-heavy-path-spans","head":"4323bf73426b1021cc42e735ac6129186db430c0","type":"unit.branch_deleted","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T19:46:32Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"33cddd46861c02ed201c950dd19265f4afb57b50","status":"pass","type":"unit.postcheck","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T19:46:32Z","revision":"33cddd46861c02ed201c950dd19265f4afb57b50","type":"unit.integrated","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T19:46:32Z","attempt":1,"cost_usd":5.287937,"runs":55,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
