@@ -32,7 +32,7 @@ Paths: `config.py` = `packages/core/src/mintmory/core/config.py`, tests in
 ## 3. Docs
 - [x] 3.1 `README.md:188`: keep `MINTMORY_NOTE_BONUS` and add "(legacy alias
   `MINTMORY_NOTE_NOTE_BONUS`)" to the Meaning column.
-- [ ] 3.2 `docs/EXPERIMENTS.md:599`: change `MINTMORY_NOTE_NOTE_BONUS` to
+- [x] 3.2 `docs/EXPERIMENTS.md:599`: change `MINTMORY_NOTE_NOTE_BONUS` to
   `MINTMORY_NOTE_BONUS` (mention the legacy alias in the Hypothesis cell or a
   footnote). Check with `git grep -n "MINTMORY_NOTE_NOTE_BONUS" -- README.md docs`
   that no doc names only the legacy variable.
