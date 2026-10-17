@@ -276,3 +276,4 @@
 {"at":"2026-10-17T17:58:08Z","run":"r-20261017T1758Z-b310","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T17:59:08Z","attempt":1,"cost_usd":2.564299,"runs":53,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T17:59:08Z","run":"r-20261017T1759Z-3ef6","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T18:00:02Z","detail":"80 run(s) used of 80","reason":"limit_runs","type":"plan.stopped"}
