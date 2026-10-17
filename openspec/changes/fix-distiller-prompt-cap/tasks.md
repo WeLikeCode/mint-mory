@@ -60,7 +60,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   spec states it); the slice still keeps the length bound. Update the docstring: the bound
   counts markers and newlines, and the first/last lines may be shortened when they
   alone exceed the cap.
-- [ ] 2.6 Do not change `distill_llm`, the per-turn `max_turn_chars` truncation, the
+- [x] 2.6 Do not change `distill_llm`, the per-turn `max_turn_chars` truncation, the
   redaction order, or `SegmentSettings`.
 
 ## 3. Gates
