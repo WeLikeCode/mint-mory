@@ -689,3 +689,77 @@ class TestNoteSettingsReadmeDocumentedBonusName:
         assert settings.auto_include_cap == 5
         assert settings.anchor_min_dominance == pytest.approx(0.8)
         assert NoteSettings(anchor_min_dominance=0.0).anchor_min_dominance == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# fix-note-bonus-env-name, task 4.1: the gate run re-pins the whole contract.
+# ---------------------------------------------------------------------------
+
+
+class TestNoteSettingsBonusEnvGateContract:
+    """The gate run re-checks the documented name, the alias, bounds and neighbours."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_gate_note_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for variable in (
+            "MINTMORY_NOTE_BONUS",
+            "MINTMORY_NOTE_NOTE_BONUS",
+            "MINTMORY_NOTE_AUTO_INCLUDE_CAP",
+            "MINTMORY_NOTE_ANCHOR_MIN_DOMINANCE",
+        ):
+            monkeypatch.delenv(variable, raising=False)
+
+    @pytest.mark.l4("C-4685d347")
+    def test_gate_documented_name_reaches_note_and_load_settings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MINTMORY_NOTE_BONUS=0.1 reaches both NoteSettings and load_settings()."""
+        monkeypatch.setenv("MINTMORY_NOTE_BONUS", "0.1")
+        assert NoteSettings().note_bonus == pytest.approx(0.1)
+        assert load_settings().note.note_bonus == pytest.approx(0.1)
+
+    @pytest.mark.l4("C-f1c5c1d6", "C-4685d347")
+    def test_gate_legacy_name_still_works_and_documented_name_wins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The legacy name alone sets the bonus; the documented name then overrides it."""
+        monkeypatch.setenv("MINTMORY_NOTE_NOTE_BONUS", "0.2")
+        assert NoteSettings().note_bonus == pytest.approx(0.2)
+        monkeypatch.setenv("MINTMORY_NOTE_BONUS", "0.1")
+        assert NoteSettings().note_bonus == pytest.approx(0.1)
+
+    @pytest.mark.l4("C-6b919649")
+    def test_gate_documented_name_beats_legacy_alias(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With both variables set, MINTMORY_NOTE_BONUS is the value that reaches the field."""
+        monkeypatch.setenv("MINTMORY_NOTE_BONUS", "0.1")
+        monkeypatch.setenv("MINTMORY_NOTE_NOTE_BONUS", "0.2")
+        assert NoteSettings().note_bonus == pytest.approx(0.1)
+
+    @pytest.mark.l4("C-e838bc72")
+    def test_gate_default_bounds_and_field_name_construction(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Default 0.05, both names enforce 0.0-1.0, and the field name still constructs."""
+        assert NoteSettings().note_bonus == pytest.approx(0.05)
+        assert NoteSettings(note_bonus=0.7).note_bonus == pytest.approx(0.7)
+
+        monkeypatch.setenv("MINTMORY_NOTE_BONUS", "5")
+        with pytest.raises(ValidationError):
+            NoteSettings()
+        monkeypatch.delenv("MINTMORY_NOTE_BONUS")
+
+        monkeypatch.setenv("MINTMORY_NOTE_NOTE_BONUS", "5")
+        with pytest.raises(ValidationError):
+            NoteSettings()
+
+    @pytest.mark.l4("C-9d99d712", "C-4685d347")
+    def test_gate_other_note_knobs_keep_their_names(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """auto_include_cap and anchor_min_dominance keep their names and construction."""
+        monkeypatch.setenv("MINTMORY_NOTE_BONUS", "0.1")
+        monkeypatch.setenv("MINTMORY_NOTE_AUTO_INCLUDE_CAP", "5")
+        monkeypatch.setenv("MINTMORY_NOTE_ANCHOR_MIN_DOMINANCE", "0.8")
+        settings = NoteSettings()
+        assert settings.note_bonus == pytest.approx(0.1)
+        assert settings.auto_include_cap == 5
+        assert settings.anchor_min_dominance == pytest.approx(0.8)
+        assert NoteSettings(anchor_min_dominance=0.0).anchor_min_dominance == pytest.approx(0.0)

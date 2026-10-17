@@ -38,7 +38,7 @@ Paths: `config.py` = `packages/core/src/mintmory/core/config.py`, tests in
   that no doc names only the legacy variable.
 
 ## 4. Gates
-- [ ] 4.1 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+- [x] 4.1 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate; the existing
   notes/search tests that build `NoteSettings(anchor_min_dominance=0.0)` or
   `StorageAdapter(":memory:", note_bonus=0.0)` pass unedited). These are the real gates of `.l4/config.yaml` (uv sync, ruff, mypy, pytest);
