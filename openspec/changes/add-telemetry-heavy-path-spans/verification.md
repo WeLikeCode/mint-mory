@@ -1,4 +1,4 @@
-# Verification: openspec:add-telemetry-heavy-path-spans: NEEDS_HUMAN (round 2)
+# Verification: openspec:add-telemetry-heavy-path-spans: FAIL (round 3)
 
 traceability: 21/21 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 21/21 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.7 | base staging@d38532a845 contained |
-| 1 | integrity | ok | 0.8 | 7 sub-checks (+1 unfrozen by human answers); scope: 36 changed file(s), 1 held |
-| 2 | build | ok | 0.8 |  |
-| 3 | tests | ok | 64.4 |  |
-| 4 | traceability | ok | 0.1 | 21/21 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 2) |
+| 1 | integrity | reused | 0.0 | reused (round 2) |
+| 2 | build | reused | 0.0 | reused (round 2) |
+| 3 | tests | reused | 0.0 | reused (round 2) |
+| 4 | traceability | reused | 0.0 | reused (round 2) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 1.7 | 21/21 criteria judged by jev |
-| 9 | judge | ok | 34.3 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 2) |
+| 8 | s1 judge | reused | 0.0 | reused (round 2) |
+| 9 | judge | reused | 0.0 | reused (round 2) |
+| 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
@@ -177,6 +177,11 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-395d5e72 | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-72a88eb9 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-003 reject H-e0757174 by human: an independent full-diff review (51/51 unit tests and the full gate pass; with telemetry off every command matches the base) found two breaks of this spec's rule that recording a metric point or attribute SHALL never raise into the caller (spec.md line 35; tasks.md asks for try/except). (1) telemetr...
+- Q-002 accept H-8b8cc0d1 by human: in scope. The proposal names history/ingest.py among the files this change edits, and the spec requires that work handed to thread pools in history backfill and sync runs in a fresh copy of the caller's context per task. The diff of packages/core/src/mintmory/core/history/ingest.py is exactly that: ...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -231,11 +236,12 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 - [minor, deterministic] a test is ignored as evidence (criterion C-28481766): packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans: it traces 19 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-395d5e72): packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans: it traces 19 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-72a88eb9): packages.core.tests.test_observability_docs::test_spans_section_lists_the_new_spans: it traces 19 criteria (verifier.max_criteria_per_test=3)
+- [major, deterministic] Rejected hold: the diff is longer than 120000 characters: the judge saw only the start: Change the behaviour the hold names as the human's reason says; the reason ends with the scenario to pin. Hold: the diff is longer than 120000 characters: the judge saw only the start [rejected by human (an independent full-diff review (51/51 unit tests and the full gate pass; with telemetry off every command matches the base) found two breaks of this spec's rule that recording a metric point or attribute SHALL never raise into the caller (spec.md line 35; tasks.md asks for try/except). (1) telemetry.counts_added (telemetry.py:1006) calls add_count outside its try, and add_count does not guard...
 
-## Needs a human
+## Fix unit
 
-- scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name
-- the diff is longer than 120000 characters: the judge saw only the start
+Fix unit 2 is created for these tasks:
+- H-e0757174 Rejected hold: the diff is longer than 120000 characters: the judge saw only the start
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
