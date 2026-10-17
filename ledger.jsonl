@@ -175,3 +175,4 @@
 {"at":"2026-10-17T15:14:48Z","attempt":1,"cost_usd":0.870119,"runs":3,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T15:14:48Z","run":"r-20261017T1514Z-dc70","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T16:45:59Z","detail":"awaiting_human: no new answers (verdicts open: Q-002, Q-003)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T17:06:59Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-heavy-path-spans is awaiting_human","type":"plan.resumed"}
