@@ -71,7 +71,7 @@ a08aee3. `mypy packages` (strict) also checks the tests: annotate every function
   `raise typer.Exit(code=1)`; then call the co-change function with `store`
   (no `cast`). Import the constant inside each function next to the existing
   `from mintmory.core.cochange import ...`.
-- [ ] 2.5 `main.py` `index_tree`: right after `store = _get_store()` and
+- [x] 2.5 `main.py` `index_tree`: right after `store = _get_store()` and
   `run_cochange = ...` (:550-551) add
   `from mintmory.core.storage import SqliteBackend as _SqliteBackend` (if not already
   imported in that scope) and
