@@ -1,4 +1,4 @@
-# Verification: openspec:fix-distiller-prompt-cap: NEEDS_HUMAN (round 1)
+# Verification: openspec:fix-distiller-prompt-cap: PASS (round 2)
 
 traceability: 8/8 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 8/8 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.3 | base merged: staging@0675e362d9 as bd0f0715f3 (1 commit) |
-| 1 | integrity | ok | 0.1 | 7 sub-checks; scope: 6 changed file(s) |
-| 2 | build | ok | 0.7 |  |
-| 3 | tests | ok | 45.6 |  |
-| 4 | traceability | ok | 0.0 | 8/8 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 1.0 | 8/8 criteria judged by jev |
-| 9 | judge | ok | 18.6 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -101,6 +101,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-9cade05a | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-5bd97470 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-001 accept F-b381f707 by human: the behaviour task 1.2 asks for holds and is tested. The new test test_prompt_bounded_by_cap_plus_template (C-5bd97470) runs the same input as test_prompt_bounded_when_user_turns_alone_exceed_budget (60 user turns of 5,000 characters, max_turn_chars=2000, max_prompt_chars=12000) and asserts len(prom...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -118,7 +122,7 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 - [minor, judge] Old loose test not tightened (criterion C-5bd97470): test_prompt_bounded_when_user_turns_alone_exceed_budget still uses the 12000+4000 tolerance; the diff only adds a new test instead of replacing the assertion as the spec and task 1.2 say, though tasks.md ticks 1.2.
 - [minor, judge] Caps below 100 unpinned (spec gap) (criterion C-6ca7055a): No test for max_prompt_chars < 100; the final guard only slices to the cap.
-- [major, judge] task 1.2 is ticked as already satisfied, but its text is not done: Diff does not modify the 12000 + 4000 assertion in test_prompt_bounded_when_user_turns_alone_exceed_budget; only a new test was added.
+- [minor, judge] task 1.2 is ticked as already satisfied, but its text is not done: Diff does not modify the 12000 + 4000 assertion in test_prompt_bounded_when_user_turns_alone_exceed_budget; only a new test was added. (waived by human: the behaviour task 1.2 asks for holds and is tested. The new test test_prompt_bounded_by_cap_plus_template (C-5bd97470) runs the same input as test_prompt_bounded_when_user_turns_alone_exceed_budget (60 user turns of 5,000 characters, max_turn_chars=2000, max_prompt_chars=12000) and asserts len(prompt) <= 12000 + len(HISTORY_SEGMENT_PROMPT.format(prev_context='', transcript='', repo=s.repo)) with ASK-0, ASK-59 and elided still present. The old...
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
