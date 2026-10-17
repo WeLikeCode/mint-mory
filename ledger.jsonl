@@ -300,3 +300,8 @@
 {"at":"2026-10-17T19:46:32Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"33cddd46861c02ed201c950dd19265f4afb57b50","status":"pass","type":"unit.postcheck","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T19:46:32Z","revision":"33cddd46861c02ed201c950dd19265f4afb57b50","type":"unit.integrated","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T19:46:32Z","attempt":1,"cost_usd":5.287937,"runs":55,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T19:47:28Z","branch":"l4/archive/openspec/add-telemetry-heavy-path-spans","head":"3508522b2965d44a9495764604ad41cf3a4e9408","type":"unit.branch_deleted","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T19:47:28Z","branch":"l4/openspec/fix-cochange-tools-on-postgres","head":"bdec836adcd6cb385b731c5317b37254bf77d6c8","type":"unit.branch_deleted","unit":"openspec:fix-cochange-tools-on-postgres"}
+{"at":"2026-10-17T19:47:28Z","branch":"l4/archive/openspec/fix-cochange-tools-on-postgres","head":"9ec57437a6164921ff21b462601696127b5c96d4","type":"unit.branch_deleted","unit":"openspec:fix-cochange-tools-on-postgres"}
+{"at":"2026-10-17T19:47:28Z","branch":"l4/openspec/add-recurrent-tree-indexing","head":"e084d7327d5417569c282ae53fe6e3873478488f","type":"unit.branch_deleted","unit":"openspec:add-recurrent-tree-indexing"}
+{"at":"2026-10-17T19:47:28Z","branch":"l4/archive/openspec/add-recurrent-tree-indexing","head":"f7f25c33b4877f032531695f3e3371611b35f1a8","type":"unit.branch_deleted","unit":"openspec:add-recurrent-tree-indexing"}
