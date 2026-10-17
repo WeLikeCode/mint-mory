@@ -27,7 +27,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   `fn.__mintmory_counter__ = "mintmory.memories.added"` on the wrapper.
 
 ## 2. Search (shared path)
-- [ ] 2.1 Tests for "Search phase spans and latency" (SQLite; Postgres per its scenario: `PostgresBackend(...)` with
+- [x] 2.1 Tests for "Search phase spans and latency" (SQLite; Postgres per its scenario: `PostgresBackend(...)` with
   every method `search` calls that touches the database patched on the instance) and "Span helpers without work or
   with a failure"; a note added with anchoring records no `mintmory.search.*` span or point.
 - [ ] 2.2 `hybrid_search.collect_scores(*, fts_fn, trigram_fn, vector_fn) -> tuple[dict[str, float], dict[str, float],

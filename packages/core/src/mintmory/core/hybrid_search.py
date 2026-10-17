@@ -22,7 +22,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from mintmory.core import scoring
+from mintmory.core import scoring, telemetry
 from mintmory.core.types import (
     MemoryFilter,
     MemoryRecord,
@@ -102,6 +102,37 @@ def _merge_and_normalise(
 
 
 # ---------------------------------------------------------------------------
+# Public API: collect_scores (traced score-stage collection)
+# ---------------------------------------------------------------------------
+
+
+def collect_scores(
+    *,
+    fts_fn: Callable[[], dict[str, float]],
+    trigram_fn: Callable[[], dict[str, float]],
+    vector_fn: Callable[[], dict[str, float]],
+) -> tuple[dict[str, float], dict[str, float], dict[str, float]]:
+    """Run the three score stages, each traced and timed by ``search_phase``.
+
+    Returns ``(fts, trigram, vector)``. Each stage runs inside its
+    ``mintmory.search.<phase>`` span and reports its result count, so a stage with
+    nothing to do still records a span with ``mintmory.result_count`` = 0 and a
+    latency point. Shared by both storage backends; ``anchor_candidates`` calls the
+    score methods directly, so note anchoring records no search phase.
+    """
+    with telemetry.search_phase("fts") as handle:
+        fts_scores = fts_fn()
+        handle.set_count(len(fts_scores))
+    with telemetry.search_phase("substring") as handle:
+        trigram_scores = trigram_fn()
+        handle.set_count(len(trigram_scores))
+    with telemetry.search_phase("vector") as handle:
+        vector_scores = vector_fn()
+        handle.set_count(len(vector_scores))
+    return fts_scores, trigram_scores, vector_scores
+
+
+# ---------------------------------------------------------------------------
 # Public API: fuse_and_search (full search pipeline)
 # ---------------------------------------------------------------------------
 
@@ -131,71 +162,76 @@ def fuse_and_search(
     session-recording / retrieval-bumping logic lives here so it is identical
     across all backends.
     """
-    base_scores = _merge_and_normalise(fts_scores, trigram_scores, vector_scores, vector_rrf_weight)
-
-    candidate_ids = list(base_scores.keys())
-    memories = load_memories_fn(candidate_ids)
-
-    filt = request.filter or MemoryFilter()
-
-    scored: list[tuple[float, MemoryRecord]] = []
-    for mem in memories:
-        if not _passes_filter(mem, filt, request.include_archived):
-            continue
-        eff = scoring.effective_score(
-            base_relevance=base_scores.get(mem.id, 0.0),
-            usefulness_score=mem.usefulness_score,
-            staleness_score=mem.staleness_score,
-            last_accessed_at=mem.last_accessed_at,
-            now=now,
-            is_note=mem.is_note,
-            note_bonus=note_bonus,
+    with telemetry.search_phase("fusion") as handle:
+        base_scores = _merge_and_normalise(
+            fts_scores, trigram_scores, vector_scores, vector_rrf_weight
         )
-        scored.append((eff, mem))
 
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-    primary = [mem for _, mem in scored[: request.limit]]
+        candidate_ids = list(base_scores.keys())
+        memories = load_memories_fn(candidate_ids)
 
-    # Graph traversal union (anchors always kept).
-    around_ids: list[str] = []
-    if request.search_around is not None and primary:
-        anchor_ids = [mem.id for mem in primary]
-        around_ids = search_around_fn(anchor_ids, request.search_around)
-        existing = {mem.id for mem in primary}
-        for extra in load_memories_fn(around_ids):
-            if extra.id not in existing:
-                primary.append(extra)
-                existing.add(extra.id)
+        filt = request.filter or MemoryFilter()
 
-    # Auto-include notes annotating each primary result (separate channel).
-    notes_on_results: dict[str, list[MemoryRecord]] = {}
-    if auto_include_cap > 0:
-        for mem in primary:
-            annotating = get_annotating_notes_fn(mem.id, auto_include_cap)
-            if annotating:
-                notes_on_results[mem.id] = annotating
+        scored: list[tuple[float, MemoryRecord]] = []
+        for mem in memories:
+            if not _passes_filter(mem, filt, request.include_archived):
+                continue
+            eff = scoring.effective_score(
+                base_relevance=base_scores.get(mem.id, 0.0),
+                usefulness_score=mem.usefulness_score,
+                staleness_score=mem.staleness_score,
+                last_accessed_at=mem.last_accessed_at,
+                now=now,
+                is_note=mem.is_note,
+                note_bonus=note_bonus,
+            )
+            scored.append((eff, mem))
 
-    # Decision lineage: persist session + results, bump retrieval counters.
-    session = QuerySession(query_text=request.query)
-    create_session_fn(session)
-    results = [
-        QueryResult(
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        primary = [mem for _, mem in scored[: request.limit]]
+
+        # Graph traversal union (anchors always kept).
+        around_ids: list[str] = []
+        if request.search_around is not None and primary:
+            anchor_ids = [mem.id for mem in primary]
+            around_ids = search_around_fn(anchor_ids, request.search_around)
+            existing = {mem.id for mem in primary}
+            for extra in load_memories_fn(around_ids):
+                if extra.id not in existing:
+                    primary.append(extra)
+                    existing.add(extra.id)
+
+        # Auto-include notes annotating each primary result (separate channel).
+        notes_on_results: dict[str, list[MemoryRecord]] = {}
+        if auto_include_cap > 0:
+            for mem in primary:
+                annotating = get_annotating_notes_fn(mem.id, auto_include_cap)
+                if annotating:
+                    notes_on_results[mem.id] = annotating
+
+        # Decision lineage: persist session + results, bump retrieval counters.
+        session = QuerySession(query_text=request.query)
+        create_session_fn(session)
+        results = [
+            QueryResult(
+                session_id=session.id,
+                memory_id=mem.id,
+                relevance_score=base_scores.get(mem.id, 0.0),
+            )
+            for mem in primary
+        ]
+        record_query_results_fn(results)
+        bump_retrieval_fn([mem.id for mem in primary], now)
+
+        response = SearchResponse(
             session_id=session.id,
-            memory_id=mem.id,
-            relevance_score=base_scores.get(mem.id, 0.0),
+            memories=primary,
+            total_found=len(primary),
+            search_around_ids=around_ids,
+            notes_on_results=notes_on_results,
         )
-        for mem in primary
-    ]
-    record_query_results_fn(results)
-    bump_retrieval_fn([mem.id for mem in primary], now)
-
-    return SearchResponse(
-        session_id=session.id,
-        memories=primary,
-        total_found=len(primary),
-        search_around_ids=around_ids,
-        notes_on_results=notes_on_results,
-    )
+        handle.set_count(len(response.memories))
+    return response
 
 
 # ---------------------------------------------------------------------------
