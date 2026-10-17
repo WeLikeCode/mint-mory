@@ -48,7 +48,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
   user index in ascending order (`sorted(...)`, not set order), keep it only if
   `len(_render(lines, sorted(set(kept) | {idx}))) <= max_prompt_chars`. Remove
   `marker_budget` and the `remaining` arithmetic. Return the render if it fits.
-- [ ] 2.5 Final guard (first and last turn alone do not fit): if `n == 1` return
+- [x] 2.5 Final guard (first and last turn alone do not fit): if `n == 1` return
   `lines[0][:max_prompt_chars]`; otherwise build `marker = [f"… [{n - 2} turns elided] …"]` (an f-string: the
   marker shows the real count)
   when `n > 2` (else `[]`), let
