@@ -170,3 +170,4 @@
 {"at":"2026-10-17T13:20:30Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"unit add-telemetry-heavy-path-spans retried on harness 0.4.11, whose zero-value variant of a context manager enters (the 0.4.10 halt was an L4 defect, L4-IMP-026)","type":"plan.resumed"}
 {"at":"2026-10-17T13:21:00Z","attempt":1,"cost_usd":0.380786,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-heavy-path-spans"}
 {"at":"2026-10-17T13:21:00Z","run":"r-20261017T1320Z-5212","type":"unit.dispatched","unit":"openspec:add-telemetry-heavy-path-spans"}
+{"at":"2026-10-17T15:12:26Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-heavy-path-spans"}
