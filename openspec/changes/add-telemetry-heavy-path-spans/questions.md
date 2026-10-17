@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | 4.1 | technical | packages/cli/tests/test_telemetry_cli_heavy_paths.py:135 sorts by added ascending then asserts the first run has added=2 |
-| Q-002 | open | none | verdict | Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name |
+| Q-002 | answered | none | verdict | Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name |
 | Q-003 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
@@ -45,7 +45,7 @@ Edit packages/cli/tests/test_telemetry_cli_heavy_paths.py: the test bug is the o
 
 ## Q-002: Hold H-8b8cc0d1: scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 2, verifier
@@ -61,6 +61,7 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why: a r
 
 ### Answer
 <!-- write below this line -->
+accept: in scope. The proposal names history/ingest.py among the files this change edits, and the spec requires that work handed to thread pools in history backfill and sync runs in a fresh copy of the caller's context per task. The diff of packages/core/src/mintmory/core/history/ingest.py is exactly that: _prepare_session is wrapped in telemetry.run_in_context before it is submitted to the executor, in backfill and in sync, and nothing else changes.
 ---
 
 ## Q-003: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
