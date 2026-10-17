@@ -895,8 +895,42 @@ def timed_phase(name: str) -> Callable[[_F], _F]:
 
 
 def set_attributes(**attrs: Any) -> None:
-    raise NotImplementedError
+    """Set attributes on the span that is current when called; never raises.
+
+    A no-op when telemetry is off. None values are dropped, matching :func:`span`. Used to
+    report the ``index-tree`` counters on the command span that is active around the walk.
+    """
+    if not _enabled:
+        return
+    try:
+        from opentelemetry import trace
+
+        current = trace.get_current_span()
+        if current is None or not current.is_recording():
+            return
+        current.set_attributes({key: value for key, value in attrs.items() if value is not None})
+    except Exception:  # noqa: BLE001 - an attribute must never break the caller
+        return
 
 
 def counts_added[F: Callable[..., Any]](fn: F) -> F:
-    raise NotImplementedError
+    """Count ``mintmory.memories.added`` for each record ``fn`` returns, by category.
+
+    ``fn`` is an ``add_memory`` call returning a memory record; the wrapper records the
+    counter with ``category=record.category.value`` and marks itself with
+    ``__mintmory_counter__`` so both storage backends can be checked for the shared
+    decorator. With telemetry off ``add_count`` is already a no-op.
+    """
+
+    @wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        record = fn(*args, **kwargs)
+        try:
+            category = record.category.value
+        except Exception:  # noqa: BLE001 - the counter must never break a write
+            return record
+        add_count("mintmory.memories.added", category=category)
+        return record
+
+    wrapper.__mintmory_counter__ = "mintmory.memories.added"  # type: ignore[attr-defined]
+    return wrapper  # type: ignore[return-value]

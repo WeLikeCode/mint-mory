@@ -22,7 +22,7 @@ entry-point init after that is a no-op). No new dependencies. Each test first, f
   decorator with `span=False`.
 - [x] 1.4 `run_in_context(fn)`: `ctx = contextvars.copy_context()` on the calling thread, returns a callable running
   `ctx.copy().run(fn, *a, **kw)` (one `Context` cannot be entered by two threads at once).
-- [ ] 1.5 `set_attributes(**attrs)` on the current span; `counts_added(fn)`: after `fn` returns a record, calls
+- [x] 1.5 `set_attributes(**attrs)` on the current span; `counts_added(fn)`: after `fn` returns a record, calls
   `add_count("mintmory.memories.added", category=record.category.value)` and sets
   `fn.__mintmory_counter__ = "mintmory.memories.added"` on the wrapper.
 
