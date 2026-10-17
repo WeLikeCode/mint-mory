@@ -137,3 +137,4 @@
 {"at":"2026-10-17T07:25:16Z","attempt":1,"cost_usd":0.751632,"runs":3,"type":"plan.charged","unit":"openspec:fix-distiller-prompt-cap"}
 {"at":"2026-10-17T07:25:16Z","run":"r-20261017T0725Z-8e9f","type":"unit.dispatched","unit":"openspec:fix-distiller-prompt-cap"}
 {"at":"2026-10-17T07:26:06Z","head":"079d93288a3d682a7771fb480ef9baf49e782d8e","pr":18,"target_before":"0675e362d93eecbae4efd7603228835bab6a2f0f","type":"unit.merge_requested","unit":"openspec:fix-distiller-prompt-cap"}
+{"at":"2026-10-17T07:26:11Z","head":"079d93288a3d682a7771fb480ef9baf49e782d8e","merge_commit":"079d93288a3d682a7771fb480ef9baf49e782d8e","pr":18,"type":"unit.merged","unit":"openspec:fix-distiller-prompt-cap"}
