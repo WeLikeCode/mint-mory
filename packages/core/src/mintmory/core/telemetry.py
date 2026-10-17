@@ -35,7 +35,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
@@ -1139,3 +1139,14 @@ def extract_context(carrier: Mapping[str, str]) -> Any:
         return extract(carrier)
     except Exception:  # noqa: BLE001 - extraction must never break a request
         return None
+
+
+def record_histogram(
+    name: str,
+    value: float,
+    *,
+    unit: str,
+    boundaries: Sequence[float] | None = None,
+    **attrs: Any,
+) -> None:
+    raise NotImplementedError
