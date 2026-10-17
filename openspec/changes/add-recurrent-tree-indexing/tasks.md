@@ -71,7 +71,7 @@ default. A user who wants them can still run `--content --content-types txt,md`
     against the code after 2.2 and 2.3; before them there is no such row (it fails).
   Run `.venv/bin/pytest -q --no-cov packages/cli/tests/test_cli.py -k online_only`;
   the first two and the budget test must fail before 2.2/2.3; the upgrade/downgrade and empty-tree tests pass before and after.
-- [ ] 2.2 The guard, in `index_tree` (`cli/main.py:613-617`): split the eligibility
+- [x] 2.2 The guard, in `index_tree` (`cli/main.py:613-617`): split the eligibility
   into `text_candidate = text_content and entry.suffix in TEXT_SUFFIXES and
   (text_max_bytes is None or entry.size <= text_max_bytes)` and
   `text_eligible = text_candidate and not entry.online_only`. Leave `want_binary`,
