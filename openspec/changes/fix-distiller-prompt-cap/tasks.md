@@ -66,7 +66,7 @@ Paths: `distill.py` = `packages/core/src/mintmory/core/history/distill.py`, test
 ## 3. Gates
 - [x] 3.1 The existing tests in `test_history_distill_phase2.py`,
   `test_llm_distiller.py` and `test_history_ingest.py` pass unedited (except 1.2).
-- [ ] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+- [x] 3.2 `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). These are the real gates of `.l4/config.yaml` (uv sync, ruff, mypy,
   pytest); OpenSpec validation is not a task gate (design.md `## Decisions`).
 
