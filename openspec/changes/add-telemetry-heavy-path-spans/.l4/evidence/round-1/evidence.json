@@ -1,0 +1,241 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [
+    {
+      "id": "H-8b8cc0d1",
+      "text": "scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name",
+      "kind": "scope",
+      "subjects": [
+        "packages/core/src/mintmory/core/history/ingest.py"
+      ]
+    }
+  ],
+  "items": {},
+  "scope": {
+    "declared": [
+      "cli/main.py",
+      "history/ingest.py",
+      "packages/cli/src/mintmory/cli/main.py",
+      "docs/OBSERVABILITY.md",
+      "**/telemetry.py",
+      "**/storage.py",
+      "**/storage_postgres.py",
+      "**/hybrid_search.py",
+      "**/embedder.py",
+      "**/dreaming.py",
+      "**/conftest.py",
+      "**/gen_ai.*",
+      "**/llm.py",
+      "**/mintmory.search.*",
+      "**/ContextVar[bool]",
+      "module cli",
+      "module docs",
+      "module history"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [
+      "scope: `packages/core/src/mintmory/core/history/ingest.py` changes module `core`, which the spec does not name"
+    ],
+    "files": [
+      {
+        "path": "docs/OBSERVABILITY.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1042Z-74d5.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1320Z-0e59.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1320Z-5212.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/.l4/ledger/r-20261017T1514Z-dc70.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/.l4/review-accepted.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-telemetry-heavy-path-spans/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "packages/cli/src/mintmory/cli/main.py",
+        "module": "cli",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/cli/tests/test_telemetry_cli_heavy_paths.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/cli/tests/test_telemetry_cli_privacy.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/dreaming.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/embedder.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/history/ingest.py",
+        "module": "core",
+        "kind": "code",
+        "label": "out_of_scope",
+        "reason": "module `core` is not named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/hybrid_search.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/storage.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/storage_postgres.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/tests/test_observability_docs.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_embedder.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_embedder_network.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_memory_counter.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_privacy.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_search_paths.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_search_phase.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_set_attributes_counter.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_span_options.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "packages/core/tests/test_telemetry_worker_threads.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": null,
+  "tests_ran": null
+}
