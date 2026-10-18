@@ -316,6 +316,8 @@ class OllamaEmbedder:
             headers={"content-type": "application/json"},
             method="POST",
         )
+        for header, value in telemetry.inject_trace_headers({}).items():
+            req.add_header(header, value)
         try:
             with urllib.request.urlopen(  # noqa: S310 - local OpenAI-compatible endpoint
                 req, timeout=self._timeout_s
@@ -375,7 +377,11 @@ class OpenAIEmbedder:
     @telemetry.embed_span
     def embed(self, text: str) -> NDArray[np.float32]:
         try:
-            resp = self._client.embeddings.create(input=[text], model=self.MODEL_ID)
+            resp = self._client.embeddings.create(
+                input=[text],
+                model=self.MODEL_ID,
+                extra_headers=telemetry.inject_trace_headers({}),
+            )
         except Exception as exc:  # pragma: no cover - requires network
             raise EmbeddingError(f"OpenAIEmbedder.embed failed: {exc}") from exc
         vec = np.asarray(resp.data[0].embedding, dtype=np.float32)
@@ -384,7 +390,11 @@ class OpenAIEmbedder:
     @telemetry.embed_span
     def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         try:
-            resp = self._client.embeddings.create(input=texts, model=self.MODEL_ID)
+            resp = self._client.embeddings.create(
+                input=texts,
+                model=self.MODEL_ID,
+                extra_headers=telemetry.inject_trace_headers({}),
+            )
         except Exception as exc:  # pragma: no cover - requires network
             raise EmbeddingError(f"OpenAIEmbedder.embed_batch failed: {exc}") from exc
         ordered = sorted(resp.data, key=lambda d: d.index)

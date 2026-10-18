@@ -39,7 +39,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   from the spec; the tests then stay failing and the unit is not done.
 
 ## 4. Outbound
-- [ ] 4.1 Tests with a `ThreadingHTTPServer` daemon recording headers (chat JSON as in `core/tests/test_llm.py`; an
+- [x] 4.1 Tests with a `ThreadingHTTPServer` daemon recording headers (chat JSON as in `core/tests/test_llm.py`; an
   Ollama-like embedding answer). `OpenAIEmbedder.__new__` with only `_client` set: `model_name` and `dimensions` are
   class-level properties.
 - [ ] 4.2 `post_chat_completion`: `gen_ai.chat` with `kind="client"`, `server.address`/`server.port` from
