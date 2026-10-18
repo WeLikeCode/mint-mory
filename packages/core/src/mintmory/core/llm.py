@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, Any
 
@@ -103,15 +104,23 @@ def post_chat_completion(
         headers=headers,
         method="POST",
     )
+    parsed = urllib.parse.urlsplit(base_url)
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
     attrs: dict[str, Any] = {
         "gen_ai.system": system,
         "gen_ai.request.model": model,
+        "server.address": parsed.hostname,
+        "server.port": port,
     }
     if extra_attrs:
         attrs.update(extra_attrs)
     start = time.perf_counter()
     ok = False
-    with telemetry.span("gen_ai.chat", **attrs) as sp:
+    with telemetry.span("gen_ai.chat", kind="client", **attrs) as sp:
+        for header, value in telemetry.inject_trace_headers({}).items():
+            req.add_header(header, value)
         try:
             with urllib.request.urlopen(  # noqa: S310 (configured base_url)
                 req, timeout=timeout_s

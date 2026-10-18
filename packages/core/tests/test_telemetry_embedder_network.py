@@ -150,7 +150,7 @@ class _StubEmbeddingResponse:
 
 
 class _StubEmbeddings:
-    def create(self, *, input: list[str], model: str) -> _StubEmbeddingResponse:
+    def create(self, *, input: list[str], model: str, **kwargs: Any) -> _StubEmbeddingResponse:
         items = [
             _StubEmbeddingItem([0.5] * OpenAIEmbedder._DIMENSIONS, index)
             for index, _text in enumerate(input)

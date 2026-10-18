@@ -35,7 +35,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
@@ -647,13 +647,10 @@ def traced(name: str | None = None) -> Callable[[_F], _F]:
     return deco
 
 
-def _instrument(
-    kind: str, factory_name: str, name: str, meter: Any, unit: str | None = None
-) -> Any:
+def _instrument(kind: str, factory_name: str, name: str, meter: Any, **options: Any) -> Any:
     inst = _instruments.get(name)
     if inst is None and meter is not None:
-        kwargs: dict[str, Any] = {} if unit is None else {"unit": unit}
-        inst = getattr(meter, factory_name)(name, **kwargs)
+        inst = getattr(meter, factory_name)(name, **options)
         _instruments[name] = inst
     return inst
 
@@ -675,7 +672,8 @@ def record_value(name: str, value: float, *, unit: str | None = None, **attrs: A
     if not _enabled or meter is None:
         return
     try:
-        hist = _instrument("histogram", "create_histogram", name, meter, unit)
+        options: dict[str, Any] = {} if unit is None else {"unit": unit}
+        hist = _instrument("histogram", "create_histogram", name, meter, **options)
         if hist is not None:
             hist.record(value, {k: v for k, v in attrs.items() if v is not None})
     except Exception:  # noqa: BLE001 - a metric must never break the caller
@@ -1093,3 +1091,77 @@ def _command_exit_code(error: BaseException) -> int:
     if isinstance(code, int):
         return code
     return 1
+
+
+_trace_context_propagator: Any = None
+
+
+def _fixed_trace_context_propagator() -> Any:
+    """The fixed W3C trace-context propagator used for outbound headers (never ``baggage``)."""
+    global _trace_context_propagator
+    if _trace_context_propagator is None:
+        from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+        _trace_context_propagator = TraceContextTextMapPropagator()
+    return _trace_context_propagator
+
+
+def inject_trace_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Write the current span's ``traceparent``/``tracestate`` into ``headers``; never raises.
+
+    A fixed W3C trace-context propagator is used, so an inbound ``baggage`` (which may carry user
+    data) is never forwarded to a possibly third-party endpoint. With telemetry off the carrier is
+    returned untouched.
+    """
+    if not _enabled:
+        return headers
+    try:
+        _fixed_trace_context_propagator().inject(headers)
+    except Exception:  # noqa: BLE001 - a header helper must never break a request
+        return headers
+    return headers
+
+
+def extract_context(carrier: Mapping[str, str]) -> Any:
+    """Extract the W3C context from an inbound ``carrier``; ``None`` when telemetry is off.
+
+    The global propagator is used (trace context and baggage). A missing or malformed
+    ``traceparent`` extracts to a context with no valid span, so the request starts a new trace.
+    Never raises.
+    """
+    if not _enabled:
+        return None
+    try:
+        from opentelemetry.propagate import extract
+
+        return extract(carrier)
+    except Exception:  # noqa: BLE001 - extraction must never break a request
+        return None
+
+
+def record_histogram(
+    name: str,
+    value: float,
+    *,
+    unit: str,
+    boundaries: Sequence[float] | None = None,
+    **attrs: Any,
+) -> None:
+    """Record one point on the histogram ``name``, with an optional explicit bucket set.
+
+    The histogram is built once through :func:`_instrument`, so the meter's factory receives
+    ``unit`` and ``explicit_bucket_boundaries_advisory=boundaries`` on first creation. ``None``
+    attributes are dropped; with metrics off the meter is never touched; the body never raises.
+    """
+    meter = _meter
+    if not _enabled or meter is None:
+        return
+    try:
+        options: dict[str, Any] = {"unit": unit}
+        if boundaries is not None:
+            options["explicit_bucket_boundaries_advisory"] = boundaries
+        hist = _instrument("histogram", "create_histogram", name, meter, **options)
+        if hist is not None:
+            hist.record(value, {k: v for k, v in attrs.items() if v is not None})
+    except Exception:  # noqa: BLE001 - a metric must never break the caller
+        return
