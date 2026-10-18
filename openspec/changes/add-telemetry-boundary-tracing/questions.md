@@ -17,6 +17,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-004 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-005 | answered | 3.2 | harness | Task 3.2: the pre-satisfied check could not decide |
 | Q-006 | accepted | 4.1 | technical | packages/core/tests/test_telemetry_embedder_network.py:153 — frozen OpenAI stub rejects the extra_headers the spec requires |
+| Q-007 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -178,6 +179,27 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/core/tests/test_telemetry_embedder_network.py`: change line 153 to `def create(self, *, input: list[str], model: str, **kwargs: Any) -> _StubEmbeddingResponse:`
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-007: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+
+### Context
+After round 1 the verifier cannot decide on its own: the diff is longer than 120000 characters: the judge saw only the start
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why; end the reason with a sentence WHEN ... THEN ... so that a fix unit can be made.
+
+### Options
+1. accept
+2. reject: <reason>
 
 ### Answer
 <!-- write below this line -->
