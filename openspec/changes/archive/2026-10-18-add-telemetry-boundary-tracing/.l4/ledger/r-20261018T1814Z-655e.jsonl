@@ -17,3 +17,8 @@
 {"ts": "2026-10-18T18:14:21.698426Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 17, "type": "verify.verdict", "round": 2, "verdict": "PASS", "findings": 5, "criteria_passed": 24, "criteria_total": 24}
 {"ts": "2026-10-18T18:14:21.711805Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 18, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-18T18:14:24.876063Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 19, "type": "pr.labels", "number": 29, "labels": ["l4:verified"]}
+{"ts": "2026-10-18T18:14:29.533210Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 20, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/29", "number": 29, "head": "34b10aef84e72c700d63f8ab525b653101dc3b2f"}
+{"ts": "2026-10-18T18:14:29.534058Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 21, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-18T18:14:33.003173Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 22, "type": "pr.labels", "number": 29, "labels": ["l4:in_review"]}
+{"ts": "2026-10-18T18:14:34.261808Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 23, "type": "lock.released"}
+{"ts": "2026-10-18T18:14:34.262407Z", "run_id": "r-20261018T1814Z-655e", "unit": "openspec:add-telemetry-boundary-tracing", "seq": 24, "type": "run.finished", "exit_code": 0}
