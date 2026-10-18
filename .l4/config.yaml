@@ -8,6 +8,7 @@ harness:
 spec:
   frameworks:
   - openspec
+  - kiro
 gates:
   # the same commands as .github/workflows/ci.yml (job "lint · types · tests")
   setup:
@@ -27,7 +28,7 @@ profiles:
     auth: api_key
   glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
     adapter: opencode
-    model: opencode-go/glm-5.3-flash
+    model: opencode/glm-5.3-flash-free
     vendor: zhipu
     auth: api_key
   deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
@@ -74,7 +75,7 @@ ci:
   upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
 yolo:
   review:
-    max_dependency_chars: 30000   # add-telemetry-runtime (about 28,000 characters) is a prerequisite of four units
+    max_dependency_chars: 60000   # multi-tenancy's design and tasks (about 26,000 characters) are a prerequisite of three Kiro units
     accept_by_agents: true        # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
   hold:                     # no agent work for these until a plan lists them (L4 0.4.1 yolo.hold; replaces the backlog plan)
   - openspec:add-image-understanding

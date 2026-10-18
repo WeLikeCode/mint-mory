@@ -118,7 +118,7 @@ runs:
         case "$mode" in
           action)
             [ -d "$root/src/l4" ] || { echo "::error::source action, but the action's repository holds no harness; check the harness repository's Actions access setting, or use source repository"; exit 2; }
-            key=$(cd "$root" && find src pyproject.toml uv.lock README.md -type f ! -path '*/__pycache__/*' 2>/dev/null \
+            key=$(cd "$root" && find src plugins/l4/skills/l4 pyproject.toml uv.lock README.md -type f ! -path '*/__pycache__/*' 2>/dev/null \
                   | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -c1-24)
             echo "dir=$root" >> "$GITHUB_OUTPUT"
             echo "[l4-action] the action's repository: $(find "$root" -type f | wc -l) files, $(du -sh "$root" | cut -f1)"
@@ -178,7 +178,7 @@ runs:
         if [ "$MODE" = action ]; then
           src="$RUNNER_TEMP/l4-harness-src"   # a copy: the build may write next to the sources
           rm -rf "$src" && mkdir -p "$src"
-          (cd "$DIR" && tar cf - --exclude=__pycache__ src pyproject.toml uv.lock README.md 2>/dev/null) | (cd "$src" && tar xf -)
+          (cd "$DIR" && tar cf - --exclude=__pycache__ src plugins/l4/skills/l4 pyproject.toml uv.lock README.md 2>/dev/null) | (cd "$src" && tar xf -)
           uv tool install --quiet --python "$INPUT_PYTHON" "$src"
         else
           if [ -n "$INPUT_SSH_KEY" ]; then
