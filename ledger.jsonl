@@ -352,3 +352,4 @@
 {"at":"2026-10-18T18:17:38Z","run":"r-20261018T1817Z-6a4b","type":"unit.dispatched","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-18T19:45:18Z","attempt":1,"cost_usd":0.271576,"runs":1,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-18T19:45:18Z","detail":"round 2 failed the same way as round 1: finding F-5758ac1b","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:add-local-observability-stack"}
+{"at":"2026-10-18T19:51:13Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner asked to finish the plan: the escalation came from skip markers the spec asked for; the retry note tells the fix unit to remove them","type":"plan.resumed"}
