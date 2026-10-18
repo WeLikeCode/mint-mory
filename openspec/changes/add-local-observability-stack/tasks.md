@@ -14,7 +14,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   after the last `:` that follows the last `/`). For the `Dockerfile` check, strip each line and its `RUN`/`&&`/`;`
   prefixes; on `staging` lines 46 and 48 are the only `uv sync` commands (line 20 is a comment) and both carry
   `--extra otel`, so the test passes without touching the `Dockerfile`.
-- [ ] 1.2 `otel-collector.yaml`, exactly this content (validated with `otelcol-contrib validate` on
+- [x] 1.2 `otel-collector.yaml`, exactly this content (validated with `otelcol-contrib validate` on
   `otel/opentelemetry-collector-contrib:0.162.0`):
 
   ```yaml
