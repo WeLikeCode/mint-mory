@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | Removing the skipif markers edits existing tests, which this test-chore step reverts |
+| Q-001 | answered | 1.1 | ambiguous | Removing the skipif markers edits existing tests, which this test-chore step reverts |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Removing the skipif markers edits existing tests, which this test-chore step reverts
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
 - **Asked:** 2026-10-18T19:59Z by deepseek, run r-20261018T1952Z-fb34, task 1.1
@@ -32,3 +32,4 @@ F-f5fcb85c (FB-001) names tests/integration/test_helm_telemetry.py:121-131 and t
 
 ### Answer
 <!-- write below this line -->
+Option 1: unfreeze tests/integration/test_helm_telemetry.py and tests/integration/test_observability_stack.py for task 1.1. Remove only the three @pytest.mark.skipif(shutil.which(...) is None, ...) decorators (and an import of shutil left unused); change nothing else in those files. helm and docker are on the gate runner: these tests already ran and passed in the gates.
