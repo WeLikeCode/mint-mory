@@ -16,6 +16,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-003 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-004 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-005 | answered | 3.2 | harness | Task 3.2: the pre-satisfied check could not decide |
+| Q-006 | open | 4.1 | technical | packages/core/tests/test_telemetry_embedder_network.py:153 — frozen OpenAI stub rejects the extra_headers the spec requires |
 <!-- l4:index:end -->
 
 ---
@@ -156,3 +157,27 @@ A person answers; an agent only where `clarifier.answer_by_agents` is true on th
 ### Answer
 <!-- write below this line -->
 accept: same dependency pin as Q-004 (task 3.1): test_fastmcp_version_is_the_verified_one, committed in packages/mcp/tests/test_telemetry_mcp.py, asserts importlib.metadata.version("fastmcp") == "3.4.2" exactly as the criterion says; uv.lock pins 3.4.2. Keep that test unchanged.
+
+---
+
+## Q-006: packages/core/tests/test_telemetry_embedder_network.py:153 — frozen OpenAI stub rejects the extra_headers the spec requires
+
+- **Status:** open
+- **Blocking tasks:** 4.1
+- **Kind:** technical
+- **Asked:** 2026-10-18T17:35Z by deepseek, run r-20261018T1715Z-2ba2, task 4.1
+
+### Context
+The observability spec 'Outbound calls carry the trace context' (task 4.3) requires OpenAIEmbedder to call self._client.embeddings.create(input=..., model=..., extra_headers=telemetry.inject_trace_headers({})), and the new red test packages/core/tests/test_telemetry_outbound.py::test_embedding_endpoints_receive_the_embed_span_traceparent asserts that exact keyword is passed (it reads kwargs['extra_headers']). The previously-passing test packages/core/tests/test_telemetry_embedder_network.py::test_openai_embed_names_provider_and_model uses _StubEmbeddings.create(self, *, input: list[str], model: str) at line 153, which does not accept the keyword, so it now raises EmbeddingError: ... unexpected keyword argument 'extra_headers'. The two test stubs are mutually incompatible with a single unconditional call, and I may not edit the frozen test; making the red criterion pass while keeping every previously-passing test green needs the frozen stub to accept the keyword.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `packages/core/tests/test_telemetry_embedder_network.py`, `packages/core/tests/test_telemetry_outbound.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit add-telemetry-boundary-tracing`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `packages/core/tests/test_telemetry_embedder_network.py`: change line 153 to `def create(self, *, input: list[str], model: str, **kwargs: Any) -> _StubEmbeddingResponse:`
+2. Edit `packages/core/tests/test_telemetry_embedder_network.py`: change line 153 to `def create(self, *, input: list[str], model: str, extra_headers: Any = None) -> _StubEmbeddingResponse:`
+
+### Clarifier suggestion
+Edit `packages/core/tests/test_telemetry_embedder_network.py`: change line 153 to `def create(self, *, input: list[str], model: str, **kwargs: Any) -> _StubEmbeddingResponse:`
+
+### Answer
+<!-- write below this line -->
