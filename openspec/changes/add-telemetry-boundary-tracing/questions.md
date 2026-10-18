@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 2.1 | technical | packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes |
 | Q-002 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
-| Q-003 | open | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
+| Q-003 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 <!-- l4:index:end -->
 
 ---
@@ -72,7 +72,7 @@ accept: C-7d4fc8c6 is a dependency pin by its own text (a test asserts importlib
 
 ## Q-003: Task 3.1: the pre-satisfied check could not decide
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 3.1
 - **Kind:** harness
 - **Asked:** 2026-10-18T16:14Z by deepseek, run r-20261018T1601Z-d1c5, task 3.1
@@ -95,3 +95,4 @@ A person answers; an agent only where `clarifier.answer_by_agents` is true on th
 
 ### Answer
 <!-- write below this line -->
+retry: name the FastMCP version test exactly test_fastmcp_version_is_the_verified_one and keep it as: assert importlib.metadata.version("fastmcp") == "3.4.2", with a message that the facts were verified on 3.4.2 only. Keep that name and body in every later step of task 3.1: the owner's accept of this check is bound to that test id.
