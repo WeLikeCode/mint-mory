@@ -42,7 +42,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
 - [x] 4.1 Tests with a `ThreadingHTTPServer` daemon recording headers (chat JSON as in `core/tests/test_llm.py`; an
   Ollama-like embedding answer). `OpenAIEmbedder.__new__` with only `_client` set: `model_name` and `dimensions` are
   class-level properties.
-- [ ] 4.2 `post_chat_completion`: `gen_ai.chat` with `kind="client"`, `server.address`/`server.port` from
+- [x] 4.2 `post_chat_completion`: `gen_ai.chat` with `kind="client"`, `server.address`/`server.port` from
   `urllib.parse.urlsplit`; `req.add_header(k, v)` for each injected header inside the span, before `urlopen`.
 - [ ] 4.3 `OllamaEmbedder` injects the same way; `OpenAIEmbedder` passes `extra_headers=telemetry.inject_trace_headers({})`
   to `embeddings.create`, inside `mintmory.embed`.
