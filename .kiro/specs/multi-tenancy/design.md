@@ -3,75 +3,63 @@
 ## Overview
 
 This design adds tenancy as a **row-scoped, shared-table** data primitive. Every
-table-backed entity gains a `tenant_id TEXT` column (FK to a new `tenants`
-table), defaulting to the reserved tenant `global`. A single `.db` /
-Postgres database continues to hold all tenants.
+table-backed entity gains a `tenant_id TEXT NOT NULL DEFAULT 'global'` column,
+defaulting to the reserved tenant `global`. A single `.db` / Postgres database
+continues to hold all tenants.
 
 The change is backwards compatible by construction:
-- The column default is `global`, so inserts that do not mention a tenant behave
-  as today.
+- The column default is `'global'`, so inserts that do not mention a tenant land
+  in the global tenant.
 - An idempotent column-add migration backfills every pre-existing row to
   `global`, following the established `_ensure_*` pattern in `StorageAdapter`.
-- Reads/searches are **unscoped by default** (global, exactly like today). A
-  tenant predicate is injected into the candidate SQL only when a tenant selector
-  is supplied.
+- **Reads/searches use an optional `tenant_id: str | None`.** `None` = unscoped
+  (spans all rows, today's exact behaviour); a concrete value = confined. A
+  tenant predicate is injected into the candidate SQL **only when a concrete
+  tenant is supplied**.
 
-The work follows the source-of-truth hierarchy strictly:
-`types.py` → `schema.sql` (+ `schema_postgres.sql`) → `openapi.yaml`.
+The read/write asymmetry and FK reality are stated authoritatively in
+requirements.md ("Read vs write tenant semantics", "Isolation model"). In short:
+reads take `tenant_id: str | None` (`None` = all rows; concrete = confined; never
+`"global"` for a read); writes stamp a concrete id (unspecified = `"global"`).
+SQLite can't add a FK via `ALTER TABLE ADD COLUMN`, so fresh/rebuilt tables carry
+the FK and the write guard enforces tenant-exists on migrated tables. SoT order:
+`types.py` → `schema.sql` → `openapi.yaml`.
 
-### Grounding notes (verified against current code)
+### Grounding (verified)
 
-- No tenant/owner/workspace concept exists anywhere in `packages/` today.
-- `build_storage()` in `storage_factory.py` is the single construction
-  chokepoint used by all three transports (CLI `main.py`, MCP `server.py`, API
-  `app.py` — note the API has `app.py` + `schemas.py`, no `routes/` dir).
-- Table-backed models: `MemoryRecord`, `ConceptLink`, `MemorySummary`,
-  `QuerySession`, `QueryResult`; plus the `index_manifest` table, which has no
-  Pydantic model (it is the `ManifestEntry` TypedDict in `ports.py`).
-- Candidate rows for search are pulled globally by `_fts_scores`,
-  `_trigram_scores`, `_vector_scores`, and `_load_memories`; `_passes_filter`
-  in `hybrid_search.py` is a Python-side post-load filter only.
-- `memory_summaries.concept` is globally `UNIQUE`; `concept_links` is
-  `UNIQUE (source_memory_id, target_memory_id, link_type)`.
-- `_MEMORY_COLUMNS` (storage.py) + `_memory_row_values` + `_row_to_memory` +
-  the `update_memory` SET list must stay in lockstep; `migrate.py` mirrors them
-  in `_MEMORIES_COLS` + `_insert_memories_batch`.
-- Schema gate lives in `test_schema.py` (REQUIRED_TABLES / COLUMNS / INDEXES /
-  TRIGGERS, enum↔CHECK parity, FK enforcement, `_ensure_*` migration test
-  pattern).
+`build_storage()` is the single construction chokepoint. Table-backed models:
+`MemoryRecord`, `ConceptLink`, `MemorySummary`, `QuerySession`, `QueryResult`,
+plus `index_manifest` (`ManifestEntry` TypedDict, no Pydantic model). Search
+candidates come from `_fts_scores`/`_trigram_scores`/`_vector_scores`/
+`_load_memories`; `_passes_filter` is post-load only. Today
+`memory_summaries.concept` is globally UNIQUE and `concept_links` is
+`UNIQUE(source,target,link_type)`. `_MEMORY_COLUMNS` + `_memory_row_values` +
+`_row_to_memory` + the `update_memory` SET list must stay in lockstep (the
+`migrate.py` `_*_COLS` mirror is `multi-tenancy-postgres`'s). Schema gate:
+`test_schema.py`.
 
 ---
 
 ## Architecture
 
-### Tenant resolution flow
+This spec wires only the **CLI** selector. The MCP and HTTP selectors are owned
+by other specs (`tenant-scoped-mcp` / a future HTTP spec); the MCP server and
+HTTP API keep behaving as the global tenant until those land. `TENANT_GLOBAL =
+"global"` is a module-level constant in `types.py` reused everywhere.
 
-```
-transport selector (CLI --tenant | MCP ctx/env | HTTP X-Tenant-ID)
-        │   (absent → "global")
-        ▼
-core function call  add_memory(..., tenant_id=...) / search(..., tenant_id=None|T)
-        ▼
-StorageBackend (SqliteBackend | PostgresBackend)
-        │   write: INSERT ... (tenant_id)      [FK to tenants(id)]
-        │   read (unscoped): no predicate      [today's behaviour]
-        │   read (scoped T): WHERE tenant_id = ? in candidate SQL + traversal
-        ▼
-one database, all tenants
-```
+Ownership (resolves cross-unit duplicate-scope findings): this spec adds the
+optional read `tenant_id`, the write guard, uniqueness, SQLite migration,
+schema-only OpenAPI, and the CLI (Postgres + `migrate.py` →
+`multi-tenancy-postgres`). It does NOT touch MCP tool signatures or register MCP
+tenant tools (owned by `tenant-scoped-mcp`), and does NOT scope the
+`DreamingEngine` or run a dream-all-tenants loop (owned by
+`cross-tenant-copy-and-dreaming`); it only makes the dreaming helper queries
+tenant-aware.
 
-The tenant selector is a plain value threaded through core function signatures.
-There is no implicit global state and no auth. `TENANT_GLOBAL = "global"` is a
-module-level constant in `types.py` reused everywhere.
-
-### Why row-scoped (not DB-per-tenant)
-
-- Smallest backwards-compatible delta; keeps the single-file storage design.
-- One `initialise()`, one schema gate, one FTS index set.
-- Enables future cross-tenant admin/aggregate reads.
-- Trade-off: isolation is query-enforced. Mitigated by pushing the predicate
-  into candidate SQL (not just `_passes_filter`) so no un-scoped row reaches
-  fusion when a tenant is supplied.
+Row-scoped (not DB-per-tenant) is the smallest backwards-compatible delta, keeps
+one DB/schema-gate/FTS index set, and enables future cross-tenant admin reads.
+Isolation is query-enforced: the predicate is pushed into candidate SQL (not just
+`_passes_filter`) so no unscoped row reaches fusion when a tenant is supplied.
 
 ---
 
@@ -79,31 +67,15 @@ module-level constant in `types.py` reused everywhere.
 
 ### New: `Tenant` model + constant
 
-```python
-TENANT_GLOBAL = "global"
-
-class Tenant(BaseModel):
-    id: str = Field(default=TENANT_GLOBAL, min_length=1, max_length=128)
-    name: str = ""
-    is_active: bool = True
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-```
-
-Tenant id charset is constrained (e.g. `^[a-z0-9][a-z0-9_-]{0,127}$`) via a
-field validator so ids are safe, stable, and predictable.
+`TENANT_GLOBAL = "global"`. `Tenant(id, name="", is_active=True, created_at,
+updated_at)` with an id field validator for `^[a-z0-9][a-z0-9_-]{0,127}$`
+(raising `InvalidTenantIdError`).
 
 ### Add `tenant_id` to every table-backed model
 
 `MemoryRecord`, `ConceptLink`, `MemorySummary`, `QuerySession`, `QueryResult`
-each gain:
-
-```python
-tenant_id: str = Field(default=TENANT_GLOBAL, min_length=1, max_length=128)
-```
-
-The `index_manifest` carrier (`ManifestEntry` TypedDict in `ports.py`) also gains
-`tenant_id` for parity.
+each gain `tenant_id: str = Field(default=TENANT_GLOBAL, ...)`; the
+`index_manifest` `ManifestEntry` TypedDict (`ports.py`) gains `tenant_id` too.
 
 ### Filter / request surface
 
@@ -115,11 +87,16 @@ Default `None` preserves backwards compatibility (Requirement 5.1).
 
 ---
 
-## Schema changes (`schema.sql` and `schema_postgres.sql` — edited second)
+## Schema changes (`schema.sql` — SQLite only; Postgres is `multi-tenancy-postgres`)
+
+This spec edits `schema.sql` and the SQLite backend only. `types.py` (the source
+of truth) carries `tenant_id` on every model, so the Postgres spec mirrors the
+DDL without changing the model. The `tenants` CREATE + seed may stay in
+`schema.sql` (self-contained, safe to run first); the `tenant_id` columns and
+their indexes are created by the migration (below).
 
 ### New `tenants` table
 
-SQLite:
 ```sql
 CREATE TABLE IF NOT EXISTS tenants (
     id          TEXT PRIMARY KEY,
@@ -128,32 +105,30 @@ CREATE TABLE IF NOT EXISTS tenants (
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
--- seed the reserved global tenant (idempotent)
 INSERT OR IGNORE INTO tenants (id, name, is_active, created_at, updated_at)
 VALUES ('global', 'Global (default) tenant', 1,
         '1970-01-01T00:00:00', '1970-01-01T00:00:00');
 ```
 
-Postgres mirrors this with `BOOLEAN`/`TIMESTAMP` and
-`INSERT ... ON CONFLICT (id) DO NOTHING`.
-
 ### `tenant_id` column on every scoped table
 
 Each of `memories`, `concept_links`, `memory_summaries`, `query_sessions`,
-`query_results`, `index_manifest` gains:
+`query_results`, `index_manifest` gains, **in the fresh schema**:
 
 ```sql
 tenant_id TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id)
 ```
 
 Notes:
-- `NOT NULL DEFAULT 'global'` is what makes fresh inserts and legacy rows land in
-  the global tenant automatically.
-- The FK to `tenants(id)` enforces Requirement 4.2 (no writing to a
-  non-existent tenant). Because the schema seeds `global`, the default never
-  dangles.
-- SQLite requires `PRAGMA foreign_keys = ON` (already re-asserted per connection
-  in `StorageAdapter.connect()`), so the FK is enforced at runtime.
+- `NOT NULL DEFAULT 'global'` makes fresh inserts and legacy rows land in the
+  global tenant automatically.
+- On a **fresh** schema and on any table **rebuilt** during migration, the FK is
+  present and (with `PRAGMA foreign_keys = ON`, already re-asserted per
+  connection) enforced at runtime.
+- On a **pre-existing** table where the column is added via `ALTER TABLE ADD
+  COLUMN`, there is NO FK (SQLite limitation). The write guard enforces
+  tenant-exists there instead. Do not claim the FK alone satisfies Req 4.2 —
+  the write guard is the load-bearing enforcement.
 
 ### Uniqueness changes (Requirement 6)
 
@@ -172,74 +147,109 @@ reads:
 - `idx_summaries_tenant ON memory_summaries(tenant_id, concept)`
 - `idx_sessions_tenant ON query_sessions(tenant_id, concluded, created_at)`
 
-The existing indexes remain (global reads still use them). Postgres mirrors the
-same index set.
+`index_manifest`'s PRIMARY KEY changes from `path` to `(tenant_id, path)` so two
+tenants can index the same path (rebuilt on migration like the UNIQUE-changing
+tables). The existing indexes remain for global reads.
 
 ### FTS / tenant interaction
 
-- SQLite FTS5 (`memories_fts`) is external-content keyed on `memories.rowid`; the
-  three triggers stay exactly as-is (they index `content` only). Tenant scoping
-  of FTS results is done by **joining back to `memories` and filtering
-  `memories.tenant_id = ?`** in `_fts_scores` / `_trigram_scores` — the triggers
-  are untouched, so Invariant §4.6 holds.
-- Postgres `content_tsv` generated column + GIN index are likewise unchanged;
-  the tenant predicate is a `WHERE tenant_id = ?` on `memories`.
+SQLite FTS5 (`memories_fts`) is external-content keyed on `memories.rowid`; the
+three triggers stay exactly as-is (they index `content` only). Tenant scoping of
+FTS results joins back to `memories` and filters `memories.tenant_id = ?` in
+`_fts_scores`/`_trigram_scores`; the triggers are untouched (Invariant §4.6).
 
 ---
 
-## Storage layer changes (`storage.py`, `storage_postgres.py`, `ports.py`)
+## Storage layer changes (`storage.py`, `ports.py` — SQLite only here)
 
 ### Column lockstep (critical)
 
 Add `tenant_id` to `_MEMORY_COLUMNS` and the equivalent column lists for links,
 summaries, sessions, results, and manifest, and update in lockstep:
-`_memory_row_values`, `_row_to_memory`, the `update_memory` SET list, and the
-mirrored tuples/inserts in `migrate.py` (`_MEMORIES_COLS`,
-`_insert_memories_batch`, and the other `_*_COLS` / `_insert_*_batch`).
+`_memory_row_values`, `_row_to_memory`, and the `update_memory` SET list. (The
+`migrate.py` `_*_COLS` mirror is in `multi-tenancy-postgres`, since migrate.py is
+the SQLite→Postgres path.)
 
 ### Idempotent migration for existing DBs
 
-Add `_ensure_tenant_columns(conn)` called from `initialise()` after the three
-existing `_ensure_*` calls. It follows the proven pattern:
+Seed ownership: `schema.sql` is the SOLE creator+seeder of the `tenants` table.
+`_ensure_tenant_columns` does NOT re-create/seed it; it only GUARDS (if the
+`tenants` table is somehow absent on a very old DB, it is a no-op degrade, since
+`initialise()` ran `schema.sql` first). This removes the two-owner ambiguity.
 
-```python
-def _ensure_tenant_columns(self, conn) -> None:
-    try:
-        # 0. ensure tenants table + seed global (schema.sql already does this on
-        #    fresh DBs; guard for pre-existing DBs)
-        # 1. for each scoped table: PRAGMA table_info; if 'tenant_id' missing →
-        #    ALTER TABLE <t> ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'global'
-        # 2. existing rows inherit the DEFAULT 'global' automatically
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # degrade gracefully (old/locked SQLite), consistent with peers
-```
+Add `_ensure_tenant_columns(conn)` from `initialise()` after the existing
+`_ensure_*` calls, ordering load-bearing: (1) `ALTER TABLE ADD COLUMN tenant_id
+... DEFAULT 'global'` on each scoped table missing it; (2) rebuild
+`concept_links`, `memory_summaries`, and `index_manifest` to their new
+UNIQUE/PK + tenant FK (only if the stored DDL still has the old shape), reusing
+the `_ensure_index_mode_vision` pattern; (3) only now `CREATE INDEX IF NOT
+EXISTS` the tenant-leading indexes (never in a top-of-`schema.sql` block that
+runs before the column exists). Guarded by `try/except sqlite3.OperationalError`
+with the atomicity rule below.
 
-SQLite note: `ALTER TABLE ADD COLUMN` cannot add a column that is simultaneously
-a FK with a non-constant default in one step on very old SQLite; the column is
-added with `DEFAULT 'global'` (constant) and the FK relationship is relied upon
-for fresh-schema tables. The `tenants` table is created/seeded first so `global`
-always resolves. Uniqueness changes on pre-existing DBs are handled by the
-table-rebuild approach already used by `_ensure_index_mode_vision`
-(CREATE new → INSERT SELECT → DROP old → RENAME) where a UNIQUE constraint must
-change; the rebuild is guarded and idempotent.
+### Public method signatures (concrete — the dependent specs build on these)
 
-### Public method signatures
+Two kinds of writes, with explicit tenant sourcing:
 
-Writes gain an explicit tenant:
-- `add_memory(record)` — tenant travels on the record (`record.tenant_id`).
-- `add_link(link)` — tenant on the link; reject if source/target tenants differ
-  (looked up/validated) → Requirement 6.3.
-- `create_session(...)`, `upsert_summary(...)`, `record_query_results(...)` —
-  tenant on the record.
+- **Record-carrying writes** — `add_memory(record)`, `update_memory(record)`,
+  `create_session(session)`, `record_query_results(...)`, `upsert_summary(summary)`,
+  `add_link(link)`, note/image writes: the tenant is `record.tenant_id` (default
+  `"global"`). The write guard runs on that value first.
+  - `update_memory`: if `record.tenant_id` differs from the stored row's tenant,
+    raise `TenantImmutableError` (a record's tenant is fixed after creation).
+  - `add_link`: look up both endpoints; if either is missing raise
+    `TenantNotFoundError`, if they differ or `link.tenant_id` differs from the
+    shared endpoint tenant raise `CrossTenantLinkError`.
+  - `record_query_results`: if the session's `tenant_id` is a NAMED tenant, every
+    referenced memory must share it, else `CrossTenantLinkError`. If the session
+    is the `"global"` session of an UNSCOPED search, the results may reference any
+    tenant's memories (exempt — it is a cross-tenant read audit, not a link; see
+    requirements Req 4.5).
+- **Id-only writes** — `archive_memory`, `supersede_memory`, `apply_feedback`
+  take a trailing `tenant_id: str | None = None`. `None` → act by id, guard on the
+  stored row's tenant. Concrete → act only if the stored row matches, else
+  not-found. So `--tenant T archive <foreign-id>` is not-found.
 
-Reads gain an optional tenant:
-- `search(request)` — reads `request.tenant_id` (None = unscoped).
-- `search_around(...)`, `get_stats(...)`, and dreaming helpers gain
-  `tenant_id: str | None = None`; None keeps today's global behaviour.
-- `get_memory(id)` stays by-id but, when future callers pass a tenant, can
-  enforce `AND tenant_id = ?`. Phase 1 keeps `get_memory(id)` global-by-id for
-  backwards compatibility and adds the scoped path where a tenant is available.
+**Reads** gain a trailing `tenant_id: str | None = None` (None = today):
+- `get_memory(id, tenant_id: str | None = None) -> MemoryRecord | None`:
+  `None` → `SELECT ... WHERE id = ?` (today). A concrete value →
+  `SELECT ... WHERE id = ? AND tenant_id = ?`, so a foreign id returns `None`.
+  This is a committed signature the `tenant-scoped-mcp` spec depends on.
+- `search(request)` uses `request.tenant_id`; the full exhaustive list of reads
+  gaining `tenant_id: str | None = None` is in requirements Req 5.1 and includes
+  `search_around`, `get_stats`, `get_links`, `list_notes`, `get_annotating_notes`,
+  `get_annotating_descriptions`, `list_image_file_records`,
+  `find_image_file_record`, `anchor_candidates`, `list_summaries`, `get_summary`,
+  `get_session`, `manifest_get`/`manifest_paths`, the cochange queries
+  (`changed_with`, `documents_timeline`), the summary-job collector
+  (`DreamingEngine.collect_summary_jobs`), the image-job collector
+  (`vision.image_jobs`), and every dreaming helper. Method arg wins over
+  `request.tenant_id`.
+- Concept-keyed reads disambiguate per Req 5.6: `get_summary(concept,
+  tenant_id=None)` returns the `global` row or `None`; a concrete tenant uses
+  `(tenant_id, concept)`.
+
+### New composable storage contracts (committed for the copy spec — Req 5.8)
+
+- `memory_exists_with_content(content, tenant_id: str | None = None) -> bool`.
+- `list_memories(filter: MemoryFilter | None = None, tenant_id: str | None =
+  None, limit: int | None = None) -> list[MemoryRecord]` (query-text-free list).
+- `transaction()` context on the backend (SQLite has one; exposed via `ports.py`)
+  and `_on_conn` write variants (`add_memory`/`add_link`/note writes) that run on
+  a supplied connection without committing, so `copy_between_tenants` can wrap
+  many writes in one transaction. The Postgres equivalents are added by
+  `multi-tenancy-postgres`; the SQLite ones are added here.
+
+### Write guard (the enforcement point for Req 4.2 / 4.3)
+
+A private helper `_assert_tenant_writable(conn, tenant_id)` on each backend,
+called at the top of every write: `SELECT is_active FROM tenants WHERE id=?`;
+`None` → `TenantNotFoundError`; inactive → `TenantInactiveError`. Being an
+explicit SELECT, it protects migrated SQLite tables that lack the FK and is
+backend-independent. A FK violation on a fresh/rebuilt table is caught and
+re-raised as `TenantNotFoundError`. (TOCTOU between the guard SELECT and the
+INSERT is acceptable here: the FK on fresh/rebuilt tables is the backstop, and a
+tenant deactivated mid-write at worst lets one in-flight write through.)
 
 ### Where the predicate goes
 
@@ -252,109 +262,128 @@ keeps Requirement 5.1 literally true and avoids cross-tenant leakage (5.2–5.4)
 
 ### New tenant methods (Requirement 1)
 
-Add to the `StorageBackend` Protocol in `ports.py` and both backends:
-- `create_tenant(tenant: Tenant) -> Tenant` — INSERT; on existing id, return the
-  existing row (idempotent create). Rationale: idempotent create is friendlier
-  for provisioning and matches the `INSERT OR IGNORE` ethos; the transport layer
-  may expose an explicit "already exists" signal.
+Add to the `StorageBackend` Protocol in `ports.py` and the SQLite backend:
+- `create_tenant(tenant_id: str, name: str = "") -> Tenant` — takes STRINGS.
+  Validate `tenant_id` (raise `InvalidTenantIdError` directly on bad charset),
+  then `INSERT OR IGNORE` / `INSERT ... ON CONFLICT (id) DO NOTHING`, then
+  `SELECT` and return the `Tenant`. Idempotent + concurrency-safe. Taking strings
+  (not a `Tenant` model) means the model validator never fires ahead of the
+  method, so the method is the single source of the `InvalidTenantIdError`.
 - `get_tenant(id) -> Tenant | None`.
-- `list_tenants() -> list[Tenant]`.
-- `set_tenant_active(id, active: bool)` — rejects when `id == "global"` and
-  `active is False` (Requirement 1.5). No hard delete of `global`.
+- `list_tenants() -> list[Tenant]` — all tenants (active + inactive), ordered by id.
+- `set_tenant_active(id, active: bool) -> Tenant` — `TenantNotFoundError` for an
+  unknown id; `ProtectedTenantError` when deactivating `global`. No delete API.
+
+Inactive-tenant semantics (resolves the undefined-`is_active` finding): an
+inactive tenant is **read-only** — reads confined to it still work, but the write
+guard raises `TenantInactiveError`. Reactivation is `set_tenant_active(id, True)`.
 
 ---
 
-## Transport changes
+## Error contract (one typed surface — resolves "clear error" ambiguity)
 
-All three resolve a selector and pass it into core; none duplicates logic. The
-selector defaults to `global` when absent.
+Defined in `types.py` / a small `core` module and raised by storage:
+
+| Exception | Raised when | CLI | HTTP (future spec) |
+|---|---|---|---|
+| `TenantNotFoundError` | write to / scope to a tenant not in `tenants` | exit≠0 | 409 (write) / 404 (scope) |
+| `TenantInactiveError` | write to a tenant with `is_active=false` | exit≠0 | 409 |
+| `ProtectedTenantError` | deactivate `global` (there is no delete API) | exit≠0 | 403 |
+| `InvalidTenantIdError` | id fails `^[a-z0-9][a-z0-9_-]{0,127}$` | exit≠0 | 422 |
+| `CrossTenantLinkError` | link / reference whose ends differ in tenant | exit≠0 | 409 |
+| `TenantImmutableError` | `update_memory` tries to change a record's own tenant | exit≠0 | 409 |
+| `ScopeRequiredError` | a scoped caller invokes a global-only op (copy spec) | exit≠0 | 403 |
+
+All subtypes live in `types.py` (task 1). `ScopeRequiredError` is reserved for
+the copy spec. `InvalidTenantIdError` subclasses `ValueError`; the `Tenant`
+validator raises it (bad `Tenant()` → `ValidationError`), but `create_tenant`
+takes a string and validates first, so it raises the plain type (tests assert
+the plain type). A backend FK `IntegrityError` → `TenantNotFoundError`. The CLI
+mapping is here; the HTTP column is the contract the HTTP/copy specs map.
+
+---
+
+## Transport changes (CLI only in this spec)
+
+This spec wires only the CLI. MCP and HTTP selectors are owned by other specs.
 
 ### CLI (`packages/cli/src/mintmory/cli/main.py`)
-- Add a global `--tenant` option (Typer) resolved in `_get_store()`-adjacent
-  code or per command; absent → `global`.
-- Add `tenant create <id> [--name]` and `tenant list` commands.
+- Add `--tenant` as a **global Typer callback option** (one declaration, shared
+  by all commands). Absent → global semantics (read `None`, write `"global"`);
+  `--tenant T` → read confined to T, write stamps T. Resolution lives next to
+  `_get_store()`.
+- Add `tenant create <id> [--name]` and `tenant list` (prints `id`, `name`,
+  `is_active` as a table). Map `TenantError` subtypes to a non-zero exit (code 1)
+  with the message.
+- **`dream` is NOT given a `--tenant` by this spec.** `DreamingEngine` tenant
+  scoping is owned by `cross-tenant-copy-and-dreaming`; until it lands, `dream`
+  runs exactly as today (global, no engine change). This spec's `--tenant` wiring
+  covers add/get/search/link/feedback/archive/stats/notes/summaries/images only.
+  (The dependent spec adds `dream --tenant` when it adds the engine scope.)
 
-### MCP (`packages/mcp/src/mintmory/mcp/server.py`, `tools.py`)
-- Tools accept an optional `tenant_id` argument (absent → `global`), or resolve
-  from an env var for a per-process default. The module-level singleton `_store`
-  stays; tenancy is a per-call value, not a per-store binding.
-- Add `tenant_create` / `tenant_list` tools.
-
-### HTTP API (`packages/api/src/mintmory/api/app.py`, `schemas.py`)
-- Add a FastAPI dependency `resolve_tenant()` reading header `X-Tenant-ID`
-  (absent → `global`), injected into each route and passed to core.
-- Add `POST /tenants` (create) and `GET /tenants` (list). Add `tenant_id` to the
-  relevant request schemas / responses where appropriate.
-- The single `_store` + `get_store()` singleton is unchanged; tenancy is a
-  per-request value.
+### MCP and HTTP — explicitly unchanged here
+This spec does NOT modify MCP tool signatures and registers no MCP tenant tools;
+the MCP server keeps behaving as the global tenant. It does NOT add the
+`X-Tenant-ID` header handling; the HTTP API keeps behaving as the global tenant.
+Those surfaces are delivered by `tenant-scoped-mcp` (MCP) and a future HTTP spec.
 
 ---
 
 ## OpenAPI (`docs/openapi/mintmory.yaml` — edited last)
 
-- Add a `Tenant` schema and a reusable `TenantHeader` parameter
-  (`X-Tenant-ID`, optional, default `global`) under `components`.
-- Reference `TenantHeader` from the relevant operations.
-- Add `tenant_id` to `MemoryRecord`, `MemoryCreate`, `MemoryFilter`,
-  `SearchRequest`, `ConceptLink`, `ConceptLinkCreate`, `MemorySummary`, and
-  `QuerySession` schemas.
-- Add `POST /tenants` and `GET /tenants` paths.
+OpenAPI must not document routes the API does not serve. Since the HTTP API stays
+global in this spec, this spec's OpenAPI change is limited to **schema additions
+that reflect the data model** (no new paths):
+
+- Add a `Tenant` schema.
+- Add the optional `tenant_id` field to `MemoryRecord`, `MemoryCreate`,
+  `MemoryFilter`, `SearchRequest`, `ConceptLink`, `ConceptLinkCreate`,
+  `MemorySummary`, `QuerySession` (these fields now exist on the models the API
+  already returns/accepts, so the spec stays truthful).
+- Do NOT add `POST /tenants` / `GET /tenants` or the `X-Tenant-ID` header here —
+  those are served by the HTTP tenant spec that adds the actual routes, added in
+  the same change as the code so the spec↔route parity holds.
 
 ---
 
 ## Testing strategy
 
-Unit (`:memory:` SQLite, mock embedder, no LLM):
-- Schema gate additions: `tenants` in REQUIRED_TABLES; `tenant_id` in each
-  REQUIRED_*_COLUMNS set; new indexes in REQUIRED_INDEXES.
-- Fresh DB seeds the `global` tenant exactly once.
-- FK: writing a memory with a non-existent `tenant_id` raises `IntegrityError`.
-- Per-tenant uniqueness: two tenants can hold a summary for the same concept and
-  equivalent links; same-tenant duplicate link is still ignored/idempotent.
-- Cross-tenant link creation is rejected.
-- Scoped search returns only tenant T rows; unscoped search returns all rows
-  (parity with pre-feature results on a single-tenant DB).
-- `search_around` under T does not pull other-tenant memories.
-- Migration: replicate the `is_note` backfill test — build a pre-feature-shaped
-  DB (no `tenant_id`), run `initialise()`, assert columns added, all rows
-  backfilled to `global`, and a second `initialise()` is a no-op.
+The per-task test bullets in tasks.md are the authoritative test list. Decidable
+scenarios worth calling out here:
 
-Integration (`tests/integration/`, real file):
-- Full add→search→feedback loop under a named tenant and under global, asserting
-  isolation when scoped and identical-to-today behaviour when unscoped.
-
-Postgres parity:
-- Mirror the schema/column/uniqueness assertions for `schema_postgres.sql`; add
-  `tenant_id` to `migrate.py` tuples and assert the migration + checksum still
-  pass.
+- **SQL parity (Req 5.4):** "byte-for-byte today's SQL" is tested by asserting
+  the unscoped (`None`) path takes the same code branch as before — concretely,
+  a unit test checks that no `WHERE tenant_id` clause is emitted when
+  `tenant_id is None` (assert on the built query string the backend produces),
+  and a behavioural test asserts unscoped results equal the pre-feature results
+  on a single-tenant DB. No external SQL-trace tooling is required.
+- **Write guard** on a fresh AND a migrated (no-FK) DB (guard is load-bearing).
+- **Migration** (Req 3.4): full migration succeeds; a simulated mid-migration
+  failure leaves the DB readable and unchanged; a second `initialise()` no-op.
+- **Timestamp equivalence (Req 1.7):** the test compares tenant identity/
+  `is_active`, not the timestamp value.
+- (Postgres parity + migrated-Postgres tests live in `multi-tenancy-postgres`,
+  not here — this unit is SQLite-only, so its unattended run needs no Postgres
+  service.)
 
 Gates (per `tech.md`): `uv run pytest` (coverage ≥ 80%), `uv run mypy
 packages/`, `uv run ruff check packages/` all exit 0.
 
 ---
 
-## Backwards-compatibility checklist
+## Migration atomicity and failure (Req 3.4)
 
-- [ ] Column default `'global'` on every scoped table.
-- [ ] `tenants` seeded with `global`; `global` cannot be deactivated/deleted.
-- [ ] Reads/searches with no tenant selector emit today's exact SQL.
-- [ ] `_ensure_tenant_columns` idempotent and graceful on old/locked SQLite.
-- [ ] `_MEMORY_COLUMNS` / row (de)serialisers / `update_memory` / `migrate.py`
-      tuples all updated in lockstep.
-- [ ] FTS triggers untouched; tenant scoping via join-back filter.
-- [ ] Schema gate, enum↔CHECK parity, FK, and trigger tests pass.
+`_ensure_tenant_columns` commits only when the whole migration completed; on
+`sqlite3.OperationalError` it rolls back so the DB is either fully pre-feature or
+fully migrated (never half). A pre-feature DB that cannot migrate keeps working
+untenanted (the guard is a no-op while `tenants` is absent). Test: full migration
+succeeds; a simulated mid-migration failure leaves the DB readable and unchanged.
 
----
+## Risks
 
-## Risks and mitigations
-
-- **Lockstep drift** (column added in one place, missed in another) → a single
-  task enumerates every lockstep site; schema-gate + round-trip serialise tests
-  catch omissions.
-- **UNIQUE change on existing DBs** requires table rebuild → reuse the proven
-  `_ensure_index_mode_vision` rebuild pattern; guarded + idempotent.
-- **Silent cross-tenant leak** if predicate is only in `_passes_filter` →
-  predicate is injected into candidate SQL and traversal; `_passes_filter` is
-  defense-in-depth, not the enforcement point.
-- **Postgres/SQLite divergence** → schema and migration tasks are paired; both
-  schema files and `migrate.py` are updated together.
+- **Lockstep drift** → one task enumerates every site; schema-gate + round-trip
+  tests catch omissions.
+- **UNIQUE change on existing DBs** → the `_ensure_index_mode_vision` rebuild
+  pattern; the auto-named `concept UNIQUE` is dropped by rebuild (not by name).
+- **Silent cross-tenant leak** → predicate in candidate SQL + traversal;
+  `_passes_filter` is defense-in-depth only.

@@ -8,6 +8,7 @@ harness:
 spec:
   frameworks:
   - openspec
+  - kiro
 gates:
   # the same commands as .github/workflows/ci.yml (job "lint · types · tests")
   setup:
@@ -27,7 +28,7 @@ profiles:
     auth: api_key
   glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
     adapter: opencode
-    model: opencode-go/glm-5.3-flash
+    model: opencode/glm-5.3-flash-free
     vendor: zhipu
     auth: api_key
   jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY

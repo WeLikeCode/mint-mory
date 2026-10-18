@@ -38,26 +38,39 @@ named scope produces the hard boundary; the `global` scope passes "unscoped"
 
 ## Scope resolution (Requirement 1)
 
-### Source and precedence
+### Source and precedence (concrete mechanism)
 
-A new MCP-scope value resolved at server start, precedence highest-first:
-1. `--tenant <id>` CLI argument on the `mintmory-mcp` command.
-2. `MINTMORY_MCP_TENANT` env var (new `MINTMORY_MCP_` settings group, consistent
-   with the existing convention).
-3. Default `global`.
+Add a `McpSettings(BaseSettings)` group in `core/config.py` with
+`model_config = SettingsConfigDict(env_prefix="MINTMORY_MCP_")` and a field
+`tenant: str = ""` (empty = not set). The `mintmory-mcp` entrypoint in
+`server.py` (the Typer/CLI callback that today starts the server and parses
+`--transport`/`--port`) gains a `--tenant <id>` option. Resolution order,
+highest first:
+1. `--tenant <id>` CLI option.
+2. `McpSettings().tenant` (env `MINTMORY_MCP_TENANT`).
+3. `""` → treated as `global`.
 
-CLI argument wins over env (Requirement 1.3). The resolved value is stored once
-(see "Scope holder") and never recomputed per call (Requirement 1.5).
+The entrypoint computes the scope string, then calls a single bootstrap function
+`_bootstrap_scope(scope: str) -> None` that sets the module global
+`_scope_tenant` and runs fail-fast validation. Tests set the scope by calling
+`_bootstrap_scope("...")` directly (no subprocess needed), which also documents
+how `_scope_tenant` is set under test.
 
-### Fail-fast validation
+### Fail-fast validation (`_bootstrap_scope`)
 
-At startup, after the store is initialised:
-- If scope == `global` → always valid (the `multi-tenancy` schema seeds it).
-- Else → `store.get_tenant(scope)`; if `None`, raise a clear startup error and
-  exit non-zero. No implicit create, no silent fallback (Requirement 1.4).
+After `_get_store()` is initialised:
+- Empty/unset scope → `_scope_tenant = "global"`; always valid.
+- Non-empty scope failing the `multi-tenancy` id charset → raise
+  `InvalidTenantIdError`, exit non-zero (Req 1.6).
+- `scope == "global"` → valid (seeded by `multi-tenancy`).
+- Else `store.get_tenant(scope)`:
+  - `None` → raise `TenantNotFoundError`, exit non-zero (Req 1.4). No implicit
+    create, no silent fallback.
+  - exists but `is_active == False` → **start anyway** (Req 1.5); the tenant is
+    read-only, so writes later surface `TenantInactiveError`. Log a warning.
+  - exists and active → proceed.
 
-This runs for stdio and SSE/HTTP identically because all paths go through the
-same server bootstrap (Requirement 1.6).
+This runs for stdio and SSE/HTTP identically (one bootstrap, Req 1.8).
 
 ### Scope holder
 
@@ -98,16 +111,50 @@ the caller (Requirement 4.1).
 - `memory_stats`, summaries list/get/jobs, notes list, image jobs, cochange:
   pass `tenant_id=_effective_tenant()`; `None` = global.
 
-### Writes (Requirement 3)
-- `memory_add`: set `record.tenant_id = _scope_tenant` (literal, so a named
-  scope writes under `T` and global writes under `"global"` — Requirement 3.2).
-  Note: for writes we use the literal scope id (`global` is a real tenant row),
-  whereas for reads we use `None` to mean unrestricted.
-- `memory_archive`, link creation, `session_feedback`, `summary_put`,
-  `image_caption_put`, `memory_note`: constrain the target to the scope; a
-  foreign-tenant target is not-found / no-op (Requirement 3.3).
-- `memory_dream`: pass `tenant_id=_effective_tenant()`; under a named scope only
-  that tenant's memories are consolidated, idempotently (Requirement 3.4).
+### Writes (Requirement 3) — one rule, no cross-tenant references
+
+- `memory_add` (free-standing create): `record.tenant_id = _scope_tenant` (named
+  → `T`, global → `"global"`).
+- Writes that CREATE a record REFERENCING an existing record — `memory_note`
+  (annotates memory M), link creation (M1↔M2), `session_feedback` (records
+  `query_results` for retrieved memories), `summary_put` (a per-concept summary):
+  the new record INHERITS the referenced record's tenant, in BOTH scopes. This is
+  the single rule that keeps the `multi-tenancy` same-tenant invariant:
+  - Resolve the referenced memory/memories (named scope → scoped read confined to
+    `T`, so a foreign target is not-found; global scope → unrestricted read).
+  - Stamp the new note/link/session/summary with the referenced record's
+    `tenant_id`. If the references span >1 tenant (a link across tenants), raise
+    `CrossTenantLinkError` (from `multi-tenancy`).
+  - Concretely: `memory_note` on a tenant-T memory creates a T note (even under
+    global scope); `session_feedback` records a session+results under the
+    retrieved memories' tenant.
+  - `summary_put(concept, text)` stamps `_scope_tenant` directly (named → `T`,
+    global → `"global"`), keyed on `(tenant_id, concept)` — a summary is not a
+    reference to a specific memory, so there is nothing to inherit and no
+    disambiguation. (Per-tenant summaries are regenerated by the copy spec's
+    per-tenant dreaming; a global agent simply writes global summaries.)
+- Writes that MODIFY an existing record — `memory_archive(id)`,
+  `image_caption_put` on an existing image: act on that row in place; named scope
+  resolves the target confined to `T` (foreign → not-found); the row's
+  `tenant_id` is never changed. These map to the `multi-tenancy` id-only writes
+  (`archive_memory(id, tenant_id=_effective_tenant())`).
+- `memory_dream` — NOT wired to an engine here (see Req 3.4): named scope →
+  return the "requires cross-tenant-copy-and-dreaming" refusal (an MCP error
+  dict, below); global scope → unchanged (today's dream). The real wiring is
+  installed by `cross-tenant-copy-and-dreaming`, which also updates the Req 4b
+  inventory test.
+
+### Error return convention (MCP)
+
+A `TenantError` raised by core is caught at the tool boundary and returned as an
+MCP tool error (fastmcp surfaces a raised exception as a tool error to the
+client); the message is the exception's. So `TenantInactiveError`,
+`CrossTenantLinkError`, the invalid-id error, and the `memory_dream` named-scope
+refusal all surface as MCP tool errors (not silent null/empty). `memory_get` of a
+foreign id returns `null` (not an error — it is simply not found under the
+scope). Startup fail-fast raises (process exits non-zero); under test,
+`_bootstrap_scope` raises the exception directly (not `SystemExit`), so tests
+assert on the exception type.
 
 ### Enforcement point
 
@@ -139,12 +186,13 @@ def tenant_create(tenant_id: str, name: str = "") -> dict[str, Any]:
     already exists. Available to any agent regardless of scope. Does NOT change
     this agent's own scope."""
     store = _get_store()
-    t = store.create_tenant(Tenant(id=tenant_id, name=name))
+    t = store.create_tenant(tenant_id, name)   # STRINGS — multi-tenancy Req 1.3
     return t.model_dump(mode="json")
 ```
 
-- Validation of `tenant_id` is delegated to the `multi-tenancy` `Tenant` model
-  (Requirement 5.5); an invalid id surfaces as a clear error.
+- `create_tenant` takes STRINGS (multi-tenancy Req 1.3), so an invalid id raises
+  the plain `InvalidTenantIdError` (not a Pydantic-wrapped error), which the tool
+  surfaces as an MCP error (Req 5.5). Do NOT build a `Tenant(...)` here.
 - No privilege gate (Requirement 5.3). Creating a tenant does not re-point
   `_scope_tenant` (Requirement 5.4).
 
@@ -164,14 +212,17 @@ id/name/is_active/timestamps (Requirement 6.2).
 
 ---
 
-## Startup / bootstrap changes (`server.py`)
+## Startup / bootstrap changes (`server.py`, `config.py`)
 
-- Add a `MINTMORY_MCP_` settings group (or extend the existing MCP CLI entry) to
-  read `tenant` (env `MINTMORY_MCP_TENANT`).
-- Add `--tenant` to the `mintmory-mcp` command / entrypoint; CLI wins over env.
-- In the server bootstrap (before serving): resolve `_scope_tenant`, call
-  `_get_store()`, then run fail-fast validation (`get_tenant` unless global).
-- Keep the `_store` singleton as-is; the scope is an independent module value.
+- Add `McpSettings(env_prefix="MINTMORY_MCP_")` with `tenant: str = ""` in
+  `config.py`.
+- Add `--tenant <id>` to the `mintmory-mcp` entrypoint (the existing Typer
+  callback that handles `--transport`/`--port`); CLI wins over env.
+- The entrypoint computes the scope and calls `_bootstrap_scope(scope)`, which
+  sets `_scope_tenant`, calls `_get_store()`, and runs fail-fast validation
+  (above). Both stdio and SSE/HTTP paths call `_bootstrap_scope` before serving.
+- Keep the `_store` singleton as-is; `_scope_tenant` is an independent module
+  global set only by `_bootstrap_scope`.
 
 ---
 
@@ -190,20 +241,26 @@ id/name/is_active/timestamps (Requirement 6.2).
 
 ## Testing strategy
 
-Unit (MCP package, `:memory:` store, mock embedder):
-- Scope resolution: default → `global`; env `MINTMORY_MCP_TENANT` →that tenant;
-  `--tenant` overrides env; unknown named tenant → fail-fast startup error.
+Unit (MCP package, `:memory:` store, mock embedder; set scope via
+`_bootstrap_scope("...")`):
+- Scope resolution: unset → `global`; `MINTMORY_MCP_TENANT` → that tenant;
+  `--tenant` overrides env; unknown named tenant → `TenantNotFoundError` at
+  bootstrap; invalid id → `InvalidTenantIdError`; inactive tenant → starts, with
+  a later write raising `TenantInactiveError`.
 - `_effective_tenant()` mapping: global→None, named→T.
 - Read boundary: with two tenants seeded, a named-scope server's `memory_search`
   / `memory_get` / `search_around` return only its tenant; a foreign id is
   not-found; a global-scope server sees both.
 - Write boundary: named-scope `memory_add` persists under `T`; global under
-  `global`; a named-scope attempt to archive a foreign record is not-found.
-- No override: a tenant-like argument on a tool does not widen/redirect access.
-- `tenant_create`: new id creates; existing id idempotent; invalid id errors;
-  caller scope unchanged afterwards.
+  `global`; a named-scope attempt to archive a foreign record is not-found; a
+  global-scope archive of a named-tenant record succeeds and does NOT re-stamp
+  that record's tenant.
+- No override: assert the read/write tool MCP schemas expose no tenant parameter
+  (except `tenant_create`'s create-id).
+- `tenant_create`: new id creates; existing id idempotent; invalid id →
+  `InvalidTenantIdError`; caller `_scope_tenant` unchanged afterwards.
 - `tenant_list`: returns all tenants in both scopes.
-- `capabilities` reports the scope.
+- `capabilities` reports `tenant_scope` / `tenant_scoped`.
 
 Integration (`tests/integration/`): bring up a named-scope and a global-scope
 configuration against a shared DB with two tenants; assert isolation and the
@@ -217,10 +274,12 @@ Gates: `uv run pytest` (≥ 80% coverage), `uv run mypy packages/`,
 ## Dependencies and sequencing
 
 - **Hard dependency on `multi-tenancy`**: the `Tenant` model, `tenants` table,
-  `create_tenant`/`get_tenant`/`list_tenants`, and the storage tenant predicate
-  must exist first. This spec's tasks assume those are complete.
-- No schema changes are introduced here (no new tables/columns), so the schema
-  gate and OpenAPI are unaffected except for optional MCP-tool documentation.
+  `create_tenant`/`get_tenant`/`list_tenants`, the `TenantError` types, and the
+  committed scoped read signatures (`get_memory(id, tenant_id=None)` etc.) must
+  exist first. This spec's tasks assume those are complete.
+- No DB schema changes here (no new tables/columns). The only `core` change is
+  the `McpSettings` config group; the schema gate is unaffected. OpenAPI is
+  unaffected except for optional MCP-tool documentation.
 
 ---
 
