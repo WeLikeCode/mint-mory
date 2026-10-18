@@ -499,6 +499,43 @@ Default install excludes it; `pip install 'mintmory-core[otel]'` enables real
 export. If the extra is missing but `MINTMORY_OTEL_ENABLED=true`, `init_telemetry`
 logs one warning via structlog and stays in no-op mode (never crashes).
 
+### 4.7 Distributed tracing
+
+MintMory joins a caller's trace at each boundary and forwards the context to the
+services it calls, using the W3C Trace Context headers only.
+
+**What continues a trace (inbound):**
+
+- **REST API.** `TelemetryMiddleware`
+  (`packages/api/src/mintmory/api/telemetry_middleware.py`), the outermost user
+  middleware after CORS, traces every request except `/healthz`, `/readyz` and
+  paths matching `OTEL_PYTHON_EXCLUDED_URLS`. It opens one SERVER span named
+  `<METHOD> <route template>` and extracts the request's W3C context
+  (`traceparent`, plus `tracestate` when present) with `telemetry.extract_context`,
+  so that span is a child of the caller's span. A missing or malformed `traceparent`
+  starts a new trace. The span carries `http.request.method`, `http.route` and
+  `http.response.status_code` — never the raw path or query.
+- **MCP servers.** FastMCP's native SERVER span (`tools/call <name>`, tracer
+  `fastmcp`) continues the `traceparent` / `tracestate` carried in the request's
+  `_meta` (`client.session.call_tool(..., meta={"traceparent": ...})`);
+  `fastmcp.Client.call_tool` opens its own CLIENT span and injects a `traceparent`
+  into `_meta`. MintMory adds no MCP middleware and no second span per tool call.
+  Tool arguments are never recorded.
+- **CLI commands.** Root spans; there is no upstream context to continue.
+
+**What MintMory sends (outbound):**
+
+- `gen_ai.chat` (`core/llm.py`) is a CLIENT span with `server.address` and
+  `server.port`; `mintmory.embed` (`OllamaEmbedder`, `OpenAIEmbedder` in
+  `core/embedder.py`) stays INTERNAL. Every outbound LLM and embedding request
+  carries the W3C `traceparent` header — and `tracestate` when the span context has
+  one — injected inside the span that wraps the request (`gen_ai.chat` or
+  `mintmory.embed`), so the remote service's span becomes that span's child.
+- MintMory never forwards `baggage`: the endpoints may be third-party and an
+  inbound `baggage` could carry user data. `telemetry.inject_trace_headers` uses a
+  fixed W3C trace-context propagator, so only `traceparent`/`tracestate` leave.
+- With telemetry off no header is added, and the header helpers never raise.
+
 ---
 
 ## 5. Fast metric harness (cross-cutting, no LLM)

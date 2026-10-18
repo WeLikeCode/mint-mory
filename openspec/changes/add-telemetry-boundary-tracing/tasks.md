@@ -48,5 +48,5 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   to `embeddings.create`, inside `mintmory.embed`.
 
 ## 5. Checks
-- [ ] 5.1 `docs/OBSERVABILITY.md` section 4 gets "Distributed tracing" (what continues a trace, what MintMory sends).
+- [x] 5.1 `docs/OBSERVABILITY.md` section 4 gets "Distributed tracing" (what continues a trace, what MintMory sends).
   `ruff check`, `ruff format --check`, `mypy packages`, full suite, coverage at or above 80%.
