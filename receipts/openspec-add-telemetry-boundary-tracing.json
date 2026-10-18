@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-18T18:16:46Z",
+  "integrated_revision": "0dc7b35a7e50b9b0d7d112b1decdbbda5d6fd3a3",
+  "merge_commit": "0dc7b35a7e50b9b0d7d112b1decdbbda5d6fd3a3",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 29,
+  "receipt_id": "telemetry-and-fixes/openspec:add-telemetry-boundary-tracing/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "34b10aef84e72c700d63f8ab525b653101dc3b2f",
+  "spec_digest": "76eebbe7fcdb03e7",
+  "target": "staging",
+  "unit_id": "openspec:add-telemetry-boundary-tracing"
+}
