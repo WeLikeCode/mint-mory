@@ -70,7 +70,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
 - [x] 1.5 `.env.example`: every `MINTMORY_OBS_*` variable above as an active `NAME=<compose default>` line under one
   comment line, plus the MintMory-side variables a developer may want as commented lines (`# OTEL_TRACES_SAMPLER=`,
   `# OTEL_TRACES_SAMPLER_ARG=`, `# OTEL_RESOURCE_ATTRIBUTES=`, `# OTEL_METRICS_EXPORTER=`).
-- [ ] 1.6 `README.md` in `deploy/observability/`: the quick start (`docker compose -f deploy/observability/compose.yaml up -d`,
+- [x] 1.6 `README.md` in `deploy/observability/`: the quick start (`docker compose -f deploy/observability/compose.yaml up -d`,
   run any `mintmory` command or start `mintmory-mcp`, open `http://localhost:16686` and pick the service
   `mintmory-cli` or `mintmory-mcp`; Prometheus at `http://localhost:9090` with the query
   `histogram_quantile(0.95, sum by (le, phase) (rate(mintmory_search_latency_ms_bucket[5m])))`, which needs a
