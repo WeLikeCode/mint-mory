@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at 074e0f4f5e294f838578ab210a5175854420ccae
+- Target: staging at a424242ebe35f197f4950cbe2e4bc79cdb84025b
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-17T23:32:01Z
-- Stopped: unit_halted (openspec:add-telemetry-boundary-tracing): task 3.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)
+- Written: 2026-10-18T18:05:10Z
+- Stopped: limit_runs: 90 run(s) used of 90
 
 ## Units
 
@@ -58,7 +58,7 @@
 - Pull request: <forge>/WeLikeCode/mint-mory/pull/29
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.93, 2 run(s), 1 attempt(s)
+- Usage: $2.70, 8 run(s), 1 attempt(s)
 
 ### openspec:add-local-observability-stack
 - Result: not integrated
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $29.93
+- Cost: $31.70
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 84
+- Runs that dispatched a unit: 90
