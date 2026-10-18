@@ -17,7 +17,7 @@
   - Every row of the R2.1 table, including `dream` through `run_dream`.
   - Tests: R6.3, R6.4, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12 (each test
     starts as R6.2 says).
-  - _Requirements: 2.1, 2.2, 2.3, 5.1, 5.2, 6.2, 6.3, 6.4, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12_
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 5.1, 5.2, 6.2, 6.3, 6.4, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12_
 
 - [ ] 3. `tenant create` / `tenant list` (`main.py`)
   - The `tenant` group per R4.
@@ -26,8 +26,8 @@
   - _Requirements: 3.2, 4.1, 4.2, 6.1_
 
 - [ ] 4. Integration test (`tests/integration/test_tenancy_cli.py`)
-  - R6.13 against one SQLite file.
-  - _Requirements: 6.13_
+  - R6.13 against one SQLite file, at the paths of R6.14.
+  - _Requirements: 6.13, 6.14_
 
 - [ ] 5. Full gate
   - `.l4/config.yaml` gates exit 0 with coverage ≥ 80%; existing CLI tests

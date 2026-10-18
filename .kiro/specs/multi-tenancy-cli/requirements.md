@@ -61,9 +61,13 @@ silently running global.
    tenant separately and print the per-tenant total; `--tenant T` dreams only `T`.
 3. A read confined to a missing tenant SHALL print an empty result and exit 0
    (`mintmory --tenant nope search x` prints `0 result(s)`); so do the job lists
-   `summary-jobs` and `image-jobs` (they only read, with `W`). Their apply commands
-   (`summary-put`, `image-caption-put`, `vision-run`) are writes: a missing or
-   inactive tenant exits 1 (R5).
+   `summary-jobs` and `image-jobs` (they only read, with `W`).
+4. Before any work, every writing command of R2.1 — `add`, `ingest`, `note`,
+   `summary-put`, `image-caption-put`, `vision-run` — SHALL, when `_TENANT` is
+   set, check `store.get_tenant(_TENANT)` and raise `TenantNotFoundError` when it
+   is `None` and `TenantInactiveError` when it is inactive (exit 1, R5), so the
+   outcome never depends on whether the command reaches a guarded write.
+   (`dream` gets the same check from `run_dream`.)
 
 ### Requirement 3 — Commands that refuse a named tenant
 
@@ -76,8 +80,9 @@ silently running global.
    command runs. Without `--tenant` these commands behave as today. (A
    tenant-scoped MCP server is started with `mintmory-mcp --tenant T` or with
    `MINTMORY_MCP_TENANT=T`, which `tenant-scoped-mcp` reads at startup.)
-2. The option SHALL have no effect on `tenant create` and `tenant list` (R4):
-   the tenant directory is the same in every scope. (`tenant copy`, added by
+2. A valid `--tenant` SHALL have no effect on `tenant create` and `tenant list`
+   (R4): the tenant directory is the same in every scope. (An invalid value still
+   exits 1 in the root callback, R1.2, before any command.) (`tenant copy`, added by
    `cross-tenant-copy`, refuses a named tenant itself.)
 
 ### Requirement 4 — `tenant create` and `tenant list`
@@ -137,20 +142,23 @@ silently running global.
    `ingest a.txt` then stores one `global` row (the `acme` copy does not suppress
    it).
 7. note/notes: `global` holds "Initech HQ is in Austin"; `--tenant acme add "Carol
-   works at Initech"` and `--tenant acme add "Dan works at Initech"`; `--tenant
-   acme note "renew contract" --about Initech` stores a note with `tenant_id ==
-   "acme"` whose `ANNOTATES` link, if one was created, targets an `acme` memory and
-   never the `global` one; `--tenant acme notes` lists it; `notes` (unscoped) lists
-   it too.
+   works at Initech"` (the only `acme` memory about Initech); `--tenant acme note
+   "renew contract" --about Initech` stores a note with `tenant_id == "acme"` and
+   one `ANNOTATES` link from the note to the Carol memory (`anchor_kind ==
+   "memory"`: with the `global` memory out of reach it is the only, hence
+   dominant, candidate), never to the `global` one; `--tenant acme notes` lists
+   it; `notes` (unscoped) lists it too.
 8. dream: `acme` holds "Carol works at Initech" and "Dan works at Initech",
-   `global` holds "Alice works at Acme" and "Bob works at Acme":
+   `global` holds "Alice works at Acme" and "Bob works at Acme"; `--tenant nope
+   dream` exits 1 with `tenant 'nope' not found`:
    `--tenant acme dream` creates links only between `acme` memories (the
    Carol–Dan link among them) and none touching a `global` memory; a following
    `dream` adds the Alice–Bob link; no link ever joins two tenants (in the
    integration sequence of R6.13 the same assertions hold over the accumulated
    data).
-9. summary-jobs/summary-put: `acme` holds three memories sharing the entity
-   `initech` and `global` three sharing `acme`; `--tenant acme summary-jobs
+9. summary-jobs/summary-put: `acme` holds "Carol works at Initech", "Dan works
+   at Initech", "Eve works at Initech" and `global` holds "Alice works at Acme",
+   "Bob works at Acme", "Frank works at Acme"; `--tenant acme summary-jobs
    --json` lists concept `initech` and not `acme`; `--tenant acme summary-put
    initech "Initech summary"` stores a summary with `tenant_id == "acme"`;
    `--tenant nope summary-jobs --json` prints `[]` and exits 0.
@@ -160,19 +168,30 @@ silently running global.
     "x.png", "ext": ".png", "size": 10, "collection": "c"}))`: `--tenant acme
     image-jobs --json` lists its id and `image-jobs --json` does not;
     `--tenant acme image-caption-put <id> "a cat"` stores a description with
-    `tenant_id == "acme"`; `image-caption-put <id> "a cat"` (global) exits 1 with
-    today's not-found message.
+    `tenant_id == "acme"`; `image-caption-put <id> "a cat"` (global) exits 1 and
+    its output contains today's `no active image file-record found`.
 11. vision-run: with `mintmory.core.vision.captioner_from_settings` monkeypatched
     to return a stub object and `mintmory.core.vision.caption_pending_images`
     monkeypatched to record its keyword arguments and return
     `CaptionRunReport()`, `--tenant acme vision-run` exits 0 and the recorded
-    `tenant_id` is `"acme"`.
+    `tenant_id` is `"acme"`; `--tenant nope vision-run` and `--tenant nope
+    image-caption-put x "a cat"` exit 1 with `tenant 'nope' not found` (R2.4).
 12. docs: two `source="document"` memories with `metadata={"path": …,
     "collection": "c"}` and `valid_from` set, one per tenant; `--tenant acme docs
-    timeline` prints the `acme` path and not the `global` one.
+    timeline` prints the `acme` path and not the `global` one; `--tenant acme docs
+    changed-with <global path>` prints no peer.
 13. An integration test `tests/integration/test_tenancy_cli.py` SHALL run R6.3,
     R6.7, R6.8 and then R6.4 (the deactivation last) against one real SQLite
     file, in that order, after `tenant create acme`.
+14. Test files: `packages/cli/tests/test_cli_tenancy.py` (R6.1–R6.12) and, at the
+    repository root, `tests/integration/test_tenancy_cli.py` (R6.13; the root
+    `pyproject.toml` `testpaths` includes `tests/integration`, so the full gate
+    runs it). `vision-run` imports `mintmory.core.vision` inside the command and
+    calls it through the module (verified), so the R6.11 monkeypatch takes
+    effect. This unit replaces, at the dream, summary and image call sites, the
+    `tenant_id=None` / `TENANT_GLOBAL` arguments `tenant-scoped-core` set with
+    `R` / `W`; with `--tenant` absent the values are the same, so core's tests stay
+    valid.
 
 ### Requirement 7 — Gates
 

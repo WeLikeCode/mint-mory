@@ -21,9 +21,9 @@
 ```python
 def copy_between_tenants(store, *, source_tenant, dest_tenant, memory_ids=None,
                          filter=None, all_active=False, force=False) -> CopyReport:
-    _validate(...)                                  # R2, raises before any read of rows
     report = CopyReport(source_tenant=source_tenant, dest_tenant=dest_tenant)
     with store.transaction():
+        _validate(...)                              # R2, inside the lock, before any row read
         selected = _select(store, ...)              # R3.1–R3.3, counts not-found
         plan: list[MemoryRecord] = []               # source records to copy, in order
         seen: set[str] = set()

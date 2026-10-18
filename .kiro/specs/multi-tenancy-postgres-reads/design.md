@@ -25,7 +25,7 @@ rows.
 - `packages/core/tests/test_pg_tenancy_reads.py` with `pg_fakes`: one
   parametrised test over the method list of R1.1 (call with `"t1"`, then with
   `None`, inspect `conn.executed`), plus R2.2 and R3.2.
-- `packages/core/tests/conformance/test_tenancy_reads.py` (R4).
+- `packages/core/tests/conformance/test_conformance_tenancy_reads.py` (R4).
 
 ## Risks
 

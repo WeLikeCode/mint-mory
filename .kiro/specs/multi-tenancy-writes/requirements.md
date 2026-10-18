@@ -36,7 +36,7 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
 
    | Method | Guarded tenant |
    |---|---|
-   | `add_memory(record=None, **fields)` | `record.tenant_id` (with `record=None`, the `tenant_id` of `MemoryRecord(**fields)`, `global` when `fields` has none) |
+   | `add_memory(record=None, **fields)` | `record.tenant_id` (with `record=None`, the `tenant_id` of `MemoryRecord(**fields)`, `global` when `fields` has none; an invalid id there raises pydantic's `ValidationError` while building the record) |
    | `update_memory(memory_id, **fields)` | the stored row's tenant |
    | `archive_memory`, `supersede_memory`, `apply_feedback` | the stored row's tenant |
    | `add_link(link)` | `link.tenant_id` |
@@ -53,7 +53,9 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
    hold on a database migrated from
    `packages/core/tests/fixtures/pre_tenancy_schema.sql` (whose `memories` table
    has no FK on `tenant_id`), which proves the guard, not the FK, enforces it.
-   The table lists every public write method of `SqliteBackend`. The only other
+   The table lists every public write method of `SqliteBackend` on a
+   tenant-scoped table (the directory writes of `multi-tenancy` on `tenants` are
+   not guarded: they manage the tenants themselves). The only other
    writes to these tables are raw SQL in `cochange.apply_changesets` (`DELETE
    FROM concept_links WHERE entity = ?`, reached only from `index-tree
    --cochange`) and `history scrub` on the separate agent-history database; both

@@ -17,33 +17,40 @@ needed by any test here.
     `NotImplementedError`.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 2. Pre-feature fixture and SQLite schema (`schema.sql`)
+- [ ] 2. Pre-feature fixture, SQLite schema and per-tenant keys (`schema.sql`, `storage.py`, `ports.py`)
   - First, in this task's red commit, copy today's `schema.sql` byte for byte to
     `packages/core/tests/fixtures/pre_tenancy_schema.sql` (a test-support file
     under `**/fixtures/**`: L4 freezes it once added, later tasks only read it).
   - Then edit `schema.sql`: `tenants` + seed first; `tenant_id … REFERENCES
-    tenants(id)` on the six tables; per-tenant `UNIQUE` on `concept_links` and
-    `memory_summaries`; `index_manifest` primary key `(tenant_id, path)`; no index
-    on `tenant_id`; triggers unchanged.
-  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
+    tenants(id)` as the last column of the six tables; per-tenant `UNIQUE` on
+    `concept_links` and `memory_summaries`; `index_manifest` primary key
+    `(tenant_id, path)`; no index on `tenant_id`; triggers unchanged.
+  - In the same task (the old `ON CONFLICT(concept)` / `ON CONFLICT(path)`
+    targets stop matching a constraint once the keys change, so the package gate
+    would fail between separate tasks): `get_summary(concept,
+    tenant_id="global")`, `upsert_summary` on `(tenant_id, concept)`, the four
+    manifest methods with the keyword-only `tenant_id`, `ManifestEntry.tenant_id`.
+  - Tests: two tenants with the same concept and the same manifest path (R4.4,
+    R4.5 examples; create `t1` with a raw `INSERT INTO tenants`, the directory
+    methods come in task 5); the existing summary/manifest/history-ingest tests
+    pass unchanged.
+  - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 4.3, 4.4, 4.5_
 
 - [ ] 3. Migration (`storage.py`)
   - `_tenant_migration_statements(conn)` (R3.2 detection rules and order) and
     `_ensure_tenant_columns(conn)` (R3.3 transaction, R3.4 fail closed), called
     from `initialise()` after `_ensure_index_mode_vision`.
   - Tests: the R3.6 pre-feature fixture scenario; R3.5 second-run no-op with
-    `sqlite_master` compared; `_tenant_migration_statements` returns `[]` on a
-    fresh database; the R3.7 fault injection; the R3.8 stale-plan start.
+    `sqlite_master` compared; on a new file, the plan right after `schema.sql`
+    is exactly the three `CREATE INDEX` statements and `[]` after
+    `initialise()`; the R3.7 fault injection; the R3.8 stale-plan start.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-- [ ] 4. Persist `tenant_id`; keyed summary and manifest methods (`storage.py`)
-  - Lockstep of R4.1–R4.2; `get_summary(concept, tenant_id="global")`;
-    `upsert_summary` on `(tenant_id, concept)`; the four manifest methods with the
-    keyword-only `tenant_id`; `ManifestEntry.tenant_id` (`ports.py`).
-  - Tests: round trip of every model's `tenant_id`; two tenants with the same
-    concept and the same manifest path (R4.4, R4.5 examples); the existing
-    summary/manifest/history-ingest tests pass unchanged.
-  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
+- [ ] 4. Persist `tenant_id` on every row (`storage.py`)
+  - Lockstep of R4.1–R4.2 (`_MEMORY_COLUMNS`, row values, row mappers, the
+    link/session/result inserts).
+  - Tests: round trip of every model's `tenant_id`.
+  - _Requirements: 4.1, 4.2, 4.6, 4.7_
 
 - [ ] 5. Tenant directory (`storage.py`)
   - `create_tenant`, `get_tenant`, `list_tenants`, `set_tenant_active` per R5.

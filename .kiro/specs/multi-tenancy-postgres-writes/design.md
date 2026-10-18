@@ -71,7 +71,7 @@ they see the transaction's own uncommitted rows. Postgres raises a
   keyed on SQL prefixes (`SELECT is_active FROM tenants` → `[{"is_active":
   False}]`, `SELECT tenant_id FROM memories WHERE id` → the tenant of the
   requested id, …).
-- `packages/core/tests/conformance/test_tenancy_writes.py` (R7): runs through
+- `packages/core/tests/conformance/test_conformance_tenancy_writes.py` (R7): runs through
   the existing parametrised `backend` fixture; the fixture's skip of the Postgres
   leg without `MINTMORY_TEST_PG_DSN` is the existing one in `conftest.py`.
 

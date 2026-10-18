@@ -19,7 +19,8 @@
   once the keys change, which is why this unit changes the backend SQL together
   with the DDL.
 - `migrate.py`: one-shot SQLite→Postgres copy driven by `_FK_ORDER`,
-  `_TABLE_COLS`, `_TABLE_PK`, classification dicts, `_insert_*_batch(conn, rows)`
+  `_TABLE_COLS`, `_TABLE_PK`, classification dicts, `_insert_*_batch(conn, rows, *,
+  dry_run=False)` (verified signature; `_TABLE_INSERT_FN` calls them as `fn(conn, rows)`)
   (`conn.cursor()` + `executemany`), `_pg_truncate_all`, checksum verification;
   `dry_run=True` opens no Postgres connection; the source is opened
   `mode=ro`.
@@ -33,18 +34,25 @@ Splitting catalog reading (needs a database) from planning (pure) puts the
 whole decision logic under database-free tests. The catalog queries:
 
 ```sql
-SELECT table_name, column_name FROM information_schema.columns
+SELECT table_name::text AS table_name, column_name::text AS column_name
+  FROM information_schema.columns
  WHERE table_schema = current_schema() AND table_name = ANY(%s);
-SELECT c.conrelid::regclass::text AS table_name, c.conname, c.contype,
-       array_agg(a.attname ORDER BY k.ord) AS columns
+SELECT r.relname::text AS table_name, c.conname::text AS conname,
+       c.contype::text AS contype,
+       array_agg(a.attname::text ORDER BY k.ord)::text[] AS columns
   FROM pg_constraint c
+  JOIN pg_class r ON r.oid = c.conrelid
+  JOIN pg_namespace n ON n.oid = r.relnamespace AND n.nspname = current_schema()
   CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
   JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
- WHERE c.contype IN ('u', 'p') AND c.connamespace = current_schema()::regnamespace
-   AND c.conrelid::regclass::text = ANY(%s)
- GROUP BY 1, 2, 3;
-SELECT indexname FROM pg_indexes WHERE schemaname = current_schema();
+ WHERE c.contype IN ('u', 'p') AND r.relname = ANY(%s)
+ GROUP BY r.relname, c.conname, c.contype;
+SELECT indexname::text AS indexname FROM pg_indexes WHERE schemaname = current_schema();
 ```
+
+Every value is cast to `text` (and the column list to `text[]`), so psycopg
+returns plain `str` / `list[str]` and `pg_catalog_snapshot` can be tested with
+the same dicts a `dict_row` cursor produces.
 
 Constraints are dropped by the name found in the catalog (the old ones were
 auto-named), so no table rebuild is needed; `ADD COLUMN … REFERENCES` gives

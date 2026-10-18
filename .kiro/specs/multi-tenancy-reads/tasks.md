@@ -26,7 +26,7 @@
   - Tests: the R3.6 examples; R3.7; an unscoped search records a `global`
     session over both tenants; `anchor_candidates("Alice", tenant_id="t1")`
     returns only `t1` rows and writes nothing.
-  - _Requirements: 2.1, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
+  - _Requirements: 2.1, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
 - [ ] 4. `list_memories` (`storage.py`, `ports.py`)
   - Per R4.1; Protocol entry.

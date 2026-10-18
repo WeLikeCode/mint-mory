@@ -39,6 +39,6 @@
   - _Requirements: 7.1, 7.2_
 
 - [ ] 6. Integration and full gate
-  - `tests/integration/test_tenancy_mcp.py` (R9.2); `.l4/config.yaml` gates exit
+  - `tests/integration/test_tenancy_mcp_integration.py` (R9.2); `.l4/config.yaml` gates exit
     0 with coverage ≥ 80%; existing MCP tests unchanged except the inventory set.
   - _Requirements: 9.1, 9.2, 9.3_

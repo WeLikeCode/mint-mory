@@ -99,6 +99,13 @@ R3.6 test, which compares `PRAGMA table_info`, the unique-index columns and
 `'vision'` CHECK, so `_ensure_index_mode_vision` (which runs before and checks
 for `'vision'` in the stored SQL) stays a no-op afterwards.
 
+No transaction is open when `_ensure_tenant_columns` starts — `initialise()`
+commits after `schema.sql`, every `_ensure_*` commits, and the `sqlite3` module
+opens a transaction only before DML — so `PRAGMA foreign_keys = OFF` takes
+effect. `BEGIN IMMEDIATE` waits for another writer up to the connection's
+`busy_timeout` (5000 ms by default); a timeout fails startup with the message
+and a restart retries.
+
 Atomicity: SQLite DDL is transactional, so `BEGIN IMMEDIATE … COMMIT` makes the
 whole plan all-or-nothing; `PRAGMA foreign_keys` cannot change inside a
 transaction, hence OFF before `BEGIN` and ON in `finally`. On `sqlite3.Error`:

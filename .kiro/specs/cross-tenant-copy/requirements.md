@@ -60,10 +60,15 @@ results are never copied (dreaming regenerates summaries in the destination).
 1. In this order: (a) `validate_tenant_id` on both ids → `InvalidTenantIdError`;
    (b) `source_tenant == dest_tenant` → `CopySelectionError("source and
    destination are the same tenant")`; (c) `all_active` with `memory_ids` or a
-   `filter` → `CopySelectionError("all_active cannot be combined with memory_ids
+   `filter` (any `filter is not None`, even an empty one) → `CopySelectionError("all_active cannot be combined with memory_ids
    or filter")` (an empty `memory_ids` list counts as absent, so
-   `all_active=True, memory_ids=[]` is accepted); (d) `filter == MemoryFilter()` → `CopySelectionError("empty
-   filter: use all_active=True to copy every active memory")`; (e) no
+   `all_active=True, memory_ids=[]` is accepted); (d) a `filter` whose selecting
+   fields — `category`, `source`, `entity`, `verified_only`, `min_usefulness`,
+   `max_staleness` — all have their default values (`None`, `None`, `None`,
+   `False`, `None`, `None`), whatever its `active_only` / `exclude_stale` →
+   `CopySelectionError("empty filter: use all_active=True to copy every active
+   memory")` (so `MemoryFilter()`, `{}` and `{"active_only": false}` are all
+   rejected); (e) no
    `memory_ids` (None or empty), no `filter` and not `all_active` →
    `CopySelectionError("empty selection: pass memory_ids, filter or
    all_active=True")`; (f) more than `COPY_MAX` distinct ids →
@@ -84,12 +89,13 @@ results are never copied (dreaming regenerates summaries in the destination).
    inactive or superseded (`superseded_by` set) counts once in
    `memories_skipped_not_found` and is never read from another tenant.
 2. `filter`: `list_memories(filter.model_copy(update={"active_only": True}),
-   tenant_id=source_tenant, limit=COPY_MAX + 1)`; `all_active`: the same with
+   tenant_id=source_tenant)` (no limit); `all_active`: the same with
    `MemoryFilter(exclude_stale=False)` (every active, non-archived memory, stale
-   ones included). Forcing `active_only` keeps inactive rows out before the limit,
-   and superseded rows are archived (so excluded by `list_memories`); no row is
-   dropped after the limit. More than `COPY_MAX` rows →
-   `CopySelectionError(f"selection exceeds {COPY_MAX} memories")`.
+   ones included). Rows with `superseded_by` set are then dropped (a superseded
+   row is not always archived: `update_memory(id, superseded_by=X)` leaves it
+   active), and only then, more than `COPY_MAX` remaining rows →
+   `CopySelectionError(f"selection exceeds {COPY_MAX} memories")`. Dropped rows
+   are counted nowhere.
 3. The selection `S` is the id rows then the filter rows, de-duplicated by source
    id (first occurrence wins).
 4. Attached notes (one level): for each record of `S` that will be copied, every
@@ -111,7 +117,9 @@ results are never copied (dreaming regenerates summaries in the destination).
    in `memories_skipped_duplicate` or `notes_skipped_duplicate` by its `is_note`.
 2. A skipped record gets no link and its attached notes are not expanded: copy
    never references or modifies a row that already exists in the destination.
-3. With `force=True` duplicates are copied.
+3. With `force=True` duplicates are copied. The destination check counts any row
+   with that content in the destination, archived or inactive ones included
+   (`memory_exists_with_content` has no state filter).
 4. Re-running the same copy without `force` SHALL create no record.
 
 ### Requirement 5 — What a copied record contains
@@ -125,7 +133,9 @@ results are never copied (dreaming regenerates summaries in the destination).
 3. Reset: `usefulness_score = staleness_score = 0`, `reinforcement_count =
    retrieval_count = 0`, `is_stale = False`, `is_active = True`, `is_archived =
    False`, `superseded_by = None`, `flagged_for_review = False`, `contradicts_ids
-   = []`, `last_accessed_at = None`.
+   = []`, `last_accessed_at = None`. (`entity_ids` are entity names and are kept;
+   `contradicts_ids` are source memory ids, which would be references into the
+   source tenant, so they are reset.)
 4. `metadata = {**source.metadata, "copied_from_tenant": source_tenant,
    "source_memory_id": source.id}` (these two keys overwrite existing values; all
    other keys are copied verbatim); `metadata["anchor_memory_id"]`, when present,
@@ -150,7 +160,8 @@ results are never copied (dreaming regenerates summaries in the destination).
 
 #### Acceptance Criteria
 
-1. The whole operation (selection reads, duplicate checks, writes) SHALL run
+1. The whole operation (the validation of R2, selection reads, duplicate checks,
+   writes) SHALL run
    inside one `with store.transaction():`; on any exception it rolls back,
    writes nothing in the destination, and the exception propagates; the report is
    returned only after the commit.
@@ -160,10 +171,12 @@ results are never copied (dreaming regenerates summaries in the destination).
    one process the copy holds the transaction lock, so the deactivation waits.
    Two concurrent copies in one process run one after the other; across processes
    duplicates are possible and a re-run without `force` adds none.
-4. On Postgres the function uses only Protocol methods; until
-   `multi-tenancy-postgres-writes` and `multi-tenancy-postgres-reads` land,
-   `transaction()` / `list_memories` raise `TenancyNotSupportedError` before any
-   write, so the copy fails closed there.
+4. On Postgres the function uses only Protocol methods. Until
+   `multi-tenancy-postgres-writes` and `multi-tenancy-postgres-reads` land it
+   fails closed before any write: the validation runs inside `transaction()`
+   (R7.1), and before `-postgres-writes` entering it raises
+   `TenancyNotSupportedError`; between the two units the confined reads raise
+   `TenancyNotSupportedError`.
 
 ### Requirement 8 — Transports (global scope only)
 
@@ -200,13 +213,19 @@ results are never copied (dreaming regenerates summaries in the destination).
 
 #### Acceptance Criteria
 
-1. Seed: tenant `acme` with m1 "Alice works at Acme" and m2 "Bob works at Acme"
-   (facts), a `relates_to` link m1→m2 (strength 0.7), a note n1 "Alice prefers
+1. Seed: tenant `acme` with m1 "Alice works at Acme" (fact, `usefulness_score=4.0`,
+   `staleness_score=2.0`, `reinforcement_count=3`, `retrieval_count=5`,
+   `valid_from=2026-01-01`, `valid_until=2027-01-01`, `contradicts_ids=["m2"]`,
+   `flagged_for_review=True`, `last_accessed_at=2026-06-01`, `verified=True`,
+   `confidence=0.8`, `metadata={"project": "x"}`) and m2 "Bob works at Acme"
+   (fact), a `relates_to` link m1→m2 (strength 0.7), a note n1 "Alice prefers
    mornings" annotating m1 (`ANNOTATES` n1→m1, `metadata={"anchor_memory_id":
    m1}`), an archived m3, a summary for `acme`; empty tenant `beta`; and in
    `global` a memory g1 "Global fact".
 2. `memory_ids=[m1, m2]` → `memories_copied == 2`, `notes_copied == 1`,
-   `links_copied == 2`, three `beta` rows with provenance, the n1 copy's
+   `links_copied == 2`, three `beta` rows with provenance, the m1 copy has the
+   R5.2 values of m1 (content, category, source, verified, confidence, validity,
+   entity_ids) and the R5.3 reset values, `metadata["project"] == "x"`, the n1 copy's
    `anchor_memory_id == id_map[m1]`, no `beta` summary, `acme` unchanged,
    `search(SearchRequest(query="Alice"), tenant_id="beta")` finds the m1 copy.
 3. `memory_ids=[m1]` → 1 memory, 1 note, 1 link (the `relates_to` is not copied).
@@ -218,8 +237,10 @@ results are never copied (dreaming regenerates summaries in the destination).
    content copies one and counts one duplicate; an inactive note n2 annotating
    m1 is not copied.
 6. `all_active=True` → m1, m2 and n1 each copied once (`notes_copied == 1`).
-7. Each rejection of R2.1 with its type and message; `TenantInactiveError` for an
-   inactive `beta`.
+7. Each rejection of R2.1 with its type and message (for (d): `MemoryFilter()`,
+   `MemoryFilter(active_only=False)` and, through MCP, `{}`); `TenantInactiveError`
+   for an inactive `beta`; a memory superseded with `update_memory(id,
+   superseded_by=m1)` (still active) is not copied by `all_active=True`.
 8. Atomicity: monkeypatch `store.add_link` to raise `RuntimeError("boom")` →
    `RuntimeError`, and `list_memories(MemoryFilter(active_only=False,
    exclude_stale=False), tenant_id="beta") == []`.

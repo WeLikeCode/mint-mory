@@ -23,7 +23,7 @@
   - Tests: R3.2.
   - _Requirements: 3.1, 3.2_
 
-- [ ] 4. Conformance tests (`packages/core/tests/conformance/test_tenancy_reads.py`)
+- [ ] 4. Conformance tests (`packages/core/tests/conformance/test_conformance_tenancy_reads.py`)
   - R4.1 through the existing `backend` fixture.
   - _Requirements: 4.1_
 

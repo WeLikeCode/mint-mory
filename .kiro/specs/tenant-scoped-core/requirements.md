@@ -83,11 +83,14 @@ safe for a multi-tenant database.
    `global` and `t1`): `t1` holds a note n1 ("Acme is
    closed on Fridays", `is_note=True`, `flagged_for_review=True`,
    `contradicts_ids=["g9", "a9"]`), a9 "Acme opens on Fridays" (`t1`) and g9
-   "Acme opens on Fridays" (`global`). `DreamingEngine(store,
-   tenant_id="t1").run_full()` SHALL supersede a9 by n1 (`a9.superseded_by ==
-   n1`, archived) and leave g9 active with `superseded_by is None`. (An unscoped
-   lookup would pick g9 first and the cross-tenant `supersede_memory` would
-   raise.)
+   "Acme opens on Fridays" (`global`); no conflict resolver (`provider=none`).
+   The deterministic note-authority pass of `resolve_contradictions` (existing
+   code, verified: it runs without a resolver and, for a flagged note, supersedes
+   the first loadable non-archived `contradicts_ids` entry that is not a note)
+   SHALL, under `DreamingEngine(store, tenant_id="t1").run_full()`, supersede a9
+   by n1 (`a9.superseded_by == n1`, archived) and leave g9 active with
+   `superseded_by is None`. (An unscoped lookup would pick g9 first and the
+   cross-tenant `supersede_memory` would raise.)
 
 ### Requirement 2 — Per-tenant dreaming entry points (`dreaming.py`)
 
@@ -118,9 +121,11 @@ safe for a multi-tenant database.
    HTTP API, so `schema.sql` and the OpenAPI document do not change.
 2. `dream_all_tenants` SHALL iterate `adapter.list_tenants()` (ordered by id): an
    inactive tenant goes to `skipped_inactive` (dreaming writes; inactive is
-   read-only); otherwise `engine_factory(t.id)` runs `run_full()` for
-   `DreamIntensity.FULL` and `run_light()` otherwise, into `per_tenant[t.id]`;
-   an `Exception` from one tenant is recorded as `failed[t.id] =
+   read-only); otherwise, inside one `try` per tenant, `engine_factory(t.id)`
+   builds the engine and runs `run_full()` for `DreamIntensity.FULL` and
+   `run_light()` otherwise, into `per_tenant[t.id]`; an `Exception` from the
+   factory or the run (for example `TenantInactiveError` when the tenant is
+   deactivated mid-run) is recorded as `failed[t.id] =
    f"{type(exc).__name__}: {exc}"` and the loop continues. Writes that tenant's
    pass made before the exception are not rolled back (dreaming steps are not
    transactional; every step is idempotent, so the next run completes them).
@@ -183,9 +188,11 @@ safe for a multi-tenant database.
    scope later with the same function.
 3. `DreamFailedError` SHALL surface as an MCP tool error (fastmcp `ToolError`
    on the client), a CLI `error: <message>` on stderr with exit code 1, and HTTP
-   500 `{"detail": <message>}`. Test seam: monkeypatch
-   `mintmory.core.dreaming.DreamingEngine.run_light` to raise
-   `RuntimeError("boom")`, so every tenant's pass fails.
+   500 `{"detail": <message>}`. Test seam: monkeypatch both
+   `mintmory.core.dreaming.DreamingEngine.run_light` and `.run_full` to raise
+   `RuntimeError("boom")`, so every tenant's pass fails at any intensity (the CLI
+   defaults to light, MCP's `memory_dream` to `"light"`, and the API's
+   `DreamRequest.intensity` is required).
 
 ### Requirement 4 — Summary and image job paths on the global tenant
 
@@ -232,9 +239,13 @@ safe for a multi-tenant database.
    `ValueError(f"session {session_id!r} not found")` and an id of `useful_ids +
    stale_ids` that `get_memory(id, tenant_id=T)` does not find raises
    `ValueError(f"memory {id!r} not found")`; with `None` (the session and ids
-   looked up unscoped) a missing id raises today's `KeyError(f"memory {id!r} not
-   found")`; in both cases an id whose tenant is inactive raises
-   `TenantInactiveError(<tenant>)`. Only then are scores applied with
+   looked up unscoped) a missing session raises today's
+   `ValueError(f"session {session_id!r} not found")` and a missing id today's
+   `KeyError(f"memory {id!r} not found")`; in both cases a session or an id whose
+   tenant is inactive raises `TenantInactiveError(<tenant>)`. Checks run in this
+   order and the first failure wins: the session, then each id of `useful_ids`
+   then `stale_ids` in list order (missing before inactive for the same id). Only
+   then are scores applied with
    `apply_feedback(…, tenant_id=tenant_id)`, so a rejected call changes no score.
    (A deactivation racing the loop can still stop it part-way, as today.)
 6. `cochange.changed_with(store, path, *, tenant_id: str | None = None)` and
@@ -244,10 +255,11 @@ safe for a multi-tenant database.
    (Verified: each of these SELECTs reads one table without a join, so the
    unqualified column is unambiguous.)
 7. Other create paths stay on the global tenant in this release: `index-tree`
-   (manifest, file-records, cochange links), the agent-history ingest and the
-   document converters write `global` records and are refused for a named tenant
-   by `multi-tenancy-cli`; the only content-dedup caller is CLI `ingest`, which
-   `multi-tenancy-cli` confines to its write tenant.
+   (manifest, file-records, cochange links) and the agent-history ingest write
+   `global` records and are refused for a named tenant by `multi-tenancy-cli`.
+   CLI `ingest` (whose document converters only turn a file into text) stamps
+   every chunk with its write tenant and is the only content-dedup caller;
+   `multi-tenancy-cli` confines both to that tenant.
 8. The multi-step creates (`create_note`, `image_caption_put`,
    `caption_pending_images`) stay non-atomic, as today: a tenant deactivated
    between their writes stops them with `TenantInactiveError` after the writes
@@ -259,7 +271,11 @@ safe for a multi-tenant database.
 
 1. The API SHALL stay on the global tenant with no tenant input: reads unscoped,
    creates stamped `global`. With two tenants, `POST /memories/search` returns
-   memories of both.
+   memories of both. By the write-tenant rule, the API's job lists and their
+   apply routes (`GET /summaries/jobs`, `PUT /summaries/{concept}`, `GET
+   /images/jobs`, `PUT /images/{file_id}`, `POST /images/caption-run`, `POST
+   /notes` anchoring) work on `global` records only — intentionally, because
+   what they produce is a `global` record.
 2. `app.py` SHALL register one exception handler for `TenantError` returning
    `{"detail": str(exc)}` with: `TenantNotFoundError` 404; `TenantInactiveError`,
    `CrossTenantLinkError`, `TenantImmutableError` 409; `ProtectedTenantError`,

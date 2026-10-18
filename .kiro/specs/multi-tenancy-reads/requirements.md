@@ -56,6 +56,10 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    | `get_rehabilitable_rows(cutoff_iso: str, tenant_id: str \| None = None) -> list[tuple[str, float]]` |
    | `get_existing_relates_to_pairs(tenant_id: str \| None = None) -> set[frozenset[str]]` |
 
+   All of these methods already exist on the base branch on `SqliteBackend`, on
+   the `StorageBackend` Protocol and on `PostgresBackend` (verified; the dreaming
+   helpers were moved out of `dreaming.py` before this plan); this unit only adds
+   the parameter and the predicate, never their selection rules.
    `get_summary(concept, tenant_id="global")` and the manifest methods keep the
    concrete key of `multi-tenancy`. With this table every storage read the MCP,
    CLI, API and core functions call has a tenant parameter.
@@ -63,7 +67,9 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    SHALL return `None`; with `tenant_id=None` it returns the row (today).
 3. `get_stats("t1")` SHALL count only `t1` rows in every field (memories,
    active, stale, archived, `concept_links`, `memory_summaries`, averages,
-   `top_concepts`); `get_stats()` counts all tenants (today).
+   `top_concepts`); `get_stats()` counts all tenants (today); `get_stats("nope")`
+   returns zero counts, averages `0.0` (today's code maps a `NULL` average to
+   `0.0`) and `top_concepts == []`.
 4. `list_summaries()` keeps today's `ORDER BY concept`; with a tenant it adds
    `WHERE tenant_id = ?`. Each returned summary carries its `tenant_id`.
 
@@ -102,7 +108,9 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    with the session's `tenant_id`.
 3. WHEN `record_session` is `False` THEN `fuse_and_search` SHALL NOT call
    `create_session_fn`, `record_query_results_fn` or `bump_retrieval_fn`, and
-   SHALL return `session_id = ""`.
+   SHALL return `session_id = ""` (`SearchResponse.session_id` is a `str`;
+   feedback for `""` fails with today's `session '' not found`). The session
+   tenant is `TENANT_GLOBAL if tenant_id is None else tenant_id`.
 4. `SqliteBackend.search` SHALL pass `record_session = tenant_id is None or
    (t is not None and t.is_active)` with `t = self.get_tenant(tenant_id)`: a
    search confined to an inactive or missing tenant returns its results (empty
@@ -111,19 +119,24 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    reference memories of every tenant (the read-audit exemption of
    `multi-tenancy-writes` R2.2) and bump retrieval counts only for active
    tenants' rows.
-6. Examples (tenants `global` with "Alice uses Postgres", `t1` with "Alice uses
-   SQLite"): `search(SearchRequest(query="Alice"))` returns both and records a
+6. Examples (tenants `global` with g1 "Alice uses Postgres", `t1` with a1 "Alice
+   uses SQLite"): `search(SearchRequest(query="Alice"))` returns both and records a
    `global` session with two results; `search(…, tenant_id="t1")` returns only
    the `t1` memory and records a `t1` session; after
    `set_tenant_active("t1", False)` the `t1` search returns the memory, `session_id
    == ""`, and the session/result counts and its `retrieval_count` are
-   unchanged; `tenant_id="nope"` returns no memories and `session_id == ""`.
+   unchanged; `tenant_id="nope"` returns no memories and `session_id == ""`;
+   with `t1` inactive, the unscoped `search(SearchRequest(query="Alice"))`
+   returns g1 and a1, records one `global` session with two results, raises g1's
+   `retrieval_count` by 1 and leaves a1's unchanged.
 7. `search_around(anchors, spec, tenant_id="t1")` SHALL never return a memory
    of another tenant, even when the anchors list holds a foreign id: anchors are
    never part of the output (today's behaviour), and every hop reads only `t1`
    links, so a foreign anchor's links (which belong to its own tenant) are never
    followed. Example: with `g1`→`g2` (`global`) and `a1`→`a2` (`t1`),
    `search_around(["g1", "a1"], SearchAroundSpec(), tenant_id="t1") == ["a2"]`.
+8. `anchor_candidates(about, limit, tenant_id)` stays side-effect free, as
+   today: it records no session and bumps no counter for any tenant.
 
 ### Requirement 4 — Query-text-free list for the copy
 
@@ -134,13 +147,17 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    FROM memories WHERE is_archived = 0` (plus `AND tenant_id = ?` when concrete)
    `ORDER BY created_at, id`, keep the rows for which
    `hybrid_search._passes_filter(mem, filter or MemoryFilter(),
-   include_archived=False)` is true, and return the first `limit` of them
+   include_archived=False)` is true (verified on the base branch: it rejects
+   `is_active = 0` when `active_only`, and `is_stale = 1` when `exclude_stale`;
+   `MemoryFilter` defaults both to `True`), and return the first `limit` of them
    (`None` = all, `0` = `[]`, a negative limit raises `ValueError("limit must be
    >= 0")`).
 2. Example: `t1` holds an active fact, a stale fact (`is_stale=1`), an archived
    fact and an inactive fact; `list_memories(tenant_id="t1")` returns the active
    one; `list_memories(MemoryFilter(exclude_stale=False), tenant_id="t1")` returns
-   the active and the stale one; `limit=1` returns the oldest.
+   the active and the stale one; `limit=1` returns the oldest;
+   `list_memories()` (no tenant) also returns the other tenants' active rows;
+   `list_memories(tenant_id="nope")` returns `[]`.
 3. `memory_exists_with_content(content, tenant_id="t1")` SHALL be true only when
    a `t1` row has exactly that content.
 
@@ -153,7 +170,9 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    `_require_global_tenant(tenant_id, <method name>)` before any pool access, so
    `None` and `"global"` keep today's SQL (every Postgres row is a `global` row
    until `multi-tenancy-postgres`) and any other tenant raises
-   `TenancyNotSupportedError`. `PostgresBackend.list_memories` raises
+   `TenancyNotSupportedError`. `PostgresBackend.search` keeps calling
+   `fuse_and_search` without the new keywords (their defaults give today's
+   `global` session) until `multi-tenancy-postgres-reads`. `PostgresBackend.list_memories` raises
    `TenancyNotSupportedError("list_memories")` until
    `multi-tenancy-postgres-reads`.
 3. Test (no database): on `PostgresBackend("postgresql://unused")` a read with

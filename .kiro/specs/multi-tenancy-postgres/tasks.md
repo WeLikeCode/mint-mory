@@ -16,8 +16,9 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
 - [ ] 3. In-place migration (`storage_postgres.py`)
-  - `plan_pg_tenant_migration`, `_ensure_tenant_columns` with the catalog reads,
-    the call in `initialise()`, `TenantMigrationError` on failure.
+  - `plan_pg_tenant_migration`, `pg_catalog_snapshot`, `_ensure_tenant_columns`
+    with the catalog reads, the call in `initialise()` inside the pool block,
+    `TenantMigrationError` on failure.
   - Tests: every case of R2.4.
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 

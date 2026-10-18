@@ -81,23 +81,38 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
    is_active, is_archived)`, `CREATE INDEX IF NOT EXISTS idx_links_tenant ON
    concept_links (tenant_id, source_memory_id, link_type)`, `CREATE INDEX IF NOT
    EXISTS idx_sessions_tenant ON query_sessions (tenant_id, concluded,
-   created_at)`. For a fully migrated snapshot it SHALL return `[]`.
+   created_at)`. For a fully migrated snapshot it SHALL return `[]`. A table
+   missing from `uniques` or `primary_keys` counts as having no key of the new
+   shape (its new key is added; nothing is dropped). Because
+   `schema_postgres.sql` creates no tenant index (R1.4), the first
+   `initialise()` of a brand-new database runs exactly the three `CREATE INDEX`
+   statements of (c); every later `initialise()` finds `[]`.
 2. `PostgresBackend._ensure_tenant_columns(conn)` SHALL read the snapshot from
    the catalog (`information_schema.columns`, `pg_constraint` with `contype IN
    ('u', 'p')` and its `conkey` column names in key order, `pg_indexes`, all
    limited to `current_schema()` and the six tables) with `_execute_dict`, whose
    rows are dicts with exactly these keys: `{"table_name", "column_name"}`;
-   `{"table_name", "conname", "contype", "columns"}` (`columns` a `list[str]`);
-   `{"indexname"}`; and execute the plan on `conn`. `initialise()` SHALL call it after `_create_schema(conn)` inside the
+   `{"table_name", "conname", "contype", "columns"}`; `{"indexname"}`. Every
+   name is cast in SQL (`r.relname::text`, `a.attname::text`,
+   `array_agg(a.attname::text ORDER BY k.ord)::text[]`), so psycopg returns `str`
+   and `list[str]`. A pure `pg_catalog_snapshot(column_rows, constraint_rows,
+   index_rows) -> tuple[dict[str, set[str]], dict[str, list[tuple[str, tuple[str,
+   ...]]]], dict[str, tuple[str, tuple[str, ...]]], set[str]]` turns these rows
+   into the four inputs of `plan_pg_tenant_migration`, and the backend executes
+   the plan on `conn`. `initialise()` SHALL call it after `_create_schema(conn)` inside the
    same transaction that holds `pg_advisory_xact_lock`, before `conn.commit()`;
    concurrent replicas therefore migrate one at a time and the second finds `[]`.
-3. WHEN a catalog read or a migration statement fails THEN the transaction SHALL
-   roll back (Postgres DDL is transactional) and `initialise()` SHALL raise
-   `TenantMigrationError(str(exc))` from it: the existing tables are unchanged and
-   the process does not start. A failure of the advisory lock or of the DDL file
-   propagates unwrapped, as today. The catalog SQL and these row shapes run
+3. WHEN a catalog read or a migration statement raises (any `Exception`, so a
+   psycopg error and the fake's `RuntimeError` alike) THEN `initialise()` SHALL
+   raise `TenantMigrationError(str(exc))` from it INSIDE its `with
+   self._pool.connection()` block, so the pool rolls the transaction back
+   (Postgres DDL is transactional): the existing tables are unchanged and the
+   process does not start. The `try` covers only `_ensure_tenant_columns`; a
+   failure of the advisory lock or of the DDL file propagates unwrapped, as
+   today. The catalog SQL and these row shapes run
    against a real database only in the supplementary `conformance-pg` job (every
-   `initialise()` there executes them and must find `[]`); an error there is not
+   `initialise()` there executes them; from the second start of a database on
+   they find `[]`); an error there is not
    caught by an L4 gate — accepted, and stated in the PR.
 4. Tests (no database): the pre-feature snapshot (six tables without
    `tenant_id`, uniques `concept_links_source_memory_id_target_memory_id_link_type_key`
@@ -109,7 +124,11 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
    `pg_advisory_xact_lock` are the DDL file, the catalog reads, then the 15
    statements in order, followed by a commit; a fake that raises on the first
    `ALTER` makes `initialise()` raise `TenantMigrationError`, with a rollback
-   recorded and no commit after the advisory lock.
+   recorded and no commit after the advisory lock. `pg_catalog_snapshot` fed the
+   rows a psycopg `dict_row` cursor returns for a pre-feature database (for
+   example `{"table_name": "memory_summaries", "conname":
+   "memory_summaries_concept_key", "contype": "u", "columns": ["concept"]}`)
+   yields the pre-feature snapshot above.
 
 ### Requirement 3 — The backend reads and writes `tenant_id`
 
@@ -195,7 +214,9 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
      `RuntimeError(f"fake failure: {sql}")` after being recorded.
    - `FakeCursor`: `execute`, `executemany` (records one entry per parameter
      set), `fetchone` (first row or `None`), `fetchall`, `rowcount`, context
-     manager.
+     manager; statements run through a cursor are recorded in the owning
+     connection's `executed` like `execute()` calls and get their rows from the
+     same responder.
    - `FakePool(source: FakeConnection | Callable[[], FakeConnection])`:
      `connection()` is a context manager that yields the given connection, or a
      new one from the factory on every call; it appends each yielded connection
@@ -213,4 +234,5 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
    Postgres, Docker or a network service.
 2. (Not an L4 gate.) On the pull request, the repository's `conformance-pg` job
    is expected to stay green on a real database: its `initialise()` runs the
-   catalog reads of R2.2 on a fresh schema and finds `[]`.
+   catalog reads of R2.2 on its database (the three `CREATE INDEX` statements on
+   the first start of a new database, `[]` afterwards).

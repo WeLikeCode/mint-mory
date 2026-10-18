@@ -69,8 +69,7 @@ there is no session to send feedback for.
 Filtering happens in Python with the same `_passes_filter` the search uses, so a
 `MemoryFilter` means the same thing everywhere. The SQL prefilters on
 `is_archived = 0` and the tenant; `limit` applies after filtering so it counts
-matching rows. The copy asks for `limit = COPY_MAX + 1` to detect an oversized
-selection without loading the whole table twice.
+matching rows.
 
 ## Postgres interim
 

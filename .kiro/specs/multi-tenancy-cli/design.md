@@ -23,7 +23,7 @@ _NO_TENANT_COMMANDS = {"serve", "mcp-serve", "doctor", "index-tree", "history", 
 
 @app.callback()
 def _init_telemetry(ctx: typer.Context,
-                    tenant: str | None = typer.Option(None, "--tenant", help="Tenant id (default: global)")) -> None:
+                    tenant: str | None = typer.Option(None, "--tenant", help="Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant.")) -> None:
     global _TENANT
     _TENANT = None
     if tenant and tenant != TENANT_GLOBAL:

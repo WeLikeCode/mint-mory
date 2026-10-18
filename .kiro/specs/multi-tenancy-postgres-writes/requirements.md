@@ -33,7 +33,9 @@ added, and no existing test function SHALL be deleted (an L4 integrity blocker).
    `INSERT INTO tenants (id, name, is_active, created_at, updated_at) VALUES (%s,
    %s, TRUE, %s, %s) ON CONFLICT (id) DO NOTHING`, then `SELECT id, name,
    is_active, created_at, updated_at FROM tenants WHERE id = %s` and return it
-   (an existing id returns the existing row).
+   (an existing id returns the existing row). The parameters are `(tenant_id,
+   name, now, now)` with `now = _utcnow()`, a naive UTC `datetime` (the columns
+   are `TIMESTAMP`); rows map to `Tenant` field by field.
 2. `get_tenant(tenant_id)` SHALL `SELECT` the row (`None` when absent);
    `list_tenants()` SHALL return all rows `ORDER BY id`;
    `set_tenant_active(tenant_id, active)` SHALL raise `TenantNotFoundError` for an
@@ -106,23 +108,32 @@ added, and no existing test function SHALL be deleted (an L4 integrity blocker).
    `initialise()`, `_ensure_extensions()`, `_probe_capabilities()`, `ping()`,
    `close()` and `_truncate_all()` keep their own pool handling. So inside a
    `transaction()` every call sees the rows written earlier in it.
-3. On Postgres a failed statement aborts the whole transaction: a caller that
+3. (The three search phases run one after the other in the calling thread —
+   `hybrid_search.collect_scores`, verified — so they share the bound
+   connection.) On Postgres a failed statement aborts the whole transaction: a caller that
    catches an exception inside a `transaction()` block cannot continue, and the
    final commit fails. This differs from SQLite and is accepted (no savepoints);
    the only composer, `cross-tenant-copy`, never catches inside its block.
-4. A `ContextVar` is per thread and per asyncio task, so another request has its
-   own connection. A task or thread started inside a `transaction()` block
-   inherits the binding (context copy); callers SHALL NOT use the store from such
-   children while the block is open (the copy does not). The per-instance
-   variable lives as long as the backend, which is a long-lived singleton.
-5. Tests (fake pool): with `FakePool(conn)`, two `add_memory` calls inside `with
+4. A `ContextVar` is per thread and per asyncio task. On the project's Python
+   3.12 (standard build), a `threading.Thread` starts with an empty context, so
+   it never sees the binding and gets its own pool connection; an asyncio task
+   (`asyncio.create_task`, `asyncio.to_thread`) or `contextvars.copy_context()`
+   copies the context and therefore inherits the binding — callers SHALL NOT use
+   the store from such children while the block is open (the copy does not). The
+   per-instance variable lives as long as the backend, which is a long-lived
+   singleton.
+5. Tests (fake pool). All use the responder `active = lambda sql, params:
+   [{"is_active": True}] if sql.lstrip().startswith("SELECT is_active FROM
+   tenants") else []`, so the write guard passes. With `FakePool(conn)` and
+   `conn = FakeConnection(responder=active)`: two `add_memory` calls inside `with
    backend.transaction():` add no commit and leaving the block adds exactly one;
    an exception inside adds no commit and at least one rollback; a nested
    `transaction()` adds no commit of its own; a `get_memory` inside the block runs
    on `conn` (it appears in `conn.executed` after the inserts and `checkouts`
-   stays 1). With `FakePool(FakeConnection)` (a factory), an `add_memory` from a
-   second thread while the block is open runs on a second connection
-   (`pool.connections[1]`), which commits once by itself.
+   stays 1). With `FakePool(lambda: FakeConnection(responder=active))`, an
+   `add_memory` from a plain `threading.Thread` started while the block is open
+   runs on a second connection (`pool.connections[1]`), which commits once by
+   itself.
 
 ### Requirement 5 — Tests of R1–R3 (fake pool)
 
@@ -130,18 +141,35 @@ added, and no existing test function SHALL be deleted (an L4 integrity blocker).
 1. For each guarded write, a missing and an inactive tenant (the responder
    returns `[]` / `[{"is_active": False}]` for the guard SELECT) raise the right
    error and no INSERT, UPDATE or DELETE follows the guard in `executed`.
-2. Each reference rule raises with the stated arguments when the responder
-   returns `[{"tenant_id": "t1"}]` and `[{"tenant_id": "global"}]` for the two
-   `_stored_tenant` lookups; `archive_memory("a1", tenant_id="global")` with a
+2. Each reference rule raises with the stated arguments when the responder,
+   keyed on the statement's parameters (the looked-up id), returns `[{"tenant_id":
+   "t1"}]` for one id and `[{"tenant_id": "global"}]` for the other; `archive_memory("a1", tenant_id="global")` with a
    stored `t1` row raises `KeyError`.
 3. `_bump_retrieval(["a1"], now)` executes an UPDATE containing `tenant_id IN
    (SELECT id FROM tenants WHERE is_active)`.
 4. The directory methods execute the SQL of R1 and map the returned dict rows.
-5. The `test_pg_<method>_tenancy` functions of `packages/core/tests/test_pg_tenancy.py`
-   for the methods of R1–R4 (`create_tenant`, `set_tenant_active`, `get_tenant`,
-   `list_tenants`, `transaction`, the guarded writes) SHALL be rewritten in place —
-   same names, fake pool — to assert the new behaviour; the read ones stay as
-   they are until `multi-tenancy-postgres-reads`.
+5. These `test_pg_<method>_tenancy` functions of
+   `packages/core/tests/test_pg_tenancy.py` SHALL be rewritten in place — same
+   names, fake pool — to assert the new behaviour: `create_tenant`,
+   `set_tenant_active`, `get_tenant`, `list_tenants`, `transaction`, `add_memory`,
+   `update_memory`, `archive_memory`, `supersede_memory`, `apply_feedback`,
+   `add_link`, `create_session`, `record_query_results`, `upsert_summary`,
+   `manifest_upsert`, `manifest_delete`. These stay unchanged until
+   `multi-tenancy-postgres-reads` (their methods still reject `t1`):
+   `get_summary`, `manifest_get`, `manifest_paths` and every read of
+   `multi-tenancy-reads` (`get_memory` … `list_memories`).
+6. Success paths for an active `t1` (responder answers the guard with
+   `[{"is_active": True}]` and the stored-tenant lookups with `[{"tenant_id":
+   "t1"}]`): `add_memory`, `add_link`, `upsert_summary` and `manifest_upsert`
+   with tenant `t1` execute their INSERT with `"t1"` among the parameters and
+   commit once, raising no `TenancyNotSupportedError`.
+7. Error paths: `create_tenant("Bad")` raises `InvalidTenantIdError` before any
+   SQL; `set_tenant_active("nope", False)` (no row) raises `TenantNotFoundError`;
+   `set_tenant_active("global", False)` raises `ProtectedTenantError` and
+   executes no UPDATE; `record_query_results` with a second result whose memory
+   is in another tenant (named session) executes no INSERT at all;
+   `supersede_memory("a1", by_id="g1", tenant_id="t1")` with `a1` in `t1` and `g1`
+   in `global` raises `KeyError("memory 'g1' not found")`.
 
 ### Requirement 6 — Gates
 
@@ -152,7 +180,8 @@ added, and no existing test function SHALL be deleted (an L4 integrity blocker).
 ### Requirement 7 — Conformance tests (supplementary)
 
 #### Acceptance Criteria
-1. `packages/core/tests/conformance/test_tenancy_writes.py` SHALL use the
+1. `packages/core/tests/conformance/test_conformance_tenancy_writes.py` (a name
+   distinct from `packages/core/tests/test_tenancy_writes.py`) SHALL use the
    existing `backend` fixture and only Protocol methods to check: a write to a
    missing and to an inactive tenant raises and writes nothing; a cross-tenant
    `add_link` raises `CrossTenantLinkError`; `archive_memory(id,

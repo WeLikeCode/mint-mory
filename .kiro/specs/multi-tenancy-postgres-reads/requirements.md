@@ -49,14 +49,27 @@ skipif or xfail marker and no `pytest.skip(` call SHALL be added.
    their key since `multi-tenancy-postgres` — and then deleted.
    `TenancyNotSupportedError` stays in `types.py` (public error surface). The
    read `test_pg_<method>_tenancy` functions of
-   `packages/core/tests/test_pg_tenancy.py` (from `multi-tenancy-reads`, among
-   them `test_pg_list_memories_tenancy`) SHALL be rewritten in place — same
-   names, fake pool — to assert R1.3; none is deleted (an L4 integrity
-   blocker).
+   `packages/core/tests/test_pg_tenancy.py` — those of `multi-tenancy-reads`
+   (among them `test_pg_list_memories_tenancy`) and `test_pg_get_summary_tenancy`,
+   `test_pg_manifest_get_tenancy`, `test_pg_manifest_paths_tenancy` of
+   `multi-tenancy` — SHALL be rewritten in place, same names, fake pool: the
+   former to assert R1.3, the latter three to assert that `get_summary("c",
+   tenant_id="t1")`, `manifest_get("/a", tenant_id="t1")` and
+   `manifest_paths("c", tenant_id="t1")` execute a SELECT with `tenant_id = %s`
+   and `"t1"` among the parameters and raise nothing. None is deleted (an L4
+   integrity blocker).
 3. Tests (fake pool), for each method: with `tenant_id="t1"` the executed SELECT
    contains `tenant_id = %s` and `"t1"` is among its parameters; with `None` no
    executed SELECT contains `tenant_id =` (the column list may name `tenant_id`;
-   the predicate must not appear). The responder returns `[]` for list reads,
+   the predicate must not appear). Parameter position is fixed: the tenant
+   parameter goes immediately before the `LIMIT` parameter, or last when there
+   is none, and the `None` call's parameter tuple equals today's exactly — for
+   example `_fts_scores("alice", 50, "t1")` executes `… WHERE content_tsv @@
+   to_tsquery('english', %s) AND tenant_id = %s ORDER BY rank DESC LIMIT %s` with
+   `(tsquery, tsquery, "t1", 50)` and the `None` call `(tsquery, tsquery, 50)`;
+   `_vector_scores` `(emb, dims, "t1", limit)`; `_load_memories(["a1"], "t1")`
+   `("a1", "t1")`; `_trigram_scores` wraps its OR-ed clauses: `WHERE (<clauses>)
+   AND tenant_id = %s`. The responder returns `[]` for list reads,
    `[(0,)]` for every `COUNT(*)` and `[(None, None)]` for the averages of
    `get_stats` (it reads `fetchone()[0]`). The private phases are called
    directly; the vector phase is called with `backend._vec_available = True` and a
@@ -70,12 +83,16 @@ skipif or xfail marker and no `pytest.skip(` call SHALL be added.
    tenant to its phases and to the `load_memories_fn`, `search_around_fn` and
    `get_annotating_notes_fn` callables, and pass `tenant_id` and `record_session
    = tenant_id is None or (t is not None and t.is_active)` (with `t =
-   self.get_tenant(tenant_id)`) to `fuse_and_search`, as on SQLite.
+   self.get_tenant(tenant_id)` looked up only for a concrete tenant) to
+   `fuse_and_search`, as on SQLite.
 2. Tests (fake pool), `SearchRequest(query="Alice")`: the responder answers the
    FTS phase with `[("a1", 0.5)]` (it reads `row[0]`, `row[1]`), `_load_memories`
    with one memory row dict for `a1` with `tenant_id` `"t1"`, and the tenant
-   lookup with the tenant's row dict; the trigram and vector phases are off
-   (`_trgm_available` and `_vec_available` stay `False`). With `t1` inactive: no INSERT into `query_sessions` /
+   lookup with the tenant's row dict; for the active case it also answers the
+   guard SELECT with `[{"is_active": True}]` and the stored-tenant lookups of
+   `record_query_results` with `[{"tenant_id": "t1"}]`; every other statement
+   gets `[]`. The trigram and vector phases are off (`_trgm_available` and
+   `_vec_available` stay `False`). With `t1` inactive: no INSERT into `query_sessions` /
    `query_results`, no retrieval UPDATE, `session_id == ""`, and `a1` returned;
    with `t1` active: a session INSERT whose parameters include `"t1"`; with a
    tenant `nope` that has no row: no INSERT, `session_id == ""`.
@@ -90,14 +107,18 @@ skipif or xfail marker and no `pytest.skip(` call SHALL be added.
    `_passes_filter(mem, filter or MemoryFilter(), include_archived=False)` holds,
    and return the first `limit` (`None` all, `0` none, negative →
    `ValueError("limit must be >= 0")`). The interim stub is removed.
-2. Test (fake pool): rows returned by the responder are filtered and limited as
-   in `multi-tenancy-reads` R4.2.
+2. Test (fake pool): the negative-limit `ValueError` is raised before any
+   statement runs; with `tenant_id="t1"` the executed SELECT is exactly the R3.1
+   text with `AND tenant_id = %s` and `ORDER BY created_at, id`, and `"t1"` as its
+   parameter; responder rows are filtered and limited as in `multi-tenancy-reads`
+   R4.2.
 
 ### Requirement 4 — Conformance tests (supplementary)
 
 #### Acceptance Criteria
 
-1. `packages/core/tests/conformance/test_tenancy_reads.py` SHALL use the
+1. `packages/core/tests/conformance/test_conformance_tenancy_reads.py` (a name
+   distinct from `packages/core/tests/test_tenancy_reads.py`) SHALL use the
    existing `backend` fixture and only Protocol methods: with memories in
    `global` and `t1`, `get_memory`, `search`, `get_stats`, `list_memories` and
    `search_around` return only `t1` rows for `"t1"`, both tenants for `None`,

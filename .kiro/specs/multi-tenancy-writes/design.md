@@ -76,10 +76,11 @@ row until then, so `None` and `"global"` keep today's SQL.
 - Every example of R2.7 and R3.5.
 - Transactions: three writes then `raise RuntimeError` inside one block → zero
   new rows and `memories_fts MATCH` finds nothing; nested blocks commit once
-  (count `commit` calls via a wrapper connection or check visibility from a second
-  `SqliteBackend` on the same file only after the outer block exits); a second
-  thread's `add_memory` blocks until the first thread's block exits
-  (`threading.Event`, then assert the order of completion).
+  (a second `SqliteBackend` on the same file sees the rows only after the outer
+  block exits — checked inside the block and after it); a second thread's
+  `add_memory` blocks until the first thread's block exits (the first thread
+  holds the block open on a `threading.Event`; the test asserts the second write
+  is not visible before the event is set and is visible within 5 s after).
 - `packages/core/tests/test_pg_tenancy.py` (`PostgresBackend("postgresql://unused")`):
   `test_pg_transaction_tenancy` (entering `transaction()` raises
   `TenancyNotSupportedError`) and `test_pg_<method>_tenancy` for the id-only

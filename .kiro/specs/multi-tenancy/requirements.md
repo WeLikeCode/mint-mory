@@ -9,10 +9,7 @@ table-backed record, per-tenant uniqueness, the SQLite migration and the tenant
 directory methods. With only the reserved `global` tenant every existing
 operation behaves exactly as today.
 
-The other nine units (`multi-tenancy-writes`, `-reads`, `tenant-scoped-core`,
-`multi-tenancy-cli`, `tenant-scoped-mcp`, `cross-tenant-copy`,
-`multi-tenancy-postgres`, `-postgres-writes`, `-postgres-reads`) are listed with
-what they deliver in the design.
+The other nine units are listed in the design.
 
 ### Tenancy contract (shared by all ten units)
 
@@ -132,7 +129,8 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    exactly `(tenant_id, concept)`, and of `index_manifest` when its primary key
    (`PRAGMA table_info` `pk` ordinals) is not exactly `(tenant_id, path)`;
    a rebuild is `CREATE TABLE <t>__tenant_new` with the fresh DDL of R2, `INSERT
-   INTO <t>__tenant_new (<columns>) SELECT <columns> FROM <t>`, `DROP TABLE <t>`,
+   INTO <t>__tenant_new (<columns>) SELECT <columns> FROM <t>` (`<columns>` = the
+   column names of that table's fresh DDL), `DROP TABLE <t>`,
    `ALTER TABLE <t>__tenant_new RENAME TO <t>`, then the table's existing indexes
    (`idx_links_source`, `idx_links_target`, `idx_links_type_strength`,
    `idx_links_entity`; `idx_manifest_collection`) re-created;
@@ -140,7 +138,9 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    memories(tenant_id, is_active, is_archived)`, `idx_links_tenant ON
    concept_links(tenant_id, source_memory_id, link_type)`, `idx_sessions_tenant ON
    query_sessions(tenant_id, concluded, created_at)`.
-   On a fresh or already migrated database it SHALL return `[]`.
+   After a completed `initialise()` (fresh or migrated database) it SHALL return
+   `[]`; on a brand-new file right after `schema.sql` it returns exactly the three
+   `CREATE INDEX` statements of (c) (R2.4), which the first `initialise()` runs.
 3. `_ensure_tenant_columns` SHALL compute the plan once without a lock and return
    at once on `[]`; otherwise it SHALL run `PRAGMA foreign_keys = OFF`, `BEGIN
    IMMEDIATE`, compute the plan AGAIN inside the transaction (another process may
@@ -148,7 +148,9 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    plan executes nothing), `COMMIT`, and run `PRAGMA foreign_keys = ON` in a
    `finally` (the SQLite table-rebuild procedure; legacy rows are copied even if
    old data violates an FK; `connect()` always enables foreign keys, so restoring
-   ON is correct).
+   ON is correct; no transaction is open at that point, see the design). A
+   `BEGIN IMMEDIATE` that times out on another writer (`busy_timeout`) is an
+   `sqlite3.OperationalError`, handled by R3.4.
 4. WHEN any statement raises `sqlite3.Error` THEN `_ensure_tenant_columns` SHALL
    `ROLLBACK` and raise `TenantMigrationError(str(exc))` from it, and
    `initialise()` SHALL propagate it (fail closed: the process does not start).
@@ -215,9 +217,8 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    `manifest_delete(path, *, tenant_id) -> None` (deletes only `(tenant_id,
    path)`). `ManifestEntry` gains `tenant_id: str`. Example: upserting `/a` for
    `global` and for `t1` gives two rows; `manifest_delete("/a", tenant_id="t1")`
-   leaves the `global` row. `ManifestEntry` is a `TypedDict` (no field default is
-   possible), so both constructions — `SqliteBackend.manifest_get` and
-   `PostgresBackend.manifest_get`, the only ones in the repository — SHALL set it.
+   leaves the `global` row. `ManifestEntry` is a `TypedDict` (no default), so
+   its only two constructions, the two backends' `manifest_get`, SHALL set it.
 6. With only the `global` tenant, every existing test SHALL pass unchanged
    (`test_schema.py` gets the additions of R7 only).
 7. Until `multi-tenancy-writes` adds the write guard, a write naming a tenant
@@ -243,7 +244,8 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
 3. `list_tenants() -> list[Tenant]` SHALL return every tenant, active and
    inactive, ordered by `id` ascending; a fresh database returns `[global]`.
 4. `set_tenant_active(tenant_id: str, active: bool) -> Tenant` SHALL raise
-   `TenantNotFoundError` for an unknown id, raise `ProtectedTenantError` for
+   `TenantNotFoundError` for an unknown id (an invalid id is unknown: no
+   validation here), raise `ProtectedTenantError` for
    `("global", False)`, return `global` unchanged for `("global", True)`, and
    otherwise set `is_active` and `updated_at` and return the row.
 5. The seeded `global` row has the sentinel timestamps of R2.1; tests compare
@@ -286,8 +288,8 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    R3.2(c) to `REQUIRED_INDEXES`; and a test that a fresh database has exactly
    one `tenants` row: `('global', 'Global (default) tenant', 1,
    '1970-01-01T00:00:00')`. The enum↔CHECK, FK and FTS trigger tests stay green.
-2. `docs/openapi/mintmory.yaml` SHALL add `tenant_id` (`type: string`, the
-   pattern, `default: global`) to the response schemas `MemoryRecord`,
+2. `docs/openapi/mintmory.yaml` SHALL add `tenant_id` (`type: string`,
+   `default: global`, a description naming the id rule) to the response schemas `MemoryRecord`,
    `ConceptLink`, `MemorySummary` and `QuerySession` only. No `Tenant` schema, no
    path, no header and no request-body field: the HTTP API accepts no tenant input.
 

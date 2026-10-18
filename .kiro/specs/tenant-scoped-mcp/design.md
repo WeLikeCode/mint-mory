@@ -77,13 +77,13 @@ string.
 
 ## Tests
 
-- `packages/mcp/tests/test_tenancy_mcp.py`: R1.6 (driving `main()`), R2.2
+- `packages/mcp/tests/test_mcp_tenancy.py`: R1.6 (driving `main()`), R2.2
   inventory, R2.3, R3.2, R4.2, R5.3, R6.1, R7, R8.1–R8.3 (deactivate with
   `store.set_tenant_active` between calls; two `tenant_create` calls through
   `asyncio.gather`).
 - Fixtures: `acme_client` creates `acme`, calls `_bootstrap_scope("acme")`,
   yields the client, then resets `server._scope_tenant` and `server._store`.
-- `tests/integration/test_tenancy_mcp.py`: one file database, scope `acme` then
+- `tests/integration/test_tenancy_mcp_integration.py`: one file database, scope `acme` then
   `global` (R9.2).
 
 ## Risks
