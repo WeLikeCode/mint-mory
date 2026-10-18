@@ -102,7 +102,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
 - [x] 3.1 Tests for every scenario of "Helm telemetry settings" (template text; `values.yaml` and `values.schema.json`
   parsed). In the `helm template` test use `--set-string` (`--set` turns `samplerArg=0.1` into a number, which the
   string schema rejects; the guide uses `--set-string` too).
-- [ ] 3.2 `templates/configmap.yaml`: inside `{{- if .Values.otel.enabled }}` add `{{- if .Values.otel.sampler }}
+- [x] 3.2 `templates/configmap.yaml`: inside `{{- if .Values.otel.enabled }}` add `{{- if .Values.otel.sampler }}
   OTEL_TRACES_SAMPLER: {{ .Values.otel.sampler | quote }}{{- end }}` and the same for the other two; add `{{- else }}
   MINTMORY_OTEL_ENABLED: "false"`. `values.yaml`: the three keys with `""` and a comment each. `values.schema.json`:
   three `{"type": "string"}` properties under `otel`. Keep `otel.endpoint` and `otel.serviceName` as they are.
