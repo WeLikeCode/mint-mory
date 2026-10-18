@@ -121,5 +121,5 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   authenticated collector, kept in a Secret). Add a short "Observability" pointer in `README.md`.
 
 ## 5. Checks
-- [ ] 5.1 Run `ruff check`, `ruff format --check`, `mypy packages` and the full test suite; coverage stays at or above
+- [x] 5.1 Run `ruff check`, `ruff format --check`, `mypy packages` and the full test suite; coverage stays at or above
   80%.
