@@ -1,4 +1,4 @@
-# Verification: openspec:add-telemetry-boundary-tracing: NEEDS_HUMAN (round 1)
+# Verification: openspec:add-telemetry-boundary-tracing: PASS (round 2)
 
 traceability: 24/24 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 24/24 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.5 | base merged: staging@a424242ebe as 0d56fcce23 (8 commits) |
-| 1 | integrity | ok | 0.6 | 7 sub-checks (+1 unfrozen by human answers); scope: 25 changed file(s) |
-| 2 | build | ok | 1.1 |  |
-| 3 | tests | ok | 75.4 |  |
-| 4 | traceability | ok | 0.1 | 24/24 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 2.1 | 24/24 criteria judged by jev |
-| 9 | judge | ok | 40.2 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -76,7 +76,7 @@ Declared suppressions:
 | C-6b05011d | observability › Excluded HTTP paths › Excluded by the environment | covered | packages.api.tests.test_telemetry_http::test_excluded_by_the_environment (passed, zero_value); packages.api.tests.test_telemetry_http_middleware::test_safe_steps_skip_paths_excluded_by_the_environment (passed, zero_value) | - | 0.91 |
 | C-512ddc0c | observability › Excluded HTTP paths › A bad exclusion pattern is skipped | covered | packages.api.tests.test_telemetry_http::test_a_bad_exclusion_pattern_is_skipped (passed, zero_value); packages.api.tests.test_telemetry_http_middleware::test_safe_steps_skip_a_bad_exclusion_pattern (passed, zero_value) | - | 0.74 |
 | C-7409b7a7 | observability › HTTP server duration metric › Request duration recorded | covered | packages.api.tests.test_telemetry_http::test_request_duration_recorded (passed, zero_value); packages.api.tests.test_telemetry_http_middleware::test_safe_steps_record_the_request_duration (passed, zero_value); packages.core.tests.test_telemetry_record_histogram::test_record_histogram_drops_none_attr... | - | 0.89 |
-| C-7d4fc8c6 | observability › MCP tool calls are traced once › The verified FastMCP version is installed | covered | packages.mcp.tests.test_telemetry_mcp::test_fastmcp_version_is_the_verified_one (passed, pre_satisfied, accepted by an agent through Q-005: the check was inconclusive) | - | 0.89 |
+| C-7d4fc8c6 | observability › MCP tool calls are traced once › The verified FastMCP version is installed | covered | packages.mcp.tests.test_telemetry_mcp::test_fastmcp_version_is_the_verified_one (passed, pre_satisfied) | - | 0.89 |
 | C-811d0420 | observability › MCP tool calls are traced once › Tool call is one span with core spans below it | covered | packages.mcp.tests.test_telemetry_mcp::test_history_tool_call_is_one_server_span (passed, pre_satisfied); packages.mcp.tests.test_telemetry_mcp::test_tool_call_is_one_server_span_with_core_spans_below_it (passed, pre_satisfied) | - | 0.84 |
 | C-313b2e72 | observability › MCP tool calls are traced once › A failing tool is marked | covered | packages.mcp.tests.test_telemetry_mcp::test_failing_tool_is_marked (passed, pre_satisfied) | - | 0.93 |
 | C-b03582ac | observability › MCP tool calls are traced once › Tool arguments never reach telemetry | covered | packages.mcp.tests.test_telemetry_mcp::test_tool_arguments_never_reach_telemetry (passed, pre_satisfied) | - | 0.75 |
@@ -162,6 +162,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-d1b2babd | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-c2076c0f | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-007 accept H-e0757174 by human: the owner asked to answer: the judge passed 24/24 criteria on what it saw (all production code and the earlier tests), traceability is 24/24 with discriminating tests, every gate and integrity check passes and 51/51 new tests pass; the hold is only the harness's 120000-character judge view, not a fi...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -198,10 +202,6 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 - [minor, deterministic] a test is ignored as evidence (criterion C-d1b2babd): packages.core.tests.test_observability_distributed_tracing_docs::test_section_4_documents_what_mintmory_sends: it traces 4 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-c2076c0f): packages.core.tests.test_observability_distributed_tracing_docs::test_section_4_documents_what_mintmory_sends: it traces 4 criteria (verifier.max_criteria_per_test=3)
 - [minor, judge] Route object without path attribute not handled (spec gap) (criterion C-7507adff): In the middleware finally block, route.path is read outside _safe; a scope route lacking path would raise AttributeError.
-
-## Needs a human
-
-- the diff is longer than 120000 characters: the judge saw only the start
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
