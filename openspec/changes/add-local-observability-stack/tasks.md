@@ -110,7 +110,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
 ## 4. Guide
 - [x] 4.1 Tests "Guide names every variable" and "Guide has its parts and links" (read the files and assert each name,
   heading, command and link).
-- [ ] 4.2 In `docs/OBSERVABILITY.md` section 4, replace the body of `4.5 Exporters & local viewing` with the guide,
+- [x] 4.2 In `docs/OBSERVABILITY.md` section 4, replace the body of `4.5 Exporters & local viewing` with the guide,
   under `####` headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`, and update the
   first bullet of `4.1 Principles` ("Off by default") to the `auto` mode. Keep `4.2`-`4.4`, `4.6` and the
   "Distributed tracing" subsection that parts 2 and 3 write; edit nothing else in section 4. The guide: a table of the
