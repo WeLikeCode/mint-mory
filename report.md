@@ -5,8 +5,8 @@
 - Target: staging at f29487b0b8be568c91a2d400927d43a372d26eca
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-18T19:45:19Z
-- Stopped: unit_escalated (openspec:add-local-observability-stack): round 2 failed the same way as round 1: finding F-5758ac1b
+- Written: 2026-10-18T21:11:50Z
+- Stopped: unit_escalated (openspec:add-local-observability-stack): round 5 failed the same way as round 4: finding F-5758ac1b
 
 ## Units
 
@@ -65,7 +65,7 @@
 - Pull request: <forge>/WeLikeCode/mint-mory/pull/33
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.27, 1 run(s), 1 attempt(s)
+- Usage: $0.38, 3 run(s), 1 attempt(s)
 
 ### openspec:fix-note-bonus-env-name
 - Result: integrated at 61ee36d119da2c4e99cf1352c976ec068b4ed7ef
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $31.97
+- Cost: $32.08
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 92
+- Runs that dispatched a unit: 94
