@@ -355,3 +355,5 @@
 {"at":"2026-10-18T19:51:13Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner asked to finish the plan: the escalation came from skip markers the spec asked for; the retry note tells the fix unit to remove them","type":"plan.resumed"}
 {"at":"2026-10-18T19:52:41Z","attempt":1,"cost_usd":0.271576,"runs":2,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-18T19:52:41Z","run":"r-20261018T1952Z-fb34","type":"unit.dispatched","unit":"openspec:add-local-observability-stack"}
+{"at":"2026-10-18T20:54:03Z","attempt":1,"cost_usd":0.318116,"runs":3,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
+{"at":"2026-10-18T20:54:03Z","run":"r-20261018T2054Z-83ab","type":"unit.dispatched","unit":"openspec:add-local-observability-stack"}
