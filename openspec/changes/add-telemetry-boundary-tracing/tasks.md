@@ -44,7 +44,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   class-level properties.
 - [x] 4.2 `post_chat_completion`: `gen_ai.chat` with `kind="client"`, `server.address`/`server.port` from
   `urllib.parse.urlsplit`; `req.add_header(k, v)` for each injected header inside the span, before `urlopen`.
-- [ ] 4.3 `OllamaEmbedder` injects the same way; `OpenAIEmbedder` passes `extra_headers=telemetry.inject_trace_headers({})`
+- [x] 4.3 `OllamaEmbedder` injects the same way; `OpenAIEmbedder` passes `extra_headers=telemetry.inject_trace_headers({})`
   to `embeddings.create`, inside `mintmory.embed`.
 
 ## 5. Checks
