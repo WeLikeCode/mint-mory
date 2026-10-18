@@ -9,16 +9,10 @@ table-backed record, per-tenant uniqueness, the SQLite migration and the tenant
 directory methods. With only the reserved `global` tenant every existing
 operation behaves exactly as today.
 
-| Unit | Delivers |
-|---|---|
-| `multi-tenancy` (this) | types + errors, `schema.sql`, migration, keyed summary/manifest methods, tenant directory, Protocol + Postgres interim |
-| `multi-tenancy-writes` | write guard, same-tenant references, `tenant_id` on id-only writes, re-entrant `transaction()` |
-| `multi-tenancy-reads` | `tenant_id` on every storage read and on `search` |
-| `tenant-scoped-core` | `DreamingEngine` scope, per-tenant dreaming, core functions, HTTP API on the global tenant |
-| `multi-tenancy-cli` | CLI `--tenant`, `tenant create` / `tenant list` |
-| `tenant-scoped-mcp` | MCP process scope, `tenant_create` / `tenant_list` tools |
-| `cross-tenant-copy` | copy between tenants (core, MCP, CLI) |
-| `multi-tenancy-postgres`, `-postgres-writes`, `-postgres-reads` | Postgres parity |
+The other nine units (`multi-tenancy-writes`, `-reads`, `tenant-scoped-core`,
+`multi-tenancy-cli`, `tenant-scoped-mcp`, `cross-tenant-copy`,
+`multi-tenancy-postgres`, `-postgres-writes`, `-postgres-reads`) are listed with
+what they deliver in the design.
 
 ### Tenancy contract (shared by all ten units)
 
@@ -29,7 +23,9 @@ operation behaves exactly as today.
 - Pure reads (results returned to a caller) take `tenant_id: str | None = None`:
   `None` = every tenant (today's SQL, no predicate); a concrete id = only that
   tenant's rows; an id with no `tenants` row = empty result, never an error
-  (delivered by `multi-tenancy-reads`).
+  (delivered by `multi-tenancy-reads`; until `multi-tenancy-postgres-reads` the
+  Postgres backend instead raises `TenancyNotSupportedError` for any tenant other
+  than `global`, R6).
 - Keyed reads/writes whose key is unique only per tenant (summary by concept,
   manifest by path) take a concrete `tenant_id: str = "global"`, never `None`
   (this unit).
@@ -82,6 +78,8 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    `ValidationError`.
 5. `SearchRequest` and `MemoryFilter` SHALL NOT change: read scoping is a method
    parameter (`multi-tenancy-reads`), so no HTTP request body gains a tenant field.
+   None of the five models of R1.4 is an HTTP request body (verified; see the
+   design), so the new field appears only in responses.
 
 ### Requirement 2 — SQLite schema (`schema.sql`)
 
@@ -97,7 +95,10 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    `tenants`; a second `initialise()` leaves exactly one `global` row.
 2. In the fresh DDL, `memories`, `concept_links`, `memory_summaries`,
    `index_manifest`, `query_sessions` and `query_results` SHALL each have
-   `tenant_id TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id)`.
+   `tenant_id TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id)` as their
+   last column (the position `ALTER TABLE … ADD COLUMN` gives it on a migrated
+   database, so fresh and migrated tables have the same column order; rows are
+   read by column name either way).
 3. Uniqueness SHALL be per tenant: `concept_links` has
    `UNIQUE (tenant_id, source_memory_id, target_memory_id, link_type)` instead of
    `UNIQUE (source_memory_id, target_memory_id, link_type)`; `memory_summaries`
@@ -120,7 +121,11 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    list[str]` SHALL return, in this order, only the DDL the database still needs:
    (a) for each of the six tables of R2.2 without a `tenant_id` column
    (`PRAGMA table_info`): `ALTER TABLE <t> ADD COLUMN tenant_id TEXT NOT NULL
-   DEFAULT 'global'` (this backfills every existing row to `global`);
+   DEFAULT 'global'` (this backfills every existing row to `global`; SQLite
+   cannot add a column with a foreign key, so on a migrated database `memories`,
+   `query_sessions` and `query_results` have no FK to `tenants` — intentionally:
+   the write guard of `multi-tenancy-writes` enforces it — while the three rebuilt
+   tables of (b) do);
    (b) a rebuild of `concept_links` when no unique index has exactly the columns
    `(tenant_id, source_memory_id, target_memory_id, link_type)` in that order
    (`PRAGMA index_list` + `PRAGMA index_info`), of `memory_summaries` when none has
@@ -136,11 +141,14 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    concept_links(tenant_id, source_memory_id, link_type)`, `idx_sessions_tenant ON
    query_sessions(tenant_id, concluded, created_at)`.
    On a fresh or already migrated database it SHALL return `[]`.
-3. `_ensure_tenant_columns` SHALL return at once on `[]`; otherwise it SHALL run
-   `PRAGMA foreign_keys = OFF`, `BEGIN IMMEDIATE`, every statement in order,
-   `COMMIT`, and run `PRAGMA foreign_keys = ON` in a `finally` (the SQLite
-   table-rebuild procedure; legacy rows are copied even if old data violates an
-   FK).
+3. `_ensure_tenant_columns` SHALL compute the plan once without a lock and return
+   at once on `[]`; otherwise it SHALL run `PRAGMA foreign_keys = OFF`, `BEGIN
+   IMMEDIATE`, compute the plan AGAIN inside the transaction (another process may
+   have migrated meanwhile), execute that second plan in order (an empty second
+   plan executes nothing), `COMMIT`, and run `PRAGMA foreign_keys = ON` in a
+   `finally` (the SQLite table-rebuild procedure; legacy rows are copied even if
+   old data violates an FK; `connect()` always enables foreign keys, so restoring
+   ON is correct).
 4. WHEN any statement raises `sqlite3.Error` THEN `_ensure_tenant_columns` SHALL
    `ROLLBACK` and raise `TenantMigrationError(str(exc))` from it, and
    `initialise()` SHALL propagate it (fail closed: the process does not start).
@@ -148,8 +156,11 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    from `schema.sql` may remain, which the previous release ignores). It is never
    swallowed: a half-migrated database would fail every query that names
    `tenant_id`.
-5. WHEN `initialise()` runs a second time THEN no DDL SHALL run and the sorted
-   `(type, name, sql)` rows of `sqlite_master` SHALL be identical before and after.
+5. WHEN `initialise()` runs a second time THEN `_tenant_migration_statements`
+   SHALL return `[]`, no migration statement SHALL run, and the sorted `(type,
+   name, sql)` rows of `sqlite_master` SHALL be identical before and after
+   (`schema.sql`'s own `IF NOT EXISTS` / `INSERT OR IGNORE` statements still run,
+   as today).
 6. A test fixture `packages/core/tests/fixtures/pre_tenancy_schema.sql` SHALL be a
    byte copy of `schema.sql` as it is on the base branch before this change.
    Test: create a file database from it; insert memories `m1` ("Alice works at
@@ -159,14 +170,21 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    `SqliteBackend(path).initialise()`. Expected: all six tables have `tenant_id`;
    every row reads back with `tenant_id == "global"` through `get_memory`,
    `get_links`, `get_summary("acme")`, `manifest_get("/a")` and `get_session`; the
-   three indexes exist; `PRAGMA table_info` and the unique-index columns of the
-   three rebuilt tables equal those of a fresh database; a second `initialise()`
-   is a no-op (R3.5).
-7. Test (fault injection): monkeypatch `_tenant_migration_statements` to return
-   the real list with `"ALTER TABLE no_such_table ADD COLUMN x TEXT"` inserted
-   after the first statement; `initialise()` raises `TenantMigrationError`;
-   `PRAGMA table_info(memories)` has no `tenant_id`; the row counts of the six
-   tables are unchanged.
+   three indexes exist; `PRAGMA table_info` of all six tables and the
+   unique-index columns and `PRAGMA foreign_key_list` of the three rebuilt tables
+   equal those of a fresh database; `PRAGMA foreign_key_list(memories)` has no
+   `tenants` entry (R3.2(a)); a second `initialise()` is a no-op (R3.5).
+7. Test (fault injection), on a file database built from
+   `pre_tenancy_schema.sql` with the rows of R3.6: monkeypatch
+   `_tenant_migration_statements` to return the real list with `"ALTER TABLE
+   no_such_table ADD COLUMN x TEXT"` inserted after the first statement;
+   `initialise()` raises `TenantMigrationError`; `PRAGMA table_info(memories)` has
+   no `tenant_id`; the row counts of the six tables are unchanged.
+8. Test (concurrent start): two `SqliteBackend`s on one pre-feature file; compute
+   backend B's plan, let backend A `initialise()` (it migrates), then make B's
+   first `_tenant_migration_statements` call return that stale plan (later calls
+   real): `B.initialise()` succeeds, because the plan computed inside the
+   transaction is `[]`.
 
 ### Requirement 4 — Persisting `tenant_id`; keyed summary and manifest methods
 
@@ -197,9 +215,15 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    `manifest_delete(path, *, tenant_id) -> None` (deletes only `(tenant_id,
    path)`). `ManifestEntry` gains `tenant_id: str`. Example: upserting `/a` for
    `global` and for `t1` gives two rows; `manifest_delete("/a", tenant_id="t1")`
-   leaves the `global` row.
+   leaves the `global` row. `ManifestEntry` is a `TypedDict` (no field default is
+   possible), so both constructions — `SqliteBackend.manifest_get` and
+   `PostgresBackend.manifest_get`, the only ones in the repository — SHALL set it.
 6. With only the `global` tenant, every existing test SHALL pass unchanged
    (`test_schema.py` gets the additions of R7 only).
+7. Until `multi-tenancy-writes` adds the write guard, a write naming a tenant
+   with no `tenants` row is undefined (a fresh table's FK raises
+   `sqlite3.IntegrityError`; a migrated table accepts it). No test of this unit
+   writes to such a tenant, and no transport can name a tenant yet.
 
 ### Requirement 5 — Tenant directory methods (SQLite)
 
@@ -208,10 +232,12 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
 1. `create_tenant(tenant_id: str, name: str = "") -> Tenant` SHALL call
    `validate_tenant_id` first (so a bad id raises the plain
    `InvalidTenantIdError`, not a pydantic error), then `INSERT OR IGNORE INTO
-   tenants` with `is_active = 1` and `created_at = updated_at = now` (naive UTC
-   ISO), then return the stored row. An existing id returns the existing row
-   unchanged (its `name` is not updated) and raises nothing; two concurrent calls
-   leave one row.
+   tenants` with `is_active = 1` and `created_at = updated_at =
+   _iso(_utcnow())` (naive UTC, `datetime.isoformat()`, as every other
+   timestamp in `storage.py`; pydantic parses it back), then return the stored
+   row. An existing id returns the existing row unchanged (its `name` is not
+   updated) and raises nothing; two calls from two `SqliteBackend`s on one file
+   leave one row (test).
 2. `get_tenant(tenant_id: str) -> Tenant | None` SHALL return the row or `None`
    (an invalid id returns `None`).
 3. `list_tenants() -> list[Tenant]` SHALL return every tenant, active and
@@ -230,8 +256,8 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
 1. `ports.py` `StorageBackend` SHALL declare the four methods of R5 and the
    signatures of R4.3–R4.5, and `ManifestEntry` SHALL have `tenant_id`.
 2. `PostgresBackend` SHALL satisfy the Protocol for `mypy` without tenant
-   storage: a helper `_require_global_tenant(tenant_id: str | None, operation:
-   str) -> None` raises `TenancyNotSupportedError(operation)` unless `tenant_id`
+   storage: a `@staticmethod` `_require_global_tenant(tenant_id: str | None,
+   operation: str) -> None` raises `TenancyNotSupportedError(operation)` unless `tenant_id`
    is `None` or `"global"`; it runs before any pool access in `get_summary`, the
    four manifest methods, `upsert_summary` (`summary.tenant_id`), `add_memory`
    (`record.tenant_id`), `add_link`, `create_session` and `record_query_results`
@@ -243,7 +269,11 @@ transport change, Postgres behaviour beyond the interim stubs of R6, auth.
    "global"` (the model default); no Postgres SQL changes in this unit.
 3. Test: on `PostgresBackend("postgresql://unused")` (never initialised, no
    database) each stub raises or returns as stated without opening a connection.
-   The Postgres conformance leg of the repository's CI keeps passing unchanged.
+   These tests live in `packages/core/tests/test_pg_tenancy.py`, one function per
+   stubbed method named `test_pg_<method>_tenancy` (for example
+   `test_pg_create_tenant_tenancy`); the later Postgres units rewrite these
+   functions in place for the real behaviour and never delete them (L4 treats a
+   deleted pre-existing test function as an integrity blocker).
 
 ### Requirement 7 — Schema gate and OpenAPI
 

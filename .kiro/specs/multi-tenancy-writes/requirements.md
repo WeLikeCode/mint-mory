@@ -36,7 +36,7 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
 
    | Method | Guarded tenant |
    |---|---|
-   | `add_memory(record=None, **fields)` | `record.tenant_id` |
+   | `add_memory(record=None, **fields)` | `record.tenant_id` (with `record=None`, the `tenant_id` of `MemoryRecord(**fields)`, `global` when `fields` has none) |
    | `update_memory(memory_id, **fields)` | the stored row's tenant |
    | `archive_memory`, `supersede_memory`, `apply_feedback` | the stored row's tenant |
    | `add_link(link)` | `link.tenant_id` |
@@ -53,14 +53,26 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
    hold on a database migrated from
    `packages/core/tests/fixtures/pre_tenancy_schema.sql` (whose `memories` table
    has no FK on `tenant_id`), which proves the guard, not the FK, enforces it.
+   The table lists every public write method of `SqliteBackend`. The only other
+   writes to these tables are raw SQL in `cochange.apply_changesets` (`DELETE
+   FROM concept_links WHERE entity = ?`, reached only from `index-tree
+   --cochange`) and `history scrub` on the separate agent-history database; both
+   run only for the `global` tenant (`multi-tenancy-cli` refuses `--tenant` for
+   `index-tree` and `history`), so they stay unguarded.
 4. `_bump_retrieval(ids, now)` (an incidental side effect of `search`) SHALL
    update only rows whose tenant is active (`… AND tenant_id IN (SELECT id FROM
-   tenants WHERE is_active = 1)`) and never raise for an inactive tenant.
+   tenants WHERE is_active = 1)`) and never raise for an inactive tenant. It runs
+   inside `transaction()` as today, so it takes the lock of R4 and joins an
+   enclosing transaction.
 5. Reads SHALL NOT call the guard: a read of an inactive tenant's rows works.
 6. The guard and the write run in one `transaction()` under the lock of R4, so
    within one process a deactivation cannot interleave with a write. Across
    processes, a tenant deactivated between the guard and the write lets that one
    write through (accepted).
+7. Order of checks in every write, first failure wins: (1) existence of the
+   rows the method acts on (the missing-row outcomes stated per method); (2) the
+   tenant and reference checks of R2/R3; (3) `_assert_tenant_writable`; (4) the
+   SQL write.
 
 ### Requirement 2 — Same-tenant references
 
@@ -70,26 +82,33 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
    SHALL raise `CrossTenantLinkError(link.source_memory_id, <source tenant>,
    link.target_memory_id, <target tenant>)`; WHEN they share tenant `E` but
    `link.tenant_id != E` THEN `CrossTenantLinkError(link.source_memory_id, E,
-   link.target_memory_id, link.tenant_id)`. A missing endpoint keeps today's
-   behaviour (the FK raises `sqlite3.IntegrityError`). Nothing is written on error.
+   link.target_memory_id, link.tenant_id)`. WHEN either endpoint is missing THEN
+   no tenant check runs (not even on the existing endpoint) and today's behaviour
+   stays: the FK raises `sqlite3.IntegrityError`. Nothing is written on error.
 2. `record_query_results(results)`: for each result, with `S` the stored tenant
    of its session and `M` the stored tenant of its memory: `result.tenant_id !=
    S` → `CrossTenantLinkError(result.session_id, S, result.memory_id,
    result.tenant_id)`; `S != "global"` and `M != S` →
    `CrossTenantLinkError(result.session_id, S, result.memory_id, M)`. A `global`
    session MAY reference memories of any tenant: it is the read-audit record of
-   an unscoped search, not a semantic link. All results are validated before the
-   first insert.
+   an unscoped search, not a semantic link. WHEN the session or the memory row
+   of a result does not exist (`S` or `M` is `None`) THEN no tenant check runs for
+   that result and today's FK `sqlite3.IntegrityError` stays. All results are
+   validated before the first insert.
 3. `supersede_memory(memory_id, by_id, …)`: WHEN both rows exist in different
    tenants THEN `CrossTenantLinkError(memory_id, <its tenant>, by_id, <its
-   tenant>)`.
+   tenant>)`. With `tenant_id=None` and a missing `by_id`, today's behaviour stays
+   (the `superseded_by` FK raises `sqlite3.IntegrityError`).
 4. `add_memory(record)` with `record.superseded_by = X` and `update_memory(id,
    superseded_by=X)`: WHEN `X` exists in another tenant than the record THEN
    `CrossTenantLinkError(<record id>, <record tenant>, X, <X's tenant>)`; a missing
    `X` keeps today's FK behaviour.
-5. `update_memory(memory_id, **fields)`: WHEN `fields` has `tenant_id` different
-   from the stored tenant THEN `TenantImmutableError(memory_id, stored,
-   requested)`; an equal value is accepted and the column is never written.
+5. `update_memory(memory_id, **fields)`: a missing row raises today's
+   `KeyError(f"memory {memory_id!r} not found")` before any other check. WHEN
+   `fields` has `tenant_id` different from the stored tenant (an invalid id
+   included — it is compared, not validated) THEN `TenantImmutableError(memory_id,
+   stored, requested)`; an equal value is accepted and the column is never
+   written.
 6. Soft references — `entity_ids`, `contradicts_ids`, a session's
    `useful_ids`/`stale_ids`, metadata values — are NOT checked by storage; the
    consumers in `tenant-scoped-core` resolve them with tenant-confined reads.
@@ -97,8 +116,15 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
    `t1`): `add_link(ConceptLink(source_memory_id="g1", target_memory_id="a1",
    link_type="relates_to"))` → `CrossTenantLinkError`; the same link `a1`→`a2`
    with `tenant_id="t1"` succeeds; with the default `tenant_id` (`global`) →
-   `CrossTenantLinkError`; a `global` session recording `a1` succeeds; a `t1`
-   session recording `g1` → `CrossTenantLinkError`;
+   `CrossTenantLinkError("a1", "t1", "a2", "global")`; a `global` session `sg`
+   recording `QueryResult(session_id="sg", memory_id="a1", relevance_score=1.0)`
+   (result tenant `global`) succeeds; a `t1` session `s1` recording
+   `QueryResult(session_id="s1", memory_id="g1", relevance_score=1.0,
+   tenant_id="t1")` → `CrossTenantLinkError("s1", "t1", "g1", "global")`; the
+   same result for `s1` with the default result tenant `global` →
+   `CrossTenantLinkError("s1", "t1", "g1", "global")` from the first clause
+   (`result.tenant_id != S`), and for `s1` with memory `a1` and result tenant
+   `global` → `CrossTenantLinkError("s1", "t1", "a1", "global")`;
    `update_memory("a1", tenant_id="global")` → `TenantImmutableError`;
    `supersede_memory("a1", by_id="g1")` → `CrossTenantLinkError("a1", "t1",
    "g1", "global")` and a1 stays active; `update_memory("a1",
@@ -135,7 +161,9 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
    `self._tx_lock` (a `threading.RLock` created in `__init__`) and sets
    `self._tx_depth` to 1; a nested entry in the same thread increments the depth
    and neither commits nor rolls back; when the outermost entry exits it commits,
-   or rolls back and re-raises on an exception.
+   or rolls back and re-raises on an exception. (Verified on the base branch:
+   outside `storage.py` only tests call `transaction()` — `test_search.py`,
+   `test_dreaming.py` — with plain `execute` and no commit inside the block.)
 2. Because every public write already runs inside `with self.transaction()`, a
    caller SHALL be able to compose public writes atomically:
    `with store.transaction(): store.add_memory(a); store.add_memory(b);
@@ -150,7 +178,9 @@ requested_tenant)`, `TenancyNotSupportedError(operation)`, `create_tenant`,
    yielded value (it is backend-specific). The module docstring's "excluded from
    the Protocol" note SHALL be updated for `transaction()` (`connect()` stays
    SQLite-only).
-5. `PostgresBackend` interim: `transaction()` raises
+5. `PostgresBackend` interim (tests in `packages/core/tests/test_pg_tenancy.py`,
+   one `test_pg_<method>_tenancy` function per method, rewritten in place — never
+   deleted — by `multi-tenancy-postgres-writes`): `transaction()` raises
    `TenancyNotSupportedError("transaction")` when entered; the id-only writes of
    R3, and `update_memory` when `fields` has `tenant_id`, call
    `_require_global_tenant(tenant_id, …)` before any pool access and keep

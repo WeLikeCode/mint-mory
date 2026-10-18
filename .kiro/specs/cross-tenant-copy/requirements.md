@@ -61,7 +61,8 @@ results are never copied (dreaming regenerates summaries in the destination).
    (b) `source_tenant == dest_tenant` → `CopySelectionError("source and
    destination are the same tenant")`; (c) `all_active` with `memory_ids` or a
    `filter` → `CopySelectionError("all_active cannot be combined with memory_ids
-   or filter")`; (d) `filter == MemoryFilter()` → `CopySelectionError("empty
+   or filter")` (an empty `memory_ids` list counts as absent, so
+   `all_active=True, memory_ids=[]` is accepted); (d) `filter == MemoryFilter()` → `CopySelectionError("empty
    filter: use all_active=True to copy every active memory")`; (e) no
    `memory_ids` (None or empty), no `filter` and not `all_active` →
    `CopySelectionError("empty selection: pass memory_ids, filter or
@@ -82,27 +83,32 @@ results are never copied (dreaming regenerates summaries in the destination).
    tenant_id=source_tenant)`; a `None` result or a row that is archived,
    inactive or superseded (`superseded_by` set) counts once in
    `memories_skipped_not_found` and is never read from another tenant.
-2. `filter`: `list_memories(filter, tenant_id=source_tenant, limit=COPY_MAX +
-   1)`; `all_active`: the same with `MemoryFilter(exclude_stale=False)` (every
-   active, non-archived memory, stale ones included). Rows that are inactive or
-   superseded are dropped. More than `COPY_MAX` rows →
+2. `filter`: `list_memories(filter.model_copy(update={"active_only": True}),
+   tenant_id=source_tenant, limit=COPY_MAX + 1)`; `all_active`: the same with
+   `MemoryFilter(exclude_stale=False)` (every active, non-archived memory, stale
+   ones included). Forcing `active_only` keeps inactive rows out before the limit,
+   and superseded rows are archived (so excluded by `list_memories`); no row is
+   dropped after the limit. More than `COPY_MAX` rows →
    `CopySelectionError(f"selection exceeds {COPY_MAX} memories")`.
 3. The selection `S` is the id rows then the filter rows, de-duplicated by source
    id (first occurrence wins).
 4. Attached notes (one level): for each record of `S` that will be copied, every
    note of `get_annotating_notes(record.id, COPY_MAX, tenant_id=source_tenant)`
-   not yet seen joins the copy. A note reached twice, or both selected and
-   attached, is handled once. More than `COPY_MAX` records in total →
-   `CopySelectionError(f"selection exceeds {COPY_MAX} memories")`.
+   (which already excludes archived notes) that is active, not superseded and not
+   yet seen joins the copy; an inactive or superseded note is ignored and counted
+   nowhere, so a copy never revives it. A note reached twice, or both selected and
+   attached, is handled once. More than `COPY_MAX` records to copy (skipped
+   duplicates are not counted) → `CopySelectionError(f"selection exceeds
+   {COPY_MAX} memories")`.
 
 ### Requirement 4 — Duplicates
 
 #### Acceptance Criteria
 
 1. Unless `force`, a record whose exact content exists in the destination
-   (`memory_exists_with_content(content, tenant_id=dest_tenant)`) SHALL be
-   skipped and counted in `memories_skipped_duplicate` or
-   `notes_skipped_duplicate` by its `is_note`.
+   (`memory_exists_with_content(content, tenant_id=dest_tenant)`) or equals the
+   content of a record already planned in this copy SHALL be skipped and counted
+   in `memories_skipped_duplicate` or `notes_skipped_duplicate` by its `is_note`.
 2. A skipped record gets no link and its attached notes are not expanded: copy
    never references or modifies a row that already exists in the destination.
 3. With `force=True` duplicates are copied.
@@ -167,20 +173,28 @@ results are never copied (dreaming regenerates summaries in the destination).
    list[str] | None = None, filter: dict[str, Any] | None = None, all_active: bool
    = False, force: bool = False) -> dict[str, Any]`: when `_scope_tenant !=
    TENANT_GLOBAL` it raises `ScopeRequiredError("tenant_copy", _scope_tenant)`
-   before any read; `filter` is parsed with `MemoryFilter.model_validate` (an
-   invalid key or value is a tool error; `{}` hits R2.1(d)); it returns
+   before any read; a `filter` key not in `MemoryFilter.model_fields` raises
+   `ValueError(f"unknown filter key(s): {sorted(keys)}")` (pydantic would ignore
+   it), then `filter` is parsed with `MemoryFilter.model_validate` (an invalid
+   value is a tool error; `{}` hits R2.1(d)); it returns
    `CopyReport.model_dump(mode="json")`. `TOOL_TENANT_SCOPE["tenant_copy"] =
    "copy"`; the tool-parameter test allows exactly `{"source_tenant",
    "dest_tenant"}` for it (they name the copy endpoints and never change the
-   scope); `test_all_tools_registered` gains `tenant_copy`.
+   scope); `test_all_tools_registered` gains `tenant_copy`. This unit therefore
+   edits those two tests of `tenant-scoped-mcp` in place and adds the kind
+   `"copy"` to `TOOL_TENANT_SCOPE`; the capabilities resource and the `TENANCY:`
+   instruction sentence stay unchanged.
 2. CLI `mintmory tenant copy SOURCE DEST [--id ID]... [--category C] [--entity
    E] [--all-active] [--force] [--json]`: with a named root `--tenant T` it
    prints `error: tenant copy requires the global scope; this process is scoped to
    tenant 'T'` and exits 1; `--id` is repeatable; a filter is built only when
    `--category` or `--entity` is given (`MemoryFilter(category=…, entity=…)`);
-   ids and filter combine as a union; it prints the report counters as a table,
-   or the report JSON with `--json`; `CopySelectionError` and `TenantError` print
-   `error: <message>` to stderr and exit 1.
+   ids and filter combine as a union (`--category` parsed with the existing
+   `_parse_category`); it prints a table with the header cells `metric`, `value`
+   and one row per counter in `CopyReport` field order (`memories_copied` …
+   `links_copied`; `id_map` is not shown), or exactly
+   `report.model_dump_json()` with `--json`; `CopySelectionError` and
+   `TenantError` print `error: <message>` to stderr and exit 1.
 
 ### Requirement 9 — Tests
 
@@ -189,7 +203,8 @@ results are never copied (dreaming regenerates summaries in the destination).
 1. Seed: tenant `acme` with m1 "Alice works at Acme" and m2 "Bob works at Acme"
    (facts), a `relates_to` link m1→m2 (strength 0.7), a note n1 "Alice prefers
    mornings" annotating m1 (`ANNOTATES` n1→m1, `metadata={"anchor_memory_id":
-   m1}`), an archived m3, a summary for `acme`; empty tenant `beta`.
+   m1}`), an archived m3, a summary for `acme`; empty tenant `beta`; and in
+   `global` a memory g1 "Global fact".
 2. `memory_ids=[m1, m2]` → `memories_copied == 2`, `notes_copied == 1`,
    `links_copied == 2`, three `beta` rows with provenance, the n1 copy's
    `anchor_memory_id == id_map[m1]`, no `beta` summary, `acme` unchanged,
@@ -198,7 +213,10 @@ results are never copied (dreaming regenerates summaries in the destination).
 4. Repeating R9.2 → `memories_skipped_duplicate == 2`,
    `notes_skipped_duplicate == 0` (n1 is not expanded from a skipped m1, R4.2),
    nothing copied; with `force=True` → m1, m2 and n1 are copied again.
-5. `memory_ids=[m3, "nope", <a global id>]` → `memories_skipped_not_found == 3`.
+5. `memory_ids=[m3, "nope", g1]` → `memories_skipped_not_found == 3` and no
+   row in `beta`. With separate seeds: a source holding two records with the same
+   content copies one and counts one duplicate; an inactive note n2 annotating
+   m1 is not copied.
 6. `all_active=True` → m1, m2 and n1 each copied once (`notes_copied == 1`).
 7. Each rejection of R2.1 with its type and message; `TenantInactiveError` for an
    inactive `beta`.

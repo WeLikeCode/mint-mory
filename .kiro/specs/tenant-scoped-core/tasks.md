@@ -10,9 +10,9 @@
   - `tenant_id` keyword on `DreamingEngine`, every step read and write confined
     per R1.2–R1.4; `build_dreaming_engine(…, tenant_id=None)` and
     `build_conflict_resolver(settings, adapter, *, tenant_id=None)`.
-  - Tests: the R1.7 scenario (links, summaries, second run, foreign
-    `contradicts_ids`); the legacy engine's existing tests pass unchanged.
-  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
+  - Tests: Scenario A (R1.7) and Scenario B (R1.8); the legacy engine's existing
+    tests pass unchanged.
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8_
 
 - [ ] 2. Per-tenant entry points (`dreaming.py`)
   - `EngineFactory`, `DreamAllReport` (+ `total()`), `DreamFailedError`,
@@ -27,7 +27,8 @@
     `tenant_id=TENANT_GLOBAL`. Output shapes unchanged.
   - Tests: two tenants → no cross-tenant link after each transport's dream and
     the returned JSON/table is a `DreamReport`; `summary_jobs` lists only
-    `global` concepts; a raising factory → `ToolError` / exit 1 / HTTP 500.
+    `global` concepts; `DreamingEngine.run_light` monkeypatched to raise →
+    `ToolError` / exit 1 / HTTP 500 (R3.3).
   - _Requirements: 3.1, 3.2, 3.3, 4.1, 4.2_
 
 - [ ] 4. Core functions (`notes.py`, `vision.py`, `session.py`, `cochange.py`)
@@ -35,9 +36,10 @@
   - Tests: the R5.1 anchoring example; `notes_list(tenant_id="t1")`;
     `image_jobs` / `image_caption_put` confined (foreign file-record →
     `KeyError`); `apply_feedback` with a foreign session or memory id raises
-    `ValueError` and changes no score; `changed_with` / `documents_timeline`
-    with `tenant_id="t1"` return only `t1` documents.
-  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
+    `ValueError`, with an inactive tenant's id raises `TenantInactiveError`, and
+    in both cases changes no score; `changed_with` / `documents_timeline` with
+    `tenant_id="t1"` return only `t1` documents.
+  - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8_
 
 - [ ] 5. HTTP API error mapping (`api/app.py`)
   - The `TenantError` handler with the R6.2 codes; `DreamFailedError` → 500.

@@ -13,7 +13,8 @@
     `TenancyNotSupportedError("transaction")`.
   - Tests: composed writes roll back together (rows, FTS5, trigram); nested
     blocks commit once; a second thread waits; existing `transaction()` users
-    (cochange, `history scrub` tests) pass unchanged; the Postgres stub raises.
+    (`test_search.py`, `test_dreaming.py`) pass unchanged; the Postgres stub
+    raises (`test_pg_transaction_tenancy` in `test_pg_tenancy.py`).
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
 - [ ] 2. Write guard (`storage.py`)
@@ -23,13 +24,16 @@
   - Tests: missing and inactive tenant per method (nothing written), on a fresh
     database and on one migrated from `pre_tenancy_schema.sql`; reads of an
     inactive tenant still work; `_bump_retrieval` skip.
-  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
 
 - [ ] 3. Same-tenant references (`storage.py`)
   - Checks of R2.1–R2.5 with the exact `CrossTenantLinkError` /
     `TenantImmutableError` arguments.
   - Tests: every example of R2.7; a batch of `record_query_results` with one bad
-    row writes nothing; missing endpoints still raise `sqlite3.IntegrityError`.
+    row writes nothing; missing endpoints, sessions and memories still raise
+    `sqlite3.IntegrityError`; `update_memory` of a missing id raises `KeyError`;
+    the check order of R1.7 (an inactive tenant with a cross-tenant link raises
+    `CrossTenantLinkError`).
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
 - [ ] 4. `tenant_id` on id-only writes (`storage.py`, `ports.py`, `storage_postgres.py`)
@@ -38,7 +42,10 @@
   - Tests: R3.5 example; `apply_feedback` foreign id → `KeyError`;
     `supersede_memory` with `by_id` outside `T` → `KeyError` naming `by_id`; a
     missing id with `None` keeps today's behaviour; tenant never changes; Postgres
-    stub with `tenant_id="t1"` raises `TenancyNotSupportedError`.
+    stubs with `tenant_id="t1"` raise `TenancyNotSupportedError`
+    (`test_pg_archive_memory_tenancy`, `test_pg_supersede_memory_tenancy`,
+    `test_pg_apply_feedback_tenancy`, `test_pg_update_memory_tenancy` in
+    `test_pg_tenancy.py`).
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
 - [ ] 5. Full gate

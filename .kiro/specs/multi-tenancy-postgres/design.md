@@ -56,8 +56,9 @@ backfills existing rows. All of it runs in the advisory-locked transaction of
 
 `pg_fakes.py` records every statement; tests assert on substrings of the SQL
 text and on parameter tuples. `_register_adapters` already swallows errors, so
-`pgvector.register_vector(fake_conn)` failing is harmless. Capability probes
-receive `[(0,)]` from the default responder.
+`pgvector.register_vector(fake_conn)` failing is harmless. Capability probes get
+`[]` from the default responder (`fetchone()` is `None`), so they report no
+extension, which is what the code already handles.
 
 ## migrate.py
 

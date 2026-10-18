@@ -80,9 +80,10 @@ row until then, so `None` and `"global"` keep today's SQL.
   `SqliteBackend` on the same file only after the outer block exits); a second
   thread's `add_memory` blocks until the first thread's block exits
   (`threading.Event`, then assert the order of completion).
-- `PostgresBackend("postgresql://unused")`: entering `transaction()` raises
-  `TenancyNotSupportedError`; `archive_memory("x", tenant_id="t1")` raises it
-  before any connection.
+- `packages/core/tests/test_pg_tenancy.py` (`PostgresBackend("postgresql://unused")`):
+  `test_pg_transaction_tenancy` (entering `transaction()` raises
+  `TenancyNotSupportedError`) and `test_pg_<method>_tenancy` for the id-only
+  writes (`tenant_id="t1"` raises before any connection).
 
 ## Risks
 

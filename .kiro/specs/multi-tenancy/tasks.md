@@ -18,8 +18,9 @@ needed by any test here.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
 - [ ] 2. Pre-feature fixture and SQLite schema (`schema.sql`)
-  - First copy today's `schema.sql` byte for byte to
-    `packages/core/tests/fixtures/pre_tenancy_schema.sql`.
+  - First, in this task's red commit, copy today's `schema.sql` byte for byte to
+    `packages/core/tests/fixtures/pre_tenancy_schema.sql` (a test-support file
+    under `**/fixtures/**`: L4 freezes it once added, later tasks only read it).
   - Then edit `schema.sql`: `tenants` + seed first; `tenant_id … REFERENCES
     tenants(id)` on the six tables; per-tenant `UNIQUE` on `concept_links` and
     `memory_summaries`; `index_manifest` primary key `(tenant_id, path)`; no index
@@ -32,8 +33,8 @@ needed by any test here.
     from `initialise()` after `_ensure_index_mode_vision`.
   - Tests: the R3.6 pre-feature fixture scenario; R3.5 second-run no-op with
     `sqlite_master` compared; `_tenant_migration_statements` returns `[]` on a
-    fresh database; the R3.7 fault injection.
-  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7_
+    fresh database; the R3.7 fault injection; the R3.8 stale-plan start.
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
 - [ ] 4. Persist `tenant_id`; keyed summary and manifest methods (`storage.py`)
   - Lockstep of R4.1–R4.2; `get_summary(concept, tenant_id="global")`;
@@ -42,7 +43,7 @@ needed by any test here.
   - Tests: round trip of every model's `tenant_id`; two tenants with the same
     concept and the same manifest path (R4.4, R4.5 examples); the existing
     summary/manifest/history-ingest tests pass unchanged.
-  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
 
 - [ ] 5. Tenant directory (`storage.py`)
   - `create_tenant`, `get_tenant`, `list_tenants`, `set_tenant_active` per R5.
@@ -50,17 +51,18 @@ needed by any test here.
     kept); invalid id raises plain `InvalidTenantIdError`; `get_tenant` of an
     invalid or unknown id is `None`; `set_tenant_active` unknown →
     `TenantNotFoundError`; `("global", False)` → `ProtectedTenantError`;
-    deactivate then reactivate `t1`.
+    deactivate then reactivate `t1`; `create_tenant("t1")` from two
+    `SqliteBackend`s on one file leaves one row.
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
 - [ ] 6. Protocol and Postgres interim (`ports.py`, `storage_postgres.py`)
   - Protocol entries of R6.1; `_require_global_tenant` and the stubs of R6.2.
-  - Tests (no database): each stub on `PostgresBackend("postgresql://unused")`
-    raises `TenancyNotSupportedError` for tenant `t1` (and `create_tenant` /
+  - Tests (no database) in `packages/core/tests/test_pg_tenancy.py`, one
+    `test_pg_<method>_tenancy` function per stubbed method: on
+    `PostgresBackend("postgresql://unused")` each raises
+    `TenancyNotSupportedError` for tenant `t1` (`create_tenant` /
     `set_tenant_active` always), `get_tenant` / `list_tenants` return the
-    synthetic `global`; `_require_global_tenant(None, …)` and
-    `_require_global_tenant("global", …)` return `None`; `uv run mypy packages`
-    passes.
+    synthetic `global`; `uv run mypy packages` passes.
   - _Requirements: 6.1, 6.2, 6.3_
 
 - [ ] 7. Schema gate and OpenAPI

@@ -1,5 +1,18 @@
 # Design — Multi-Tenancy 1/10: foundation
 
+## The ten units
+
+| Unit | Delivers |
+|---|---|
+| `multi-tenancy` (this) | types + errors, `schema.sql`, migration, keyed summary/manifest methods, tenant directory, Protocol + Postgres interim |
+| `multi-tenancy-writes` | write guard, same-tenant references, `tenant_id` on id-only writes, re-entrant `transaction()` |
+| `multi-tenancy-reads` | `tenant_id` on every storage read and on `search` |
+| `tenant-scoped-core` | `DreamingEngine` scope, per-tenant dreaming, core functions, HTTP API on the global tenant |
+| `multi-tenancy-cli` | CLI `--tenant`, `tenant create` / `tenant list` |
+| `tenant-scoped-mcp` | MCP process scope, `tenant_create` / `tenant_list` tools |
+| `cross-tenant-copy` | copy between tenants (core, MCP, CLI) |
+| `multi-tenancy-postgres`, `-postgres-writes`, `-postgres-reads` | Postgres parity |
+
 ## Grounding (base branch, verified)
 
 - `packages/core/src/mintmory/core/storage.py` `SqliteBackend`: one shared
@@ -21,6 +34,11 @@
 - `get_summary` callers: `dreaming.py`, MCP `summary_get`, API
   `GET /summaries/{concept}`, the backends' `upsert_summary`. A default of
   `"global"` keeps them identical on a one-tenant database.
+- HTTP request bodies (`api/app.py`): `MemoryCreate`, `MemoryUpdate`,
+  `ConceptLinkCreate`, `NoteCreate`, `DreamRequest`, `SessionFeedback`,
+  `SummaryPut`, `ImageCaptionPut`, `CaptionRunRequest` (from `api/schemas.py`)
+  and the core `SearchRequest`; none of `MemoryRecord`, `ConceptLink`,
+  `MemorySummary`, `QuerySession`, `QueryResult` is a request body.
 - `packages/core/tests/test_schema.py` builds its `db`/`conn` fixtures with
   `StorageAdapter(":memory:").initialise()`, so the migration runs there too and
   the tenant indexes exist for `REQUIRED_INDEXES`.
@@ -62,9 +80,22 @@ Statement order is load-bearing: (a) the `ADD COLUMN`s run first, so the
 rebuild `INSERT … SELECT` of (b) can name `tenant_id` on the old table; (c) the
 indexes come last, after the column exists on every table.
 
+The plan is computed twice when there is work: once without a lock (so a
+migrated database never takes a write lock at startup) and again after `BEGIN
+IMMEDIATE`, which is the one executed. Two processes starting together on a
+pre-feature file therefore never replay a stale plan: the second one finds `[]`
+inside its transaction (R3.8).
+
+`memories`, `query_sessions` and `query_results` keep their rows and rowids
+(the FTS5 index is keyed on `memories.rowid`), so they get the column by `ALTER
+TABLE` and no FK; rebuilding `memories` would mean re-creating the FTS5 and
+trigram contents. The write guard of `multi-tenancy-writes` is the enforcement
+on those tables. The other three tables are small, carry no rowid-keyed index,
+and are rebuilt anyway for their keys, so they get the FK.
+
 The rebuild DDL is the same column list as `schema.sql`; drift is caught by the
-R3.6 test, which compares `PRAGMA table_info` and the unique-index columns of
-a migrated and a fresh database. `index_manifest`'s rebuilt DDL keeps the
+R3.6 test, which compares `PRAGMA table_info`, the unique-index columns and
+`PRAGMA foreign_key_list` of a migrated and a fresh database. `index_manifest`'s rebuilt DDL keeps the
 `'vision'` CHECK, so `_ensure_index_mode_vision` (which runs before and checks
 for `'vision'` in the stored SQL) stays a no-op afterwards.
 

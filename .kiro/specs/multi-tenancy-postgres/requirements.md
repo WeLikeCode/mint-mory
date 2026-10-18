@@ -85,13 +85,20 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
 2. `PostgresBackend._ensure_tenant_columns(conn)` SHALL read the snapshot from
    the catalog (`information_schema.columns`, `pg_constraint` with `contype IN
    ('u', 'p')` and its `conkey` column names in key order, `pg_indexes`, all
-   limited to `current_schema()` and the six tables) and execute the plan on
-   `conn`. `initialise()` SHALL call it after `_create_schema(conn)` inside the
+   limited to `current_schema()` and the six tables) with `_execute_dict`, whose
+   rows are dicts with exactly these keys: `{"table_name", "column_name"}`;
+   `{"table_name", "conname", "contype", "columns"}` (`columns` a `list[str]`);
+   `{"indexname"}`; and execute the plan on `conn`. `initialise()` SHALL call it after `_create_schema(conn)` inside the
    same transaction that holds `pg_advisory_xact_lock`, before `conn.commit()`;
    concurrent replicas therefore migrate one at a time and the second finds `[]`.
-3. WHEN any statement fails THEN the transaction SHALL roll back (Postgres DDL is
-   transactional) and `initialise()` SHALL raise `TenantMigrationError(str(exc))`
-   from it: the existing tables are unchanged and the process does not start.
+3. WHEN a catalog read or a migration statement fails THEN the transaction SHALL
+   roll back (Postgres DDL is transactional) and `initialise()` SHALL raise
+   `TenantMigrationError(str(exc))` from it: the existing tables are unchanged and
+   the process does not start. A failure of the advisory lock or of the DDL file
+   propagates unwrapped, as today. The catalog SQL and these row shapes run
+   against a real database only in the supplementary `conformance-pg` job (every
+   `initialise()` there executes them and must find `[]`); an error there is not
+   caught by an L4 gate — accepted, and stated in the PR.
 4. Tests (no database): the pre-feature snapshot (six tables without
    `tenant_id`, uniques `concept_links_source_memory_id_target_memory_id_link_type_key`
    and `memory_summaries_concept_key`, primary key `index_manifest_pkey` on
@@ -120,9 +127,12 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
    manifest methods SHALL add `tenant_id = %s` with their key.
 3. `_require_global_tenant` SHALL stay on these record writes and keyed methods
    (only `global` is accepted until `multi-tenancy-postgres-writes` /
-   `-reads`).
-4. `PostgresBackend._truncate_all()` (test isolation) SHALL also run `DELETE FROM
-   tenants WHERE id <> 'global'`.
+   `-reads`), so the `test_pg_<method>_tenancy` functions of
+   `packages/core/tests/test_pg_tenancy.py` from earlier units keep passing
+   unchanged.
+4. `PostgresBackend._truncate_all()` (test isolation) SHALL run its existing
+   `TRUNCATE … CASCADE` of the six tables first and then `DELETE FROM tenants
+   WHERE id <> 'global'`.
 5. Tests (fake pool): the SQL text and parameters of each statement of R3.1–R3.2
    (e.g. `add_link` executes an INSERT whose column list includes `tenant_id`, whose
    parameters include `"global"` and whose text contains `ON CONFLICT (tenant_id,
@@ -143,11 +153,15 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
    and value lists of the six `_insert_*_batch` functions; `concept_links` uses
    `ON CONFLICT (tenant_id, source_memory_id, target_memory_id, link_type) DO
    NOTHING`, `index_manifest` `ON CONFLICT (tenant_id, path) DO NOTHING`.
-3. `_insert_tenants_batch(conn, rows, *, dry_run=False) -> int` SHALL run
-   `INSERT INTO tenants (id, name, is_active, created_at, updated_at) VALUES (%s,
-   %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING` (the target's seeded `global`
-   equals the source's, so its checksum matches) and be registered in
-   `_TABLE_INSERT_FN`; `_pg_truncate_all` SHALL add `tenants` to its `TRUNCATE`.
+3. `_insert_tenants_batch(conn, rows, *, dry_run=False) -> int` (the same
+   convention as the existing `_insert_*_batch` functions: with `dry_run=True` or
+   no rows it writes nothing and returns `len(rows)`) SHALL run `INSERT INTO
+   tenants (id, name, is_active, created_at, updated_at) VALUES (%s, %s, %s, %s,
+   %s) ON CONFLICT (id) DO NOTHING` (the target's seeded `global` equals the
+   source's, so its checksum matches) and be registered in `_TABLE_INSERT_FN`;
+   `_pg_truncate_all` SHALL run `TRUNCATE memories, concept_links, index_manifest,
+   query_sessions, query_results, memory_summaries, tenants RESTART IDENTITY
+   CASCADE` (the copy then re-inserts every source tenant, `global` included).
 4. Before any write, and in `dry_run` too, `migrate_sqlite_to_postgres` SHALL
    raise `ValueError("source database predates multi-tenancy: open it once with
    this MintMory version (any command) to migrate it, then retry")` when the
@@ -169,19 +183,27 @@ supplementary evidence, not an L4 gate. No `skip`/`skipif`/`xfail` marker or
 
 #### Acceptance Criteria
 
-1. `packages/core/tests/pg_fakes.py` SHALL provide `FakePool`, `FakeConnection`
-   and `FakeCursor`: `FakePool(conn).connection()` is a context manager yielding
-   `conn` (calling `conn.rollback()` and re-raising on an exception);
-   `FakeConnection` has `execute(sql, params=None) -> FakeCursor`,
-   `cursor(row_factory=None) -> FakeCursor`, `commit()`, `rollback()`, and records
-   `executed: list[tuple[str, Any]]`, `commits: int`, `rollbacks: int`; a
-   `responder: Callable[[str, Any], list[Any]]` supplies the rows of each
-   statement and a `fail_on: Callable[[str], bool] | None` makes matching
-   statements raise `RuntimeError`; `FakeCursor` has `execute`, `executemany`
-   (records one entry per parameter set), `fetchone`, `fetchall`, `rowcount`,
-   and works as a context manager. Tests install it with `backend =
-   PostgresBackend("postgresql://unused"); backend._pool = FakePool(conn)`.
-   The later Postgres units reuse it.
+1. `packages/core/tests/pg_fakes.py` SHALL provide:
+   - `FakeConnection(responder: Callable[[str, Any], list[Any]] | None = None,
+     fail_on: Callable[[str], bool] | None = None)`: `execute(sql, params=None)
+     -> FakeCursor`, `cursor(row_factory=None) -> FakeCursor` (`row_factory` is
+     ignored), `commit()`, `rollback()`; it records `executed: list[tuple[str,
+     Any]]`, `commits: int`, `rollbacks: int`. The responder returns the rows of a
+     statement exactly as the code reads them — dicts for statements read through
+     `_execute_dict`, tuples for `conn.execute(…).fetchone()[0]` — and defaults to
+     `lambda sql, params: []`; a statement for which `fail_on` is true raises
+     `RuntimeError(f"fake failure: {sql}")` after being recorded.
+   - `FakeCursor`: `execute`, `executemany` (records one entry per parameter
+     set), `fetchone` (first row or `None`), `fetchall`, `rowcount`, context
+     manager.
+   - `FakePool(source: FakeConnection | Callable[[], FakeConnection])`:
+     `connection()` is a context manager that yields the given connection, or a
+     new one from the factory on every call; it appends each yielded connection
+     to `connections: list[FakeConnection]` and counts `checkouts: int`; on an
+     exception it calls `rollback()` on that connection and re-raises; `close()`
+     does nothing.
+   Tests install it with `backend = PostgresBackend("postgresql://unused");
+   backend._pool = FakePool(conn)`. The later Postgres units reuse it.
 
 ### Requirement 6 — Gates
 

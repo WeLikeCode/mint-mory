@@ -9,7 +9,8 @@
 
 - [ ] 1. Tenant predicate on every read (`storage_postgres.py`)
   - R1.1; remove `_require_global_tenant` from reads and delete it (R1.2).
-  - Tests: R1.3 for every method.
+  - Tests: R1.3 for every method; the read `test_pg_<method>_tenancy` functions
+    rewritten in place (R1.2).
   - _Requirements: 1.1, 1.2, 1.3_
 
 - [ ] 2. Search (`storage_postgres.py`)

@@ -66,14 +66,28 @@ safe for a multi-tenant database.
    `tenant_id` to the engine and to `build_conflict_resolver(settings, adapter,
    *, tenant_id: str | None = None)`, whose lookups become `adapter.get_memory(cid,
    tenant_id=tenant_id)`.
-7. Scenario: tenants `global` (g1 "Alice works at Acme", g2 "Bob works at Acme")
-   and `t1` (a1 "Alice works at Acme", a2 "Carol works at Acme"), a summarizer
-   `lambda concept, contents: f"{concept}:{len(contents)}"`. `DreamingEngine(store,
-   summarizer=…, tenant_id="t1").run_light()` creates exactly one `relates_to`
-   link, between a1 and a2, with `tenant_id == "t1"`, and `t1` summaries only;
-   g1, g2 and the `global` links and summaries are unchanged; a second run reports
-   `new_links == 0` and `new_summaries == 0`. With a1 flagged and
-   `contradicts_ids=["g1"]`, `run_full()` leaves g1 untouched.
+7. Scenario A (linking and summaries), default `LinkSettings()` (a pair links
+   when it shares ≥ 1 entity) and `SummarySettings()` (`min_memories = 3`), no
+   conflict resolver, summarizer `lambda concept, contents:
+   f"{concept}:{len(contents)}"`, memories added with `add_memory` so
+   `entity_ids` come from `extract_entities` (verified: "Alice works at Acme" →
+   `["alice", "acme"]`): `global` holds g1 "Alice works at Acme" and g2 "Bob
+   works at Acme"; `t1` holds a1 "Alice works at Acme", a2 "Carol works at Acme",
+   a3 "Dan works at Acme". `DreamingEngine(store, summarizer=…,
+   tenant_id="t1").run_light()` SHALL create exactly three `relates_to` links
+   (a1–a2, a1–a3, a2–a3), all with `tenant_id == "t1"`, and exactly one summary
+   (`concept == "acme"`, `summary_text == "acme:3"`, `tenant_id == "t1"`); no
+   link touches g1 or g2 and `global` has no summary; a second run reports
+   `new_links == 0` and `new_summaries == 0`.
+8. Scenario B (resolution, discriminating; a separate database with tenants
+   `global` and `t1`): `t1` holds a note n1 ("Acme is
+   closed on Fridays", `is_note=True`, `flagged_for_review=True`,
+   `contradicts_ids=["g9", "a9"]`), a9 "Acme opens on Fridays" (`t1`) and g9
+   "Acme opens on Fridays" (`global`). `DreamingEngine(store,
+   tenant_id="t1").run_full()` SHALL supersede a9 by n1 (`a9.superseded_by ==
+   n1`, archived) and leave g9 active with `superseded_by is None`. (An unscoped
+   lookup would pick g9 first and the cross-tenant `supersede_memory` would
+   raise.)
 
 ### Requirement 2 — Per-tenant dreaming entry points (`dreaming.py`)
 
@@ -111,11 +125,16 @@ safe for a multi-tenant database.
    pass made before the exception are not rolled back (dreaming steps are not
    transactional; every step is idempotent, so the next run completes them).
 3. `total()` SHALL return a `DreamReport` whose `intensity` is the report's, whose
-   counters and `duration_ms` are the sums over `per_tenant`, and whose
-   `anomalies` concatenates each list in tenant-id order (an empty report gives
-   zeros and `AnomalyReport()`).
-4. `DreamFailedError(failed)` SHALL have the message `dreaming failed for
-   tenant(s): t1 (RuntimeError: boom), t2 (…)` (sorted by id) and keep `failed`.
+   `duration_ms`, `new_links`, `new_summaries`, `contradictions_resolved`,
+   `memories_archived` and `memories_rehabilitated` are the sums over
+   `per_tenant`, and whose `anomalies` is an `AnomalyReport` with
+   `high_staleness_useful`, `never_accessed` and `contradictions` each
+   concatenated in tenant-id order (a report without entries gives zeros and
+   `AnomalyReport()`).
+4. `DreamFailedError(failed)` SHALL have the message `"dreaming failed for
+   tenant(s): " + ", ".join(f"{t} ({failed[t]})" for t in sorted(failed))` — for
+   example `dreaming failed for tenant(s): t1 (RuntimeError: boom), t2
+   (ValueError: bad)` — and keep `failed`.
 5. `run_dream` with a concrete `tenant_id` SHALL raise `TenantNotFoundError` for
    an unknown tenant and `TenantInactiveError` for an inactive one before
    running, and otherwise return that tenant's report. With `tenant_id=None` it
@@ -125,12 +144,19 @@ safe for a multi-tenant database.
    `run_dream(…, tenant_id=None)` SHALL produce the same mutations and the same
    `DreamReport` counters (every field except `duration_ms`) as today's
    `DreamingEngine(adapter).run_light()` / `run_full()`. Test: two database files
-   built from the same seed with explicit ids (four memories sharing entities, a
-   flagged note-vs-memory pair, an archivable stale memory, a rehabilitable
-   memory); run the legacy engine on one and `run_dream` on the other; compare the
-   sets of links `(source, target, link_type, strength)`, summaries `(concept,
-   summary_text, memory_count)` and per-memory `(is_active, is_archived,
-   is_stale, staleness_score, flagged_for_review, superseded_by)`.
+   built from the same seed with explicit ids — p1..p3 "Alice/Bob/Carol works at
+   Acme"; p4 a note "Acme is closed on Fridays" flagged with `contradicts_ids=["p5"]`
+   and p5 "Acme opens on Fridays"; p6 "Old memo" with `is_stale=True`,
+   `staleness_score=9.5`, `last_accessed_at=None` (archivable); p7 "Useful tip"
+   with `is_stale=True`, `usefulness_score=6.0`, `staleness_score=4.0`,
+   `last_accessed_at` = now − 1 day (rehabilitable) — and the Scenario A
+   summarizer, no resolver; run `run_full()` of the legacy engine on one and
+   `run_dream(…, intensity=DreamIntensity.FULL, tenant_id=None, engine_factory=
+   lambda t: DreamingEngine(store, summarizer=…, tenant_id=t))` on the other;
+   compare the sets of links `(source, target, link_type, strength)`, summaries
+   `(concept, summary_text, memory_count)` and per-memory `(is_active,
+   is_archived, is_stale, staleness_score, flagged_for_review, superseded_by)`,
+   and the report counters.
 7. Multi-tenant: with tenants `global`, `t1` (active) and `t2` (inactive),
    `dream_all_tenants` returns `per_tenant` keys `["global", "t1"]` and
    `skipped_inactive == ["t2"]`; an engine factory that raises for `t1` gives
@@ -141,9 +167,13 @@ safe for a multi-tenant database.
 
 #### Acceptance Criteria
 
-1. MCP `memory_dream(intensity="light")`, CLI `dream [--full/--light]` and HTTP
-   `POST /dream` SHALL call `run_dream(store, intensity=…, tenant_id=None,
-   engine_factory=…)`; MCP and CLI build engines with
+1. MCP `memory_dream(intensity="light")` (`packages/mcp/src/mintmory/mcp/server.py`),
+   CLI `dream [--full/--light]` (`packages/cli/src/mintmory/cli/main.py`) and
+   HTTP `POST /dream` (`packages/api/src/mintmory/api/app.py`, whose route
+   function is itself named `run_dream`, so it imports the core function as
+   `from mintmory.core.dreaming import run_dream as run_tenant_dreams`) SHALL call
+   `run_dream(store, intensity=…, tenant_id=None, engine_factory=…)`; MCP and CLI
+   build engines with
    `build_dreaming_engine(store, settings.llm, link_settings=settings.link,
    summary_settings=settings.summary, tenant_id=t)`, the API with
    `DreamingEngine(store, tenant_id=t)` (as today, no LLM).
@@ -153,7 +183,9 @@ safe for a multi-tenant database.
    scope later with the same function.
 3. `DreamFailedError` SHALL surface as an MCP tool error (fastmcp `ToolError`
    on the client), a CLI `error: <message>` on stderr with exit code 1, and HTTP
-   500 `{"detail": <message>}`.
+   500 `{"detail": <message>}`. Test seam: monkeypatch
+   `mintmory.core.dreaming.DreamingEngine.run_light` to raise
+   `RuntimeError("boom")`, so every tenant's pass fails.
 
 ### Requirement 4 — Summary and image job paths on the global tenant
 
@@ -195,16 +227,31 @@ safe for a multi-tenant database.
    it to both.
 5. `session.apply_feedback(adapter, session_id, useful_ids, stale_ids,
    confidence_rating=None, reasoning=None, *, tenant_id: str | None = None) ->
-   QuerySession`: with a concrete `T`, `get_session(session_id, tenant_id=T)`
-   being `None` SHALL raise `ValueError(f"session {session_id!r} not found")`,
-   and every id of `useful_ids + stale_ids` SHALL resolve through
-   `get_memory(id, tenant_id=T)` before any score changes, else
-   `ValueError(f"memory {id!r} not found")`; scores are then applied with
-   `apply_feedback(…, tenant_id=T)`. With `None` it behaves as today.
+   QuerySession` SHALL validate everything before the first score change: with a
+   concrete `T`, `get_session(session_id, tenant_id=T)` being `None` raises
+   `ValueError(f"session {session_id!r} not found")` and an id of `useful_ids +
+   stale_ids` that `get_memory(id, tenant_id=T)` does not find raises
+   `ValueError(f"memory {id!r} not found")`; with `None` (the session and ids
+   looked up unscoped) a missing id raises today's `KeyError(f"memory {id!r} not
+   found")`; in both cases an id whose tenant is inactive raises
+   `TenantInactiveError(<tenant>)`. Only then are scores applied with
+   `apply_feedback(…, tenant_id=tenant_id)`, so a rejected call changes no score.
+   (A deactivation racing the loop can still stop it part-way, as today.)
 6. `cochange.changed_with(store, path, *, tenant_id: str | None = None)` and
    `cochange.documents_timeline(store, *, since=None, from_iso=None, to_iso=None,
    collection=None, limit=50, tenant_id: str | None = None)` SHALL add `AND
    tenant_id = ?` to every `memories` and `concept_links` SELECT when concrete.
+   (Verified: each of these SELECTs reads one table without a join, so the
+   unqualified column is unambiguous.)
+7. Other create paths stay on the global tenant in this release: `index-tree`
+   (manifest, file-records, cochange links), the agent-history ingest and the
+   document converters write `global` records and are refused for a named tenant
+   by `multi-tenancy-cli`; the only content-dedup caller is CLI `ingest`, which
+   `multi-tenancy-cli` confines to its write tenant.
+8. The multi-step creates (`create_note`, `image_caption_put`,
+   `caption_pending_images`) stay non-atomic, as today: a tenant deactivated
+   between their writes stops them with `TenantInactiveError` after the writes
+   already made (for example a note without its anchor link).
 
 ### Requirement 6 — HTTP API on a multi-tenant database
 

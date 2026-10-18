@@ -27,17 +27,21 @@ def copy_between_tenants(store, *, source_tenant, dest_tenant, memory_ids=None,
         selected = _select(store, ...)              # R3.1–R3.3, counts not-found
         plan: list[MemoryRecord] = []               # source records to copy, in order
         seen: set[str] = set()
+        planned_contents: set[str] = set()
         def consider(rec: MemoryRecord) -> bool:     # True when rec will be copied
             if rec.id in seen: return False
             seen.add(rec.id)
-            if not force and store.memory_exists_with_content(rec.content, tenant_id=dest_tenant):
+            if not force and (rec.content in planned_contents or
+                              store.memory_exists_with_content(rec.content, tenant_id=dest_tenant)):
                 _count_duplicate(report, rec); return False
+            planned_contents.add(rec.content)
             report.id_map[rec.id] = str(uuid.uuid4()); plan.append(rec); return True
         for rec in selected:
             consider(rec)
         for rec in list(plan):                      # one level of attached notes
             for note in store.get_annotating_notes(rec.id, COPY_MAX, tenant_id=source_tenant):
-                consider(note)
+                if note.is_active and note.superseded_by is None:
+                    consider(note)
         if len(plan) > COPY_MAX: raise CopySelectionError(...)
         for rec in plan:
             store.add_memory(record=_copy_record(rec, report.id_map, source_tenant, dest_tenant))

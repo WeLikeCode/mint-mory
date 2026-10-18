@@ -37,8 +37,9 @@ def _init_telemetry(ctx: typer.Context,
 ```
 
 Resetting `_TENANT` on every callback keeps `CliRunner` invocations in one test
-process independent. `_fail(exc)` prints `error: {exc}` with `typer.echo(…,
-err=True)` and raises `typer.Exit(code=1)`.
+process independent. `_fail(exc: Exception) -> NoReturn` prints `error: {exc}`
+with `typer.echo(…, err=True)` and raises `typer.Exit(code=1)`;
+`_fail_text(message: str) -> NoReturn` does the same for a plain message.
 
 Errors: a context manager `_tenant_errors()` wraps the body of each command of
 R2/R4 and the `initialise()` call in `_get_store()`:

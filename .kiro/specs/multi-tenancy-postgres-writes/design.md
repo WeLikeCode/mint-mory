@@ -43,19 +43,19 @@ def transaction(self) -> Iterator[Any]:
         token = self._tx_conn.set(conn)
         try:
             yield conn
-        except BaseException:
-            conn.rollback()
-            raise
-        else:
             conn.commit()
         finally:
             self._tx_conn.reset(token)
+        # on an exception the pool's connection context rolls back (once)
 ```
 
 A `ContextVar` is per thread and per asyncio task, so a transaction in one
 request is invisible to another; each gets its own pool connection and Postgres
 isolates them. That is why no lock is needed here (unlike SQLite's single
-shared connection).
+shared connection). Reads go through `_conn()` too: otherwise a read inside a
+transaction would take a second pool connection and miss the rows written
+earlier in the same block (for example `update_memory` reading the row that
+`add_memory` just wrote).
 
 ## Guard and references
 
@@ -78,7 +78,5 @@ they see the transaction's own uncommitted rows. Postgres raises a
 ## Risks
 
 - A method left on `self._pool.connection()` → it would not join a
-  transaction; the R4.4 tests cover `add_memory`, `add_link` and
-  `archive_memory`, and a grep-style test asserts `storage_postgres.py` has no
-  `.commit()` outside `_conn`, `transaction`, `initialise`,
-  `_ensure_extensions` and `_truncate_all`.
+  transaction; the R4.5 tests cover `add_memory` and `get_memory` inside a block,
+  and the conformance test of R7 composes writes on a real database.

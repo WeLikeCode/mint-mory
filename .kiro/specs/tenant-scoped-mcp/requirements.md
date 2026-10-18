@@ -148,7 +148,10 @@ as the write tenant; `_effective_tenant()` returns `None` for the global scope
 1. No tool SHALL accept a parameter that selects a tenant, except
    `tenant_create`'s `tenant_id` (the id of the tenant being created). Test: for
    every tool of `list_tools()`, the property names of `inputSchema` containing
-   `tenant` are empty, except `{"tenant_id"}` for `tenant_create`.
+   `tenant` are empty, except `{"tenant_id"}` for `tenant_create`. (The later
+   `cross-tenant-copy` unit adds `tenant_copy`, whose `source_tenant` /
+   `dest_tenant` name copy endpoints, the kind `"copy"`, and the matching
+   exceptions in this test and in `test_all_tools_registered`.)
 
 ### Requirement 7 — Discoverability
 

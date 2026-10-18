@@ -119,7 +119,11 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    == ""`, and the session/result counts and its `retrieval_count` are
    unchanged; `tenant_id="nope"` returns no memories and `session_id == ""`.
 7. `search_around(anchors, spec, tenant_id="t1")` SHALL never return a memory
-   of another tenant, even when the anchors list holds a foreign id.
+   of another tenant, even when the anchors list holds a foreign id: anchors are
+   never part of the output (today's behaviour), and every hop reads only `t1`
+   links, so a foreign anchor's links (which belong to its own tenant) are never
+   followed. Example: with `g1`→`g2` (`global`) and `a1`→`a2` (`t1`),
+   `search_around(["g1", "a1"], SearchAroundSpec(), tenant_id="t1") == ["a2"]`.
 
 ### Requirement 4 — Query-text-free list for the copy
 
@@ -154,7 +158,10 @@ confines the read to that tenant in SQL (not by post-filtering). It also scopes
    `multi-tenancy-postgres-reads`.
 3. Test (no database): on `PostgresBackend("postgresql://unused")` a read with
    `tenant_id="t1"` and `list_memories()` raise `TenancyNotSupportedError`
-   without opening a connection.
+   without opening a connection. These tests go into
+   `packages/core/tests/test_pg_tenancy.py`, one `test_pg_<method>_tenancy`
+   function per read (for example `test_pg_list_memories_tenancy`), which
+   `multi-tenancy-postgres-reads` rewrites in place and never deletes.
 
 ### Requirement 6 — Compatibility and gates
 

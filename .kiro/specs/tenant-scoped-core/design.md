@@ -54,7 +54,9 @@ today.
 `dreaming.py` free of an import of `llm.py` (which imports `dreaming.py`): MCP and
 CLI pass `lambda t: build_dreaming_engine(store, settings.llm,
 link_settings=settings.link, summary_settings=settings.summary, tenant_id=t)`,
-the API passes `lambda t: DreamingEngine(store, tenant_id=t)`.
+the API passes `lambda t: DreamingEngine(store, tenant_id=t)` (and imports the
+core function as `run_tenant_dreams`, because its route function is already
+called `run_dream`).
 
 Why the total and not the aggregate as the transport output: the MCP tool, the
 CLI table and the API `response_model` return `DreamReport` today; the total of

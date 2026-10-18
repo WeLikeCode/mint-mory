@@ -13,8 +13,9 @@
 - [ ] 2. Selection, duplicates and record copy (`transfer.py`)
   - R3 selection and notes expansion; R4 duplicates; R5 record mapping; one
     `store.transaction()` around everything.
-  - Tests: R9.2 (records part), R9.4, R9.5, R9.6, R9.9; R5 field-by-field
-    mapping; source rows unchanged (R7.2).
+  - Tests: R9.2 (records part), R9.4, R9.5 (including the in-selection duplicate
+    and the inactive note), R9.6, R9.9; R5 field-by-field mapping; source rows
+    unchanged (R7.2).
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2_
 
 - [ ] 3. Links and atomicity (`transfer.py`)
@@ -23,8 +24,9 @@
   - _Requirements: 6.1, 7.1, 7.3, 7.4_
 
 - [ ] 4. MCP `tenant_copy` (`packages/mcp/.../server.py`)
-  - Tool per R8.1; `TOOL_TENANT_SCOPE` entry; parameter-test exception;
-    `test_all_tools_registered` updated.
+  - Tool per R8.1 (unknown filter keys rejected); `TOOL_TENANT_SCOPE` entry and
+    kind `"copy"`; the parameter test and `test_all_tools_registered` of
+    `tenant-scoped-mcp` updated in place.
   - Tests: R9.10 (MCP part).
   - _Requirements: 8.1_
 
