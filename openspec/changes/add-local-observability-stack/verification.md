@@ -1,9 +1,9 @@
-# Verification: openspec:add-local-observability-stack: FAIL (round 3)
+# Verification: openspec:add-local-observability-stack: FAIL (round 4)
 
 traceability: not checked (an earlier step failed)
 
 - Base: `f29487b0b8be568c91a2d400927d43a372d26eca`
-- Head: `223efa565f7c69c50d577b18e75f2575591dbc8e`
+- Head: `38d4ba6e11f709d8d11df0c33b247b7632728c12`
 - Implementer profiles: deepseek
 - Judge: claude-judge, 0 call(s), prompt sha256 `-`
 
@@ -11,8 +11,8 @@ traceability: not checked (an earlier step failed)
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | failed | 0.9 | base merged: staging@f29487b0b8 as 223efa565f (1 commit); Feedback FB-001 (tests): Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...) |
-| 1 | integrity | not_run | 0.0 | an earlier step failed |
+| 0 | preconditions | ok | 1.2 | base staging@f29487b0b8 contained |
+| 1 | integrity | failed | 0.5 | a skip or xfail marker was added; scope: 42 changed file(s) |
 | 2 | build | not_run | 0.0 | an earlier step failed |
 | 3 | tests | not_run | 0.0 | an earlier step failed |
 | 4 | traceability | not_run | 0.0 | an earlier step failed |
@@ -23,18 +23,94 @@ traceability: not checked (an earlier step failed)
 | 9 | judge | not_run | 0.0 | an earlier step failed |
 | 10 | aggregation | ok | 0.0 | FAIL |
 
+## Integrity
+
+| Check | Status | Note |
+|---|---|---|
+| protected paths | ok | no protected path differs from the base |
+| pre-existing tests | failed | 6 test file(s) compared with the base |
+| red-green freeze | ok | 5 task(s): red and green compared |
+| test path freeze | ok | 7 harness step commit(s) checked |
+| content scan | ok | no result-manipulating construct in the changed support and runner files |
+| suppressions | ok | 1 new suppression(s), 1 declared |
+| tdd history | ok | 14 task(s); red tests passing at head: step 3 |
+
+Declared suppressions:
+- packages/cli/src/mintmory/cli/main.py:480 # noqa: BLE001 (declared: doctor must report telemetry status, not raise; matches the surrounding doctor rows.)
+
+## Evidence
+
+### Needs attention
+
+Nothing needs attention.
+
+### Files
+
+| Path | Module | Label | Why |
+|---|---|---|---|
+| `README.md` |  | none | exempt: harness, spec or documentation path |
+| `deploy/helm/mintmory/templates/configmap.yaml` | deploy | relevant | named in the spec |
+| `deploy/helm/mintmory/values.schema.json` | deploy | relevant | named in the spec |
+| `deploy/helm/mintmory/values.yaml` | deploy | relevant | named in the spec |
+| `deploy/observability/.env.example` | deploy | relevant | named in the spec |
+| `deploy/observability/README.md` |  | none | exempt: harness, spec or documentation path |
+| `deploy/observability/compose.yaml` | deploy | relevant | named in the spec |
+| `deploy/observability/otel-collector.yaml` | deploy | relevant | named in the spec |
+| `deploy/observability/prometheus.yml` | deploy | relevant | named in the spec |
+| `docs/OBSERVABILITY.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-2/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-2/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-2/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-2/questions.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-2/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-2/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-2/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-2/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-3/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-3/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1817Z-6a4b.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1950Z-d34c.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1952Z-fb34.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T2054Z-83ab.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/feedback.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `packages/cli/src/mintmory/cli/main.py` | cli | relevant | named in the spec |
+| `packages/cli/tests/test_cli.py` |  | relevant | named in the spec |
+| `packages/core/src/mintmory/core/telemetry.py` | core | relevant | named in the spec |
+| `tests/integration/test_helm_telemetry.py` |  | relevant | new test file |
+| `tests/integration/test_observability_guide.py` |  | relevant | new test file |
+| `tests/integration/test_observability_stack.py` |  | relevant | new test file |
+| `tests/integration/test_observability_stack_readme.py` |  | relevant | new test file |
+| `tests/integration/test_observability_toolchain.py` |  | relevant | new test file |
+
+### Changed functions
+
+Diff coverage not run.
+
+### Tests
+
+Tests-ran check not run.
+
 ## Criteria
 
 None judged.
 
 ## Findings
 
-- [major, feedback] Feedback FB-001 (tests): Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...): Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...) markers and keep the tests as they are. helm and docker are on the gate runner: the gates already ran these three tests and they passed (the skipped count stayed 114). L4's integrity check refuses any added skip or xfail marker (blocker F-5758ac1b), whatever the spec text says; the spec's 'skipped otherwise' note is outdated.
+- [blocker, deterministic] a skip or xfail marker was added: tests/integration/test_helm_telemetry.py::test_helm_template_defaults_disable_telemetry, tests/integration/test_helm_telemetry.py::test_helm_template_renders_sampler_values, tests/integration/test_observability_stack.py::test_docker_compose_config_accepts_the_stack
 
 ## Fix unit
 
-Fix unit 2 is created for these tasks:
-- F-f5fcb85c Feedback FB-001 (tests): Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...)
+Fix unit 3 is created for these tasks:
+- F-5758ac1b a skip or xfail marker was added
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
@@ -68,5 +144,7 @@ Fix unit 2 is created for these tasks:
 
 ## Guard events
 
+- guard.test_tamper: tests/integration/test_helm_telemetry.py
+- guard.test_tamper: tests/integration/test_observability_stack.py
 - guard.test_tamper: tests/integration/test_helm_telemetry.py
 - guard.test_tamper: tests/integration/test_observability_stack.py
