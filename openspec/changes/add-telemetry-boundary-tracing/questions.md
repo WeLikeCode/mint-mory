@@ -13,6 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 2.1 | technical | packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes |
 | Q-002 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
+| Q-003 | open | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 <!-- l4:index:end -->
 
 ---
@@ -66,3 +67,31 @@ A person answers; an agent only where `clarifier.answer_by_agents` is true on th
 ### Answer
 <!-- write below this line -->
 accept: C-7d4fc8c6 is a dependency pin by its own text (a test asserts importlib.metadata.version("fastmcp") == "3.4.2"); uv.lock pins fastmcp 3.4.2 and the real run passed, so the zero-value check cannot judge it by nature. The other criteria of 3.1 stay under the check.
+
+---
+
+## Q-003: Task 3.1: the pre-satisfied check could not decide
+
+- **Status:** open
+- **Blocking tasks:** 3.1
+- **Kind:** harness
+- **Asked:** 2026-10-18T16:14Z by deepseek, run r-20261018T1601Z-d1c5, task 3.1
+- **Criteria:** C-7d4fc8c6 (observability › MCP tool calls are traced once › The verified FastMCP version is installed)
+
+### Context
+L4 could not run the pre-satisfied check of task 3.1, so it does not count the failure against the agent: no attempt was used and no profile was escalated.
+Why: its tests import no project module: the zero-value check cannot judge them
+Runs: test-presatisfied, test-base-run
+Kept real: nothing
+Tests: packages.mcp.tests.test_telemetry_mcp::test_fastmcp_version_is_the_verified_one
+
+`accept: <why>` counts these on the evidence of the real run: the next run does the red step again, and when the check cannot decide again, the claim is taken (the verifier and the judge see that it was accepted). A criterion that the check shows not to discriminate still fails the attempt.
+`retry: <note>` runs the check again, for example after an L4 upgrade; the note reaches the agent.
+A person answers; an agent only where `clarifier.answer_by_agents` is true on the base branch.
+
+### Options
+1. accept: count these on the evidence of the real run
+2. retry: run the check again (after an L4 upgrade or a fix)
+
+### Answer
+<!-- write below this line -->
