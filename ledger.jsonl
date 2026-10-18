@@ -313,3 +313,4 @@
 {"at":"2026-10-17T20:40:59Z","run":"r-20261017T2040Z-8cd4","type":"unit.dispatched","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-17T23:32:01Z","attempt":1,"cost_usd":0.928095,"runs":2,"type":"plan.charged","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-17T23:32:01Z","detail":"task 3.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)","reason":"unit_halted","type":"plan.stopped","unit":"openspec:add-telemetry-boundary-tracing"}
+{"at":"2026-10-18T15:47:38Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner asked to unlock PR #29: L4 0.4.16 fixes the zero-value check that halted task 3.1; the unit is retried","type":"plan.resumed"}
