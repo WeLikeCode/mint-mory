@@ -10,14 +10,14 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | tests | tests/integration/test_helm_telemetry.py:121 | Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...) |
+| FB-001 | taken | tests | tests/integration/test_helm_telemetry.py:121 | Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...) |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...)
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** tests
 - **Where:** `tests/integration/test_helm_telemetry.py:121-131`
 - **Where:** `tests/integration/test_observability_stack.py:197-199`
@@ -51,3 +51,4 @@ Remove the three @pytest.mark.skipif(shutil.which(...) is None, ...) markers and
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 3 into add-local-observability-stack-fix-2
