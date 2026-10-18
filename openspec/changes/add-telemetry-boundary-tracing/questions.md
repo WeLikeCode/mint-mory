@@ -16,7 +16,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-003 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-004 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-005 | answered | 3.2 | harness | Task 3.2: the pre-satisfied check could not decide |
-| Q-006 | open | 4.1 | technical | packages/core/tests/test_telemetry_embedder_network.py:153 — frozen OpenAI stub rejects the extra_headers the spec requires |
+| Q-006 | accepted | 4.1 | technical | packages/core/tests/test_telemetry_embedder_network.py:153 — frozen OpenAI stub rejects the extra_headers the spec requires |
 <!-- l4:index:end -->
 
 ---
@@ -162,7 +162,7 @@ accept: same dependency pin as Q-004 (task 3.1): test_fastmcp_version_is_the_ver
 
 ## Q-006: packages/core/tests/test_telemetry_embedder_network.py:153 — frozen OpenAI stub rejects the extra_headers the spec requires
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 4.1
 - **Kind:** technical
 - **Asked:** 2026-10-18T17:35Z by deepseek, run r-20261018T1715Z-2ba2, task 4.1
