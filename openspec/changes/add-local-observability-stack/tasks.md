@@ -79,7 +79,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   (`--profile api up -d --build`), changing ports with a `.env` file, and stopping (`down`, `down -v`).
 
 ## 2. Doctor (`packages/cli/src/mintmory/cli/main.py`, `telemetry.py`)
-- [ ] 2.1 Tests for every scenario of "Telemetry status in doctor" (`cli_db` fixture of `test_cli.py`). Patch
+- [x] 2.1 Tests for every scenario of "Telemetry status in doctor" (`cli_db` fixture of `test_cli.py`). Patch
   `telemetry._endpoint_reachable` (do not change `_DEFAULT_ENDPOINT`: the row must still name `http://localhost:4318`),
   remove `MINTMORY_OTEL_ENABLED` with `monkeypatch.delenv` where the scenario says unset (the root `conftest.py` sets
   `false`), and set `monkeypatch.setenv("COLUMNS", "200")` so Rich does not wrap the table.

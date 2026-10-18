@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from typing import TYPE_CHECKING, Any, TypeVar
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, urlsplit, urlunsplit
 
 if TYPE_CHECKING:
     from mintmory.core.config import OTelSettings
@@ -1167,5 +1167,37 @@ def record_histogram(
         return
 
 
+_STATE_DISPLAY = {
+    "export": "exporting",
+    "off": "off",
+    "no collector": "no collector",
+    "sdk missing": "SDK missing",
+}
+
+
 def status(settings: OTelSettings, default_service_name: str = "mintmory-cli") -> dict[str, str]:
-    raise NotImplementedError
+    """A short telemetry report for ``doctor``: mode, state, endpoint, reachable, service.
+
+    The endpoint is printed without userinfo, query string or fragment, so a collector token
+    cannot leak; an unparsable value prints ``<invalid>``. Never reads header values.
+    """
+    state = _resolve_state(settings)
+    mode = settings.enabled if isinstance(settings.enabled, str) else str(settings.enabled).lower()
+    try:
+        parts = urlsplit(_traces_endpoint())
+        _ = parts.port
+        if parts.hostname is None:
+            raise ValueError
+    except ValueError:
+        endpoint = "<invalid>"
+        reachable = "invalid"
+    else:
+        endpoint = urlunsplit((parts.scheme, parts.netloc.rpartition("@")[2], parts.path, "", ""))
+        reachable = "yes" if _endpoint_reachable(endpoint) else "no"
+    return {
+        "mode": mode,
+        "state": _STATE_DISPLAY.get(state, state),
+        "endpoint": endpoint,
+        "reachable": reachable,
+        "service": _service_name(settings, default_service_name),
+    }

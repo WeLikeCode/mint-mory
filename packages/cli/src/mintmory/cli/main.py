@@ -474,6 +474,12 @@ def doctor() -> None:
             "conversion",
             "[yellow]not installed — `uv sync --extra docs` for PDF/DOCX/XLSX[/yellow]",
         )
+    try:
+        telemetry_status = telemetry.status(settings.otel, "mintmory-cli")
+        telemetry_text = ", ".join(f"{key}={value}" for key, value in telemetry_status.items())
+    except Exception as exc:  # noqa: BLE001 — doctor must report, not raise
+        telemetry_text = f"status unavailable ({type(exc).__name__})"
+    table.add_row("telemetry", telemetry_text)
     console.print(table)
     if not healthy:
         raise typer.Exit(code=2)
