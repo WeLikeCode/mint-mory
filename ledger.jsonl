@@ -348,3 +348,5 @@
 {"at":"2026-10-18T18:16:46Z","revision":"0dc7b35a7e50b9b0d7d112b1decdbbda5d6fd3a3","type":"unit.integrated","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T18:16:46Z","attempt":1,"cost_usd":2.697237,"runs":9,"type":"plan.charged","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T18:17:36Z","branch":"l4/archive/openspec/add-telemetry-boundary-tracing","head":"428a9b6e1abaec7aa7bfe273ef1500607ce2297a","type":"unit.branch_deleted","unit":"openspec:add-telemetry-boundary-tracing"}
+{"at":"2026-10-18T18:17:38Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
+{"at":"2026-10-18T18:17:38Z","run":"r-20261018T1817Z-6a4b","type":"unit.dispatched","unit":"openspec:add-local-observability-stack"}
