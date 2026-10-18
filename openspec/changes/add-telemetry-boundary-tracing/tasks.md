@@ -32,7 +32,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
   `anyio.to_thread.run_sync`, which copies the context (anyio 4.13.0), so core spans are children of the server span.
 
 ## 3. MCP (tests only)
-- [ ] 3.1 `packages/mcp/tests/test_telemetry_mcp.py`, every scenario of "MCP tool calls are traced once". Clients as the
+- [x] 3.1 `packages/mcp/tests/test_telemetry_mcp.py`, every scenario of "MCP tool calls are traced once". Clients as the
   `mcp_client` fixture of `test_tools.py` and the `history_client` fixture of `test_history_mcp.py`, copied.
 - [ ] 3.2 No MCP code, no span per tool call. A failing MCP test means runtime's provider is not global
   (`trace.get_tracer_provider()` is not `telemetry._tracer_provider`), the scrubber is not outermost, or FastMCP differs
