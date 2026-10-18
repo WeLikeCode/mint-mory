@@ -99,7 +99,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   `f"status unavailable ({type(exc).__name__})"`. The row never touches `healthy` (exit code unchanged).
 
 ## 3. Helm (`deploy/helm/mintmory/`)
-- [ ] 3.1 Tests for every scenario of "Helm telemetry settings" (template text; `values.yaml` and `values.schema.json`
+- [x] 3.1 Tests for every scenario of "Helm telemetry settings" (template text; `values.yaml` and `values.schema.json`
   parsed). In the `helm template` test use `--set-string` (`--set` turns `samplerArg=0.1` into a number, which the
   string schema rejects; the guide uses `--set-string` too).
 - [ ] 3.2 `templates/configmap.yaml`: inside `{{- if .Values.otel.enabled }}` add `{{- if .Values.otel.sampler }}

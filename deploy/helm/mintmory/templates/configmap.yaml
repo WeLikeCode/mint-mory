@@ -17,4 +17,15 @@ data:
   {{- if .Values.otel.endpoint }}
   OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.otel.endpoint | quote }}
   {{- end }}
+  {{- if .Values.otel.sampler }}
+  OTEL_TRACES_SAMPLER: {{ .Values.otel.sampler | quote }}
+  {{- end }}
+  {{- if .Values.otel.samplerArg }}
+  OTEL_TRACES_SAMPLER_ARG: {{ .Values.otel.samplerArg | quote }}
+  {{- end }}
+  {{- if .Values.otel.resourceAttributes }}
+  OTEL_RESOURCE_ATTRIBUTES: {{ .Values.otel.resourceAttributes | quote }}
+  {{- end }}
+  {{- else }}
+  MINTMORY_OTEL_ENABLED: "false"
   {{- end }}
