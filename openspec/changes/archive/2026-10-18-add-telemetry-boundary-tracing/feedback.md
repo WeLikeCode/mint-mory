@@ -10,18 +10,18 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | behaviour | packages/api/src/mintmory/api/telemetry_middleware.py:126 | Guard route.path and the status comparison in the middleware's finally |
-| FB-002 | submitted | behaviour | packages/core/src/mintmory/core/llm.py:107 | Telemetry must not change what an LLM call raises: reading |
-| FB-003 | submitted | tests | packages/core/tests/test_telemetry_outbound.py:218 | The 'baggage is never forwarded' half of the outbound criterion is not |
-| FB-004 | submitted | tests | packages/mcp/tests/test_telemetry_mcp.py:237 | test_tool_arguments_never_reach_telemetry never asserts that any span |
-| FB-005 | submitted | tests |  | Weak or missing tests from the review of PR #29: (1) in |
+| FB-001 | taken | behaviour | packages/api/src/mintmory/api/telemetry_middleware.py:126 | Guard route.path and the status comparison in the middleware's finally |
+| FB-002 | taken | behaviour | packages/core/src/mintmory/core/llm.py:107 | Telemetry must not change what an LLM call raises: reading |
+| FB-003 | taken | tests | packages/core/tests/test_telemetry_outbound.py:218 | The 'baggage is never forwarded' half of the outbound criterion is not |
+| FB-004 | taken | tests | packages/mcp/tests/test_telemetry_mcp.py:237 | test_tool_arguments_never_reach_telemetry never asserts that any span |
+| FB-005 | taken | tests |  | Weak or missing tests from the review of PR #29: (1) in |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Guard route.path and the status comparison in the middleware's finally
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Where:** `packages/api/src/mintmory/api/telemetry_middleware.py:126-146`
 - **Lesson:** no
@@ -61,12 +61,13 @@ Guard route.path and the status comparison in the middleware's finally block: th
 
 ### Outcome
 <!-- written by the harness -->
+Taken into add-telemetry-boundary-tracing-followup-1
 
 ---
 
 ## FB-002: Telemetry must not change what an LLM call raises: reading
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** behaviour
 - **Where:** `packages/core/src/mintmory/core/llm.py:107-110`
 - **Lesson:** no
@@ -89,12 +90,13 @@ Telemetry must not change what an LLM call raises: reading urlsplit(base_url).po
 
 ### Outcome
 <!-- written by the harness -->
+Taken into add-telemetry-boundary-tracing-followup-1
 
 ---
 
 ## FB-003: The 'baggage is never forwarded' half of the outbound criterion is not
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** tests
 - **Where:** `packages/core/tests/test_telemetry_outbound.py:218-240`
 - **Lesson:** no
@@ -130,12 +132,13 @@ The 'baggage is never forwarded' half of the outbound criterion is not tested: w
 
 ### Outcome
 <!-- written by the harness -->
+Taken into add-telemetry-boundary-tracing-followup-1
 
 ---
 
 ## FB-004: test_tool_arguments_never_reach_telemetry never asserts that any span
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** tests
 - **Where:** `packages/mcp/tests/test_telemetry_mcp.py:237-260`
 - **Lesson:** no
@@ -174,12 +177,13 @@ test_tool_arguments_never_reach_telemetry never asserts that any span was export
 
 ### Outcome
 <!-- written by the harness -->
+Taken into add-telemetry-boundary-tracing-followup-1
 
 ---
 
 ## FB-005: Weak or missing tests from the review of PR #29: (1) in
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** tests
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-10-18T18:32:26Z
@@ -189,3 +193,4 @@ Weak or missing tests from the review of PR #29: (1) in packages/api/tests/test_
 
 ### Outcome
 <!-- written by the harness -->
+Taken into add-telemetry-boundary-tracing-followup-1
