@@ -343,3 +343,4 @@
 {"at":"2026-10-18T18:14:10Z","run":"r-20261018T1814Z-655e","type":"unit.dispatched","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T18:15:05Z","head":"34b10aef84e72c700d63f8ab525b653101dc3b2f","pr":29,"target_before":"a424242ebe35f197f4950cbe2e4bc79cdb84025b","type":"unit.merge_requested","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T18:15:09Z","head":"34b10aef84e72c700d63f8ab525b653101dc3b2f","merge_commit":"0dc7b35a7e50b9b0d7d112b1decdbbda5d6fd3a3","method":"squash","pr":29,"raced":false,"type":"unit.merged","unit":"openspec:add-telemetry-boundary-tracing"}
+{"at":"2026-10-18T18:15:12Z","branch":"l4/openspec/add-telemetry-boundary-tracing","head":"34b10aef84e72c700d63f8ab525b653101dc3b2f","type":"unit.branch_deleted","unit":"openspec:add-telemetry-boundary-tracing"}
