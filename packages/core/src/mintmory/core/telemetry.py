@@ -1165,3 +1165,7 @@ def record_histogram(
             hist.record(value, {k: v for k, v in attrs.items() if v is not None})
     except Exception:  # noqa: BLE001 - a metric must never break the caller
         return
+
+
+def status(settings: OTelSettings, default_service_name: str = "mintmory-cli") -> dict[str, str]:
+    raise NotImplementedError
