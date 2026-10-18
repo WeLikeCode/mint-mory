@@ -1,297 +1,193 @@
-# Requirements — Tenant-Scoped MCP
+# Requirements — Multi-Tenancy 6/10: tenant-scoped MCP server
 
-> **Depends on:** the `multi-tenancy` spec (`.kiro/specs/multi-tenancy/`). That
-> spec must be implemented first — it provides the `Tenant` model, the `tenants`
-> table, the `tenant_id` columns, the `create_tenant` / `get_tenant` /
-> `list_tenants` storage methods, the error types (`TenantError` and subtypes),
-> and — critically — the committed read signatures this spec relies on:
-> `get_memory(id, tenant_id=None)` (foreign id → `None`), `search` via
-> `SearchRequest.tenant_id`, and `tenant_id: str | None = None` on
-> `search_around`, `get_stats`, `get_links`, `list_notes`,
-> `get_annotating_notes`, `get_annotating_descriptions`,
-> `list_image_file_records`, `find_image_file_record`, `anchor_candidates`, and
-> the dreaming helpers. This spec builds on those and does not re-specify them.
->
-> **Ownership (resolves the duplicate-scope conflict):** the `multi-tenancy` spec
-> deliberately leaves the entire MCP tenant surface to THIS spec. `multi-tenancy`
-> does not add any per-call `tenant_id` MCP argument and registers no MCP tenant
-> tools. THIS spec is the sole owner of the MCP connection scope, the
-> `tenant_create` / `tenant_list` MCP tools, and the scope wiring of every MCP
-> tool. It does NOT own the `DreamingEngine` tenant scope or a "dream all
-> tenants" loop — those belong to `cross-tenant-copy-and-dreaming`; here
-> `memory_dream` simply passes the connection scope to whatever dreaming entry
-> point exists at the time (see Req 3.4).
+> **Depends on:** `tenant-scoped-core` (`run_dream`, `build_dreaming_engine(…,
+> tenant_id=…)`, the `tenant_id` parameters of `create_note`, `notes_list`,
+> `image_jobs`, `image_caption_put`, `caption_pending_images`,
+> `session.apply_feedback`, `changed_with`, `documents_timeline`),
+> `multi-tenancy-reads` (`get_memory(id, tenant_id)`, `search(…, tenant_id=…)`,
+> `get_stats(tenant_id)`, `list_summaries(tenant_id)`), `multi-tenancy`
+> (`get_tenant`, `create_tenant`, `list_tenants`, `get_summary(concept,
+> tenant_id)`, `validate_tenant_id`, `TENANT_GLOBAL`, the `TenantError` types)
+> and `multi-tenancy-writes` (`archive_memory(id, tenant_id)` raising `KeyError`
+> for a foreign id; the write guard). Changes `packages/core/.../config.py`
+> (`McpSettings`), `packages/mcp/src/mintmory/mcp/server.py` and MCP tests.
 
 ## Introduction
 
-This feature binds an MCP server **process** to a **single tenant for the
-lifetime of that process** and exposes two tenant-management tools
-(`tenant_create`, `tenant_list`) over MCP. The tenant scope is resolved once from
-the MCP server's launch configuration — **not** a per-call argument. Once
-configured, that MCP server process only ever operates within its scope.
+A `mintmory-mcp` process is bound to one tenant scope for its whole lifetime,
+resolved once at startup from `--tenant` or `MINTMORY_MCP_TENANT`. No tool takes
+a scope argument. The global scope (default) reads every tenant and creates in
+`global` (today's behaviour); a named scope `T` reads and writes only `T`. Two
+tools manage the tenant directory. There is no auth: a process's scope is an
+isolation boundary for the agent using it, not a security boundary. One process
+serves one tenant on every transport (stdio and SSE); serving several tenants
+means running several processes.
 
-**Process vs connection (resolves the ambiguity finding):** the scope is
-**per server process**. One `mintmory-mcp` process serves one tenant. For the
-HTTP/SSE transport this means a given server process is single-tenant for all
-connections it serves; serving multiple tenants requires running multiple
-processes with different `--tenant` values. This spec does NOT implement
-per-connection scoping within one process. The glossary and Req 1.5 use "process"
-accordingly.
-
-Scope semantics (decided):
-- **Global scope** (the default, tenant id `global`): the agent operates
-  **unrestricted** — reads and searches span all tenants' data. This is today's
-  behaviour and the backwards-compatible default.
-- **Named-tenant scope** (tenant id `T`): the agent is hard-isolated to `T`.
-  Every read, search, graph traversal, write, and stat is confined to `T`; it
-  **cannot** access any other tenant's data.
-- The scope **cannot be overridden per call**. There is no per-tool tenant
-  argument that changes the boundary; the connection's configured scope governs
-  every operation.
-
-There is **no admin/privilege model**. `tenant_create` and `tenant_list` are
-plain tools available to any MCP agent regardless of scope. `tenant_list` returns
-all tenants in both scopes (it is a directory of tenant ids/names and exposes no
-tenant's memory data).
-
-### Relationship to the `multi-tenancy` spec
-
-This feature **depends on** the `multi-tenancy` spec, which provides the data
-model (`Tenant` model, `tenant_id` on every table-backed model), the `tenants`
-table, and the storage-level tenant scoping mechanics (the tenant predicate in
-candidate SQL + graph traversal). This spec does **not** re-specify those; it
-adds the MCP connection-scope enforcement and the two MCP tools on top of them.
-
-### Transports
-
-- MCP over **stdio** (`mintmory-mcp`).
-- MCP over **HTTP/SSE** (`mintmory-mcp --transport sse` / HTTP MCP).
-
-Both are the MCP transport of the `mintmory-mcp` package. The plain REST API
-(`mintmory-api`) is out of scope for this spec.
-
-### Out of scope
-
-- Authentication, authorization, roles, or admin privileges.
-- Per-call tenant overrides or per-connection (multi-tenant-per-process) scoping.
-- The `DreamingEngine` tenant scope and the global "dream all tenants" loop
-  (owned by `cross-tenant-copy-and-dreaming`); this spec only passes the scope to
-  `memory_dream`.
-- Tenant deletion, quotas, or billing.
-- Scope enforcement on the REST API or CLI (the CLI's per-call `--tenant` from
-  the `multi-tenancy` spec is unaffected).
-
----
-
-## Glossary
-
-- **Scope** — the single tenant an MCP server **process** is bound to for its
-  whole lifetime, resolved from launch configuration.
-- **Global scope** — scope == `global`. Per the `multi-tenancy` read/write rule:
-  reads pass `tenant_id = None` (unrestricted, all tenants) and writes stamp
-  `"global"`. This is today's behaviour.
-- **Named-tenant scope** — scope == some tenant id `T`; hard-isolated to `T`
-  (reads pass `tenant_id = "T"`, writes stamp `"T"`).
-- **`_effective_tenant()`** — the process-held translation: returns `None` when
-  the scope is `global` (so reads are unrestricted) and `"T"` for a named scope.
-- **`_scope_tenant`** — the literal scope id (`"global"` or `"T"`) used as the
-  write `tenant_id`.
-
----
+Scope mapping: `_scope_tenant` is the literal scope (`"global"` or `"T"`), used
+as the write tenant; `_effective_tenant()` returns `None` for the global scope
+(unrestricted reads) and `"T"` otherwise.
 
 ## Requirements
 
-### Requirement 1 — Connection-level scope configuration
-
-**User story:** As an operator deploying an MCP agent, I want to configure which
-tenant that agent is bound to when I launch the server, so the agent's access is
-fixed for its whole session.
+### Requirement 1 — Scope resolution and fail-fast startup
 
 #### Acceptance Criteria
-1. WHEN the MCP server starts THEN it SHALL resolve a tenant scope from its launch
-   configuration (a `--tenant` CLI argument on the `mintmory-mcp` command and/or a
-   `MINTMORY_MCP_TENANT` env var), following the existing pydantic-settings /
-   `MINTMORY_<GROUP>_` convention.
-2. WHEN no scope is configured THEN the server SHALL default to the `global`
-   scope (backwards compatible — identical to today).
-3. WHEN both the CLI argument and the env var are present THEN the resolution
-   order SHALL be deterministic and documented (CLI argument wins).
-4. WHEN a named-tenant scope `T` is configured AND `get_tenant(T)` returns
-   `None` THEN the server SHALL fail fast at startup with a clear error (map the
-   `multi-tenancy` `TenantNotFoundError`), exiting non-zero. It SHALL NOT
-   implicitly create the tenant and SHALL NOT silently fall back to global.
-5. WHEN a named-tenant scope `T` is configured AND `T` exists but
-   `is_active = false` THEN the server SHALL start (an inactive tenant is
-   read-only per `multi-tenancy` Req 4.3): reads under `T` work, and a write tool
-   surfaces `TenantInactiveError`. The server SHALL NOT fail startup for an
-   inactive scope.
-6. WHEN the `--tenant` / `MINTMORY_MCP_TENANT` value is empty or fails the
-   `multi-tenancy` id charset THEN the server SHALL fail fast with
-   `InvalidTenantIdError` (an empty value means "not set" → `global`, not an
-   error; a non-empty invalid value is an error).
-7. The resolved scope SHALL be fixed for the lifetime of the server process and
-   SHALL NOT change between tool calls.
-8. Scope resolution SHALL apply identically to the stdio and HTTP/SSE transports
-   (both run through the same bootstrap).
 
-### Requirement 2 — Scope is a hard read/search boundary
+1. `config.py` SHALL add `class McpSettings(BaseSettings)` with
+   `model_config = SettingsConfigDict(env_prefix="MINTMORY_MCP_", extra="ignore")`
+   and `tenant: str = ""`.
+2. `server.main()` (argparse) SHALL add `--tenant` (default `None`). The scope is
+   the `--tenant` value when non-empty, else `McpSettings().tenant` when
+   non-empty, else `"global"`.
+3. `server._bootstrap_scope(scope: str) -> None` SHALL call
+   `validate_tenant_id(scope)` (`InvalidTenantIdError`), call `_get_store()`,
+   and for a non-global scope raise `TenantNotFoundError(scope)` when
+   `get_tenant(scope)` is `None`; an inactive tenant prints `mintmory-mcp:
+   warning: tenant 'T' is inactive; this server is read-only` to stderr and
+   continues. Only after these checks it sets the module global `_scope_tenant`.
+   It never creates a tenant and never falls back to `global`.
+4. `main()` SHALL call `_bootstrap_scope` before `mcp.run(...)` for both
+   `--transport stdio` and `--transport sse`; on a `TenantError` it prints
+   `mintmory-mcp: error: <message>` to stderr and raises `SystemExit(1)` without
+   calling `mcp.run`.
+5. `_scope_tenant: str = TENANT_GLOBAL` and `_effective_tenant() -> str | None`
+   SHALL be module-level; no tool changes `_scope_tenant`.
+6. Tests drive `main()` with a monkeypatched `sys.argv`, `MINTMORY_DB` in
+   `tmp_path` and `mcp.run` replaced by a recorder: no option and no env →
+   scope `global`, `run` called; `MINTMORY_MCP_TENANT=acme` (existing) → `acme`;
+   `--tenant acme` with `MINTMORY_MCP_TENANT=other` → `acme`; `--tenant nope` →
+   `SystemExit(1)`, stderr `tenant 'nope' not found`, `run` not called; `--tenant
+   Bad` → `SystemExit(1)` with `invalid tenant id`; an inactive `acme` → starts
+   and warns; `--transport sse --tenant acme` → bootstrap ran, then `run(transport=
+   "sse", port=8081)`.
 
-**User story:** As an operator, I want a named-tenant agent to be unable to see
-any other tenant's data, so tenants are isolated from each other.
-
-#### Acceptance Criteria
-1. WHEN the scope is a named tenant `T` THEN every read/search tool
-   (`memory_search`, `memory_get`, `search_around`, `memory_stats`, summaries,
-   notes, images, cochange) SHALL return only data belonging to `T`.
-2. WHEN the scope is a named tenant `T` THEN `search_around` graph traversal
-   SHALL NOT reach or return memories from any other tenant.
-3. WHEN the scope is `global` THEN read/search tools SHALL operate unrestricted
-   across all tenants' data (today's behaviour).
-4. WHEN a named-tenant agent requests a memory by id that belongs to a different
-   tenant THEN the server SHALL behave as if it does not exist (not found) —
-   it SHALL NOT return another tenant's record.
-5. The boundary SHALL be enforced via the `multi-tenancy` storage scoping (tenant
-   predicate in candidate SQL + traversal), not only by post-filtering.
-
-### Requirement 3 — Scope is a hard write boundary
-
-**User story:** As an operator, I want a named-tenant agent to write only into
-its own tenant, so it cannot pollute or cross into another tenant.
+### Requirement 2 — Every tool's tenant (complete inventory)
 
 #### Acceptance Criteria
-1. WHEN the scope is a named tenant `T` THEN every write tool (`memory_add`,
-   `memory_archive`, link creation, `session_feedback`, `summary_put`,
-   `image_caption_put`, `memory_note`, `memory_dream`) SHALL act only on `T`'s
-   data and SHALL persist new records under `tenant_id = T` (using `_scope_tenant`
-   as the write id).
-2. WHEN the scope is `global` the write rule SHALL preserve the `multi-tenancy`
-   same-tenant invariant (a reference never crosses tenants):
-   - A write that CREATES a free-standing record (`memory_add`) stamps
-     `"global"`.
-   - A write that CREATES a record REFERENCING an existing record — a note
-     annotating memory M (`memory_note`), a link between M1 and M2 (link
-     creation), a session recording results for memories (`session_feedback`) —
-     SHALL inherit the tenant of the referenced record(s): the new note/link/
-     session is stamped with the referenced memory's `tenant_id`, so no
-     cross-tenant reference is created. If the references span more than one
-     tenant (e.g. a link between two tenants' memories), the write SHALL raise
-     `CrossTenantLinkError`.
-   - `summary_put(concept, text)` does NOT reference a specific memory, so there
-     is nothing to inherit: it stamps `_scope_tenant` directly (named → `T`,
-     global → `"global"`), keyed on `(tenant_id, concept)`. A global-scope agent
-     writes `global`-tenant summaries; per-tenant summaries are written by that
-     tenant's own scoped agent or regenerated by per-tenant dreaming (the copy
-     spec). No concept→memory resolution and no disambiguation error.
-   - A write that MODIFIES an existing record (`memory_archive`,
-     `image_caption_put` on an existing image record) SHALL act on that record
-     in place and SHALL NOT change its `tenant_id`.
-   This makes a global-scope agent "unrestricted" for reads and for choosing
-   which record to act on, while still never producing a cross-tenant reference.
-3. WHEN a named-tenant agent attempts to modify or archive a record belonging to
-   a different tenant THEN the operation SHALL behave as not-found (no cross-tenant
-   mutation), because the underlying lookup is confined to `T` via the committed
-   scoped read signatures.
-4. Tenant-safe `memory_dream` requires the per-tenant `DreamingEngine`, which is
-   owned by `cross-tenant-copy-and-dreaming`. To avoid a half-built dreaming path,
-   THIS spec does the minimum and defers the rest:
-   - For a **named** scope `T`, this spec SHALL make `memory_dream` refuse to run
-     an un-tenant-safe dream: it returns a clear "tenant-scoped dreaming requires
-     the cross-tenant-copy-and-dreaming capability" error rather than silently
-     dreaming globally (which could create cross-tenant links). Once
-     `cross-tenant-copy-and-dreaming` lands, it replaces this stub with the real
-     `DreamingEngine(tenant_id=T)` wiring.
-   - For the **global** scope, `memory_dream` behaves exactly as today
-     (unchanged), because `cross-tenant-copy-and-dreaming` owns the global
-     multi-tenant loop.
-   This removes the ordering hazard: a named-scope agent never triggers a global
-   cross-tenant dream. The dependency on `cross-tenant-copy-and-dreaming` for
-   real named-scope dreaming is explicit.
 
-### Requirement 4 — No per-call scope override
+1. Each registered tool SHALL make exactly this call (`E = _effective_tenant()`,
+   `S = _scope_tenant`):
 
-**User story:** As an operator, I want the configured scope to be the only scope,
-so an agent cannot escape its tenant by passing a different tenant in a call.
+   | Tool | Kind | Call |
+   |---|---|---|
+   | `memory_add` | create | `add_memory(record=MemoryRecord(…, tenant_id=S))` |
+   | `memory_get` | read | `get_memory(memory_id, tenant_id=E)`; a foreign id returns `null` |
+   | `memory_search` | read | `search(request, tenant_id=E)` (its `search_around_*` traversal is confined too) |
+   | `memory_stats` | read | `get_stats(tenant_id=E)` |
+   | `memory_archive` | modify | `archive_memory(memory_id, tenant_id=E)`; `KeyError` → `{"error": "not_found", "message": …}` |
+   | `session_feedback` | modify | `session.apply_feedback(…, tenant_id=E)`; `ValueError` → today's `{"error": "conflict", "message": …}` |
+   | `summary_list` | read | `list_summaries(tenant_id=E)` |
+   | `summary_get` | read | `get_summary(concept, S)` |
+   | `summary_jobs`, `summary_put` | create | `build_dreaming_engine(…, tenant_id=S)` |
+   | `memory_note` | create | `create_note(…, tenant_id=S)` |
+   | `notes_list` | read | `notes_list(…, tenant_id=E)` |
+   | `docs_changed_with`, `docs_timeline` | read | `tenant_id=E` |
+   | `image_jobs`, `image_caption_put`, `vision_run` | create | `tenant_id=S` (`image_caption_put` keeps its `not_found` error dict) |
+   | `memory_dream` | dream | `run_dream(store, intensity=…, tenant_id=E, engine_factory=lambda t: build_dreaming_engine(…, tenant_id=t))` |
+   | `tenant_create`, `tenant_list` | directory | R5 |
+
+2. `server.py` SHALL define `TOOL_TENANT_SCOPE: Final[dict[str, str]]` mapping
+   every tool name to its kind in the table. A test SHALL assert that the set of
+   tool names from `Client.list_tools()` equals `set(TOOL_TENANT_SCOPE)`, so a new
+   tool without a scoping decision fails the suite; `test_all_tools_registered`
+   gains `tenant_create` and `tenant_list`.
+3. A `TenantError` raised in a tool (for example `TenantInactiveError`) SHALL
+   surface as a tool error: the fastmcp client raises
+   `fastmcp.exceptions.ToolError` whose message contains the exception's message.
+
+### Requirement 3 — Named scope `T` is a hard boundary
 
 #### Acceptance Criteria
-1. The MCP tools SHALL NOT expose any per-call parameter that selects or changes
-   the tenant boundary. (Note: `tenant_create(tenant_id=...)` takes a tenant id,
-   but that id names the tenant being CREATED in the directory — it does not
-   change the calling process's scope; see Req 5.4.)
-2. BECAUSE no tool exposes a scope-changing argument, there is no "conflicting
-   argument" path to resolve. The scope comes solely from `_scope_tenant`, so a
-   tool cannot be made to read or write another tenant by any argument it
-   accepts. A test SHALL assert that the read/write tools take no tenant
-   parameter in their MCP schemas (other than `tenant_create`'s create-id).
-3. A global-scope process SHALL remain unrestricted; a named-tenant process SHALL
-   remain confined — determined only by `_scope_tenant`, never by tool input.
 
-### Requirement 4b — Complete tool inventory (no silent unscoped tool)
+1. Every read and every write of R2 SHALL be confined to `T`: results contain
+   only `T` rows, creates are stamped `T`, a foreign id behaves as not found.
+2. Examples with `global` holding g1 "Alice uses Postgres" and `acme` holding
+   a1 "Alice uses SQLite", scope `acme`: `memory_search("Alice")` returns only
+   a1 and its session is an `acme` session; `memory_get(g1)` → `null`;
+   `memory_archive(g1)` → `{"error": "not_found", …}` and g1 stays active;
+   `memory_add(…)` stores `tenant_id == "acme"`; `memory_stats` counts 1;
+   `memory_dream` links only `acme` memories; `session_feedback(session_id,
+   useful_ids=[g1])` → the `conflict` error dict and no score changes.
 
-**User story:** As a maintainer, I want every existing MCP tool accounted for, so
-no tool silently leaks across tenants under a named scope.
+### Requirement 4 — Global scope
 
 #### Acceptance Criteria
-1. The design SHALL enumerate EVERY registered MCP tool (memory_add, memory_get,
-   memory_archive, memory_search, memory_stats, memory_dream, session_feedback,
-   summary_list, summary_get, summary_jobs, summary_put, image_jobs,
-   image_caption_put, vision_run, memory_note, notes_list, docs_changed_with,
-   docs_timeline, and any others present) with the core/storage call it makes and
-   the `tenant_id` it passes.
-2. For each read/list tool, the underlying storage method SHALL be one that
-   `multi-tenancy` Req 5.1 made tenant-aware; if any such method is missing from
-   that list, this spec's tasks SHALL treat extending `multi-tenancy`'s scoped
-   reads as a prerequisite (and the `multi-tenancy` Req 5.1 list is written to
-   include summary list/get/jobs, image jobs, cochange, and session reads).
-3. A test SHALL fail if a new MCP tool is added without a tenant-scoping decision
-   (e.g. an inventory test comparing registered tools against a known-scoped set).
 
-### Requirement 5 — `tenant_create` tool
+1. Reads SHALL span every tenant; creates SHALL be stamped `global` and any
+   record they reference SHALL be a `global` record (note anchors, summary jobs,
+   image jobs and descriptions); modifications by id act on the stored row of
+   any tenant and never change its tenant.
+2. Examples, scope `global`, same data: `memory_search("Alice")` returns g1 and
+   a1; `memory_get(a1)` returns it; `memory_archive(a1)` archives it and its
+   `tenant_id` stays `acme`; `memory_note("check index", about="SQLite")` creates
+   a `global` note that never anchors to a1; `summary_put("alice", "…")` stores a
+   `global` summary and `summary_get("alice")` returns it; `summary_list` returns
+   every tenant's summaries, each with its `tenant_id`; `memory_dream` dreams each
+   tenant separately and returns the per-tenant total as a `DreamReport`.
 
-**User story:** As an MCP agent, I want a tool to create a new tenant, so I can
-provision tenants without a separate admin interface.
+### Requirement 5 — `tenant_create` and `tenant_list` tools
 
 #### Acceptance Criteria
-1. WHEN `tenant_create` is called with a new tenant id THEN the server SHALL
-   create the tenant (via the `multi-tenancy` storage `create_tenant`) and return
-   the created `Tenant` as a JSON-safe dict.
-2. WHEN `tenant_create` is called with an existing id THEN the behaviour SHALL be
-   idempotent and deterministic (return the existing tenant, consistent with the
-   `multi-tenancy` storage contract).
-3. `tenant_create` SHALL be available to any MCP agent regardless of its scope
-   (no admin/privilege gate).
-4. Creating a tenant SHALL NOT change the calling agent's own scope (it still
-   only sees its configured scope afterwards).
-5. The tenant id SHALL be validated per the `multi-tenancy` `Tenant` id rules;
-   an invalid id SHALL return a clear error.
 
-### Requirement 6 — `tenant_list` tool
+1. `tenant_create(tenant_id: str, name: str = "") -> dict[str, Any]` SHALL return
+   `store.create_tenant(tenant_id, name).model_dump(mode="json")`; an existing id
+   returns the existing tenant unchanged; an invalid id raises
+   `InvalidTenantIdError` (a `ToolError` on the client); it is available in every
+   scope and does not change `_scope_tenant`.
+2. `tenant_list() -> list[dict[str, Any]]` SHALL return `[t.model_dump(mode=
+   "json") for t in store.list_tenants()]` (keys `id`, `name`, `is_active`,
+   `created_at`, `updated_at`; no memory data) in every scope.
+3. Tests: create in the global and in a named scope; idempotent second call;
+   invalid id; `_scope_tenant` unchanged after a create; list returns every
+   tenant in both scopes.
 
-**User story:** As an MCP agent, I want a tool to list tenants, so I can see what
-tenants exist.
+### Requirement 6 — No per-call scope override
 
 #### Acceptance Criteria
-1. WHEN `tenant_list` is called THEN the server SHALL return all tenants
-   (id, name, is_active, timestamps) as a JSON-safe list, regardless of the
-   caller's scope.
-2. `tenant_list` SHALL expose only tenant directory metadata and SHALL NOT expose
-   any tenant's memory records.
-3. `tenant_list` SHALL be available to any MCP agent regardless of its scope.
 
-### Requirement 7 — Discoverability and parity
+1. No tool SHALL accept a parameter that selects a tenant, except
+   `tenant_create`'s `tenant_id` (the id of the tenant being created). Test: for
+   every tool of `list_tools()`, the property names of `inputSchema` containing
+   `tenant` are empty, except `{"tenant_id"}` for `tenant_create`.
 
-**User story:** As a maintainer, I want the new tools and scope to be discoverable
-and consistent with the existing MCP surface.
+### Requirement 7 — Discoverability
 
 #### Acceptance Criteria
-1. `tenant_create` and `tenant_list` SHALL be registered as MCP tools returning
-   JSON-safe dicts via `model_dump(mode="json")`, matching existing tool style.
-2. The `mintmory://capabilities` resource SHALL report the server's configured
-   tenant scope (the id and whether it is global), without exposing other
-   tenants' data.
-3. The server `instructions` SHALL mention the scope behaviour so agents
-   understand their boundary.
-4. Tests SHALL cover: scope resolution (default global, env/arg, fail-fast on
-   unknown tenant), the read/search/write boundary under a named scope, the
-   unrestricted global scope, no-per-call-override, and both new tools.
-5. The full gate SHALL pass: `uv run pytest` (coverage ≥ 80%),
-   `uv run mypy packages/`, `uv run ruff check packages/` all exit 0.
+
+1. The `mintmory://capabilities` resource SHALL add `"tenant_scope":
+   _scope_tenant` and `"tenant_scoped": _scope_tenant != "global"` (also in its
+   `{"error": "settings unavailable"}` fallback): global → `{…, "tenant_scope":
+   "global", "tenant_scoped": false}`, scope `acme` → `"acme"`, `true`.
+2. The server `instructions` SHALL end with: `TENANCY: this server is bound to
+   one tenant scope for its lifetime (see mintmory://capabilities); the global
+   scope reads every tenant and writes the global tenant, a named scope reads and
+   writes only its tenant. tenant_create and tenant_list manage the tenant
+   directory.`
+
+### Requirement 8 — Failure cases
+
+#### Acceptance Criteria
+
+1. A named scope whose tenant is deactivated after startup SHALL keep serving
+   reads; creates and modifications raise `TenantInactiveError` (tool error);
+   `memory_search` returns results with `session_id == ""` (no session is
+   recorded), and `memory_dream` raises `TenantInactiveError`.
+2. A global-scope modification of a row whose tenant is inactive SHALL raise
+   `TenantInactiveError` (tool error) and change nothing for that row;
+   `session_feedback` keeps today's per-memory application, so scores applied
+   to earlier ids of the same call stay applied.
+3. Two concurrent `tenant_create("acme")` calls SHALL both return the same
+   tenant (one row). A tenant cannot disappear after startup (no delete API).
+
+### Requirement 9 — Tests and gates
+
+#### Acceptance Criteria
+
+1. MCP tests use the in-memory fastmcp `Client` with the existing `mcp_client`
+   fixture; a fixture sets the scope with `_bootstrap_scope("acme")` after
+   creating `acme`, and every fixture resets `server._scope_tenant =
+   TENANT_GLOBAL` and `server._store = None` on teardown.
+2. An integration test `tests/integration/test_tenancy_mcp.py` SHALL run R3.2 and
+   R4.2 against one SQLite file, switching the scope between them.
+3. The `.l4/config.yaml` gates SHALL pass with coverage ≥ 80%. No test needs
+   Postgres, Docker or a network service.
