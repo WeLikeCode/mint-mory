@@ -67,7 +67,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
     mounted at `/data` (the `Dockerfile` sets `MINTMORY_DB=/data/memories.db`, `VOLUME ["/data"]`, `USER app`, and its
     `CMD` runs uvicorn on `0.0.0.0:8080`; no `command` override), environment `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`,
     `MINTMORY_OTEL_ENABLED=true`, `OTEL_SERVICE_NAME=mintmory-api`, `depends_on: [otel-collector]`.
-- [ ] 1.5 `.env.example`: every `MINTMORY_OBS_*` variable above as an active `NAME=<compose default>` line under one
+- [x] 1.5 `.env.example`: every `MINTMORY_OBS_*` variable above as an active `NAME=<compose default>` line under one
   comment line, plus the MintMory-side variables a developer may want as commented lines (`# OTEL_TRACES_SAMPLER=`,
   `# OTEL_TRACES_SAMPLER_ARG=`, `# OTEL_RESOURCE_ATTRIBUTES=`, `# OTEL_METRICS_EXPORTER=`).
 - [ ] 1.6 `README.md` in `deploy/observability/`: the quick start (`docker compose -f deploy/observability/compose.yaml up -d`,
