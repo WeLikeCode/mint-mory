@@ -1,0 +1,19 @@
+{
+    "schema": "l4/delivery-plan@1",
+    "plan_id": "multitenancy",
+    "target": "staging",
+    "merge": "auto",
+    "limits": {"max_unit_attempts": 2, "max_runs": 60, "max_cost_usd": 45},
+    "batches": [
+      {"id": "multitenancy", "depends_on": [], "units": [
+        {"id": "kiro:multi-tenancy", "depends_on": []},
+        {"id": "kiro:multi-tenancy-postgres", "depends_on": ["kiro:multi-tenancy"]},
+        {"id": "kiro:tenant-scoped-mcp", "depends_on": ["kiro:multi-tenancy"]},
+        {"id": "kiro:cross-tenant-copy-and-dreaming", "depends_on": ["kiro:multi-tenancy", "kiro:tenant-scoped-mcp"]}
+      ]}
+    ],
+    "exclude": [
+      {"id": "openspec:add-image-understanding", "reason": "held by yolo.hold until the owner decides"},
+      {"id": "openspec:add-llm-vision-provider", "reason": "held by yolo.hold until the owner decides"}
+    ]
+}
