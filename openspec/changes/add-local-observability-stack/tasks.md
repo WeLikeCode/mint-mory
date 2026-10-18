@@ -94,7 +94,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   and fragment dropped; not rebuilt from `.hostname`, which lower-cases and drops IPv6 brackets) and `reachable` from
   `_endpoint_reachable(endpoint)`. The raw value is never returned. It initialises nothing and never reads
   `OTEL_EXPORTER_OTLP_HEADERS`.
-- [ ] 2.3 In `doctor`, after the `conversion` row: `table.add_row("telemetry", text)` where `text` is
+- [x] 2.3 In `doctor`, after the `conversion` row: `table.add_row("telemetry", text)` where `text` is
   `", ".join(f"{k}={v}" for k, v in status(...).items())`, inside `try/except Exception as exc` giving
   `f"status unavailable ({type(exc).__name__})"`. The row never touches `healthy` (exit code unchanged).
 
