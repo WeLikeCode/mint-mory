@@ -12,6 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 2.1 | technical | packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes |
+| Q-002 | open | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 <!-- l4:index:end -->
 
 ---
@@ -33,6 +34,34 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/api/tests/test_telemetry_http.py`: change line 397 from `assert len(points) == 2, points` to `assert len(points) == 1, points` (the existing loop then checks the single aggregated point; optionally add `assert points[0].count == 2`).
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-002: Task 3.1: the pre-satisfied check could not decide
+
+- **Status:** open
+- **Blocking tasks:** 3.1
+- **Kind:** harness
+- **Asked:** 2026-10-18T15:59Z by deepseek, run r-20261018T1548Z-8982, task 3.1
+- **Criteria:** C-7d4fc8c6 (observability › MCP tool calls are traced once › The verified FastMCP version is installed)
+
+### Context
+L4 could not run the pre-satisfied check of task 3.1, so it does not count the failure against the agent: no attempt was used and no profile was escalated.
+Why: its tests import no project module: the zero-value check cannot judge them
+Runs: test-presatisfied, test-presatisfied, test-base-run
+Kept real: packages/api/src/mintmory/api/app.py::main, packages/core/src/mintmory/core/telemetry.py::traced, packages/core/src/mintmory/core/telemetry.py::timed_phase, packages/core/src/mintmory/core/telemetry.py::counts_added, packages/core/src/mintmory/core/telemetry.py::command_span, packages/mcp/src/mintmory/mcp/history_server.py::main, packages/mcp/src/mintmory/mcp/server.py::main
+Tests: packages.mcp.tests.test_telemetry_mcp::test_verified_fastmcp_version_is_installed
+
+`accept: <why>` counts these on the evidence of the real run: the next run does the red step again, and when the check cannot decide again, the claim is taken (the verifier and the judge see that it was accepted). A criterion that the check shows not to discriminate still fails the attempt.
+`retry: <note>` runs the check again, for example after an L4 upgrade; the note reaches the agent.
+A person answers; an agent only where `clarifier.answer_by_agents` is true on the base branch.
+
+### Options
+1. accept: count these on the evidence of the real run
+2. retry: run the check again (after an L4 upgrade or a fix)
 
 ### Answer
 <!-- write below this line -->
