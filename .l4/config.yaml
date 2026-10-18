@@ -74,7 +74,7 @@ ci:
   upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
 yolo:
   review:
-    max_dependency_chars: 30000   # add-telemetry-runtime (about 28,000 characters) is a prerequisite of four units
+    max_dependency_chars: 60000   # multi-tenancy's design and tasks (about 26,000 characters) are a prerequisite of three Kiro units
     accept_by_agents: true        # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
   hold:                     # no agent work for these until a plan lists them (L4 0.4.1 yolo.hold; replaces the backlog plan)
   - openspec:add-image-understanding
