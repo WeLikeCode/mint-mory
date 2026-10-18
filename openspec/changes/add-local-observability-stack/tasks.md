@@ -9,7 +9,7 @@ is `Path(__file__).resolve().parents[2]`, as `tests/integration/test_bump_versio
 change was written; the gates cannot pull them, so only the `docker` test (skipped without Docker) checks them.
 
 ## 1. Collector, Jaeger and Prometheus (`deploy/observability/`)
-- [ ] 1.1 Tests for every scenario of "Local observability stack" and "MintMory API service in the local stack".
+- [x] 1.1 Tests for every scenario of "Local observability stack" and "MintMory API service in the local stack".
   Resolve `${VAR:-default}` with `re.fullmatch(r"\$\{[A-Z_]+:-(.+)\}", image)` before checking the tag (the part
   after the last `:` that follows the last `/`). For the `Dockerfile` check, strip each line and its `RUN`/`&&`/`;`
   prefixes; on `staging` lines 46 and 48 are the only `uv sync` commands (line 20 is a comment) and both carry
