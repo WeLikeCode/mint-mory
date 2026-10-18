@@ -34,7 +34,7 @@ exporter and reader injected before `TestClient`/`fastmcp.Client`, `asyncio_mode
 ## 3. MCP (tests only)
 - [x] 3.1 `packages/mcp/tests/test_telemetry_mcp.py`, every scenario of "MCP tool calls are traced once". Clients as the
   `mcp_client` fixture of `test_tools.py` and the `history_client` fixture of `test_history_mcp.py`, copied.
-- [ ] 3.2 No MCP code, no span per tool call. A failing MCP test means runtime's provider is not global
+- [x] 3.2 No MCP code, no span per tool call. A failing MCP test means runtime's provider is not global
   (`trace.get_tracer_provider()` is not `telemetry._tracer_provider`), the scrubber is not outermost, or FastMCP differs
   from the spec; the tests then stay failing and the unit is not done.
 
