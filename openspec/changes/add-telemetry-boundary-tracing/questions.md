@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-003 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 | Q-004 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
-| Q-005 | open | 3.2 | harness | Task 3.2: the pre-satisfied check could not decide |
+| Q-005 | answered | 3.2 | harness | Task 3.2: the pre-satisfied check could not decide |
 <!-- l4:index:end -->
 
 ---
@@ -132,7 +132,7 @@ accept: C-7d4fc8c6 is a dependency pin by its own text (a test asserts importlib
 
 ## Q-005: Task 3.2: the pre-satisfied check could not decide
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 3.2
 - **Kind:** harness
 - **Asked:** 2026-10-18T17:12Z by deepseek, run r-20261018T1632Z-40bf, task 3.2
@@ -155,3 +155,4 @@ A person answers; an agent only where `clarifier.answer_by_agents` is true on th
 
 ### Answer
 <!-- write below this line -->
+accept: same dependency pin as Q-004 (task 3.1): test_fastmcp_version_is_the_verified_one, committed in packages/mcp/tests/test_telemetry_mcp.py, asserts importlib.metadata.version("fastmcp") == "3.4.2" exactly as the criterion says; uv.lock pins 3.4.2. Keep that test unchanged.
