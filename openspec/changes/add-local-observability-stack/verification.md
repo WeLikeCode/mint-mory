@@ -1,9 +1,9 @@
-# Verification: openspec:add-local-observability-stack: FAIL (round 4)
+# Verification: openspec:add-local-observability-stack: FAIL (round 5)
 
 traceability: not checked (an earlier step failed)
 
 - Base: `f29487b0b8be568c91a2d400927d43a372d26eca`
-- Head: `38d4ba6e11f709d8d11df0c33b247b7632728c12`
+- Head: `c6e10684af0fb8a3f87540c1fccdc9149a155146`
 - Implementer profiles: deepseek
 - Judge: claude-judge, 0 call(s), prompt sha256 `-`
 
@@ -11,8 +11,8 @@ traceability: not checked (an earlier step failed)
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 1.2 | base staging@f29487b0b8 contained |
-| 1 | integrity | failed | 0.5 | a skip or xfail marker was added; scope: 42 changed file(s) |
+| 0 | preconditions | ok | 1.6 | base staging@f29487b0b8 contained |
+| 1 | integrity | failed | 0.6 | a skip or xfail marker was added; scope: 49 changed file(s) |
 | 2 | build | not_run | 0.0 | an earlier step failed |
 | 3 | tests | not_run | 0.0 | an earlier step failed |
 | 4 | traceability | not_run | 0.0 | an earlier step failed |
@@ -30,7 +30,7 @@ traceability: not checked (an earlier step failed)
 | protected paths | ok | no protected path differs from the base |
 | pre-existing tests | failed | 6 test file(s) compared with the base |
 | red-green freeze | ok | 5 task(s): red and green compared |
-| test path freeze | ok | 7 harness step commit(s) checked |
+| test path freeze | ok | 8 harness step commit(s) checked |
 | content scan | ok | no result-manipulating construct in the changed support and runner files |
 | suppressions | ok | 1 new suppression(s), 1 declared |
 | tdd history | ok | 14 task(s); red tests passing at head: step 3 |
@@ -67,6 +67,10 @@ Nothing needs attention.
 | `openspec/changes/add-local-observability-stack-fix-2/proposal.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack-fix-2/questions.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack-fix-2/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-3/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-3/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-3/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-3/tasks.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
@@ -75,6 +79,9 @@ Nothing needs attention.
 | `openspec/changes/add-local-observability-stack/.l4/evidence/round-2/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/evidence/round-3/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/evidence/round-3/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-4/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-4/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-4/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1817Z-6a4b.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1950Z-d34c.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1952Z-fb34.jsonl` |  | none | exempt: harness, spec or documentation path |
@@ -109,8 +116,7 @@ None judged.
 
 ## Fix unit
 
-Fix unit 3 is created for these tasks:
-- F-5758ac1b a skip or xfail marker was added
+Escalated: round 5 failed the same way as round 4: finding F-5758ac1b
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
@@ -144,6 +150,8 @@ Fix unit 3 is created for these tasks:
 
 ## Guard events
 
+- guard.test_tamper: tests/integration/test_helm_telemetry.py
+- guard.test_tamper: tests/integration/test_observability_stack.py
 - guard.test_tamper: tests/integration/test_helm_telemetry.py
 - guard.test_tamper: tests/integration/test_observability_stack.py
 - guard.test_tamper: tests/integration/test_helm_telemetry.py
