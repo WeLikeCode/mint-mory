@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 2.1 | technical | packages/api/tests/test_telemetry_http.py:397 expects two duration data points for records with identical attributes |
-| Q-002 | open | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
+| Q-002 | answered | 3.1 | harness | Task 3.1: the pre-satisfied check could not decide |
 <!-- l4:index:end -->
 
 ---
@@ -42,7 +42,7 @@ Edit `packages/api/tests/test_telemetry_http.py`: change line 397 from `assert l
 
 ## Q-002: Task 3.1: the pre-satisfied check could not decide
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 3.1
 - **Kind:** harness
 - **Asked:** 2026-10-18T15:59Z by deepseek, run r-20261018T1548Z-8982, task 3.1
@@ -65,3 +65,4 @@ A person answers; an agent only where `clarifier.answer_by_agents` is true on th
 
 ### Answer
 <!-- write below this line -->
+accept: C-7d4fc8c6 is a dependency pin by its own text (a test asserts importlib.metadata.version("fastmcp") == "3.4.2"); uv.lock pins fastmcp 3.4.2 and the real run passed, so the zero-value check cannot judge it by nature. The other criteria of 3.1 stay under the check.
