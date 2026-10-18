@@ -317,3 +317,4 @@
 {"at":"2026-10-18T15:48:35Z","attempt":1,"cost_usd":0.928095,"runs":3,"type":"plan.charged","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T15:48:35Z","run":"r-20261018T1548Z-8982","type":"unit.dispatched","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T15:59:55Z","detail":"awaiting_human: no new answers (open: Q-002) (harness check inconclusive: Q-002)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:add-telemetry-boundary-tracing"}
+{"at":"2026-10-18T16:01:20Z","by":"harness","reason":"the cause is gone: openspec:add-telemetry-boundary-tracing is awaiting_human","type":"plan.resumed"}
