@@ -1,9 +1,9 @@
-# Verification: openspec:add-local-observability-stack: FAIL (round 1)
+# Verification: openspec:add-local-observability-stack: FAIL (round 2)
 
 traceability: not checked (an earlier step failed)
 
 - Base: `428a9b6e1abaec7aa7bfe273ef1500607ce2297a`
-- Head: `73d4e3db3da09005e6f29ee1cf78f5b53270d0d2`
+- Head: `5e68b4ea9a5e73da89558250ad74643bb6f2bc64`
 - Implementer profiles: deepseek
 - Judge: claude-judge, 0 call(s), prompt sha256 `-`
 
@@ -11,8 +11,8 @@ traceability: not checked (an earlier step failed)
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.4 | base staging@428a9b6e1a contained |
-| 1 | integrity | failed | 0.5 | a skip or xfail marker was added; scope: 19 changed file(s) |
+| 0 | preconditions | ok | 0.8 | base staging@428a9b6e1a contained |
+| 1 | integrity | failed | 0.5 | a skip or xfail marker was added; scope: 27 changed file(s) |
 | 2 | build | not_run | 0.0 | an earlier step failed |
 | 3 | tests | not_run | 0.0 | an earlier step failed |
 | 4 | traceability | not_run | 0.0 | an earlier step failed |
@@ -30,7 +30,7 @@ traceability: not checked (an earlier step failed)
 | protected paths | ok | no protected path differs from the base |
 | pre-existing tests | failed | 5 test file(s) compared with the base |
 | red-green freeze | ok | 5 task(s): red and green compared |
-| test path freeze | ok | 5 harness step commit(s) checked |
+| test path freeze | ok | 6 harness step commit(s) checked |
 | content scan | ok | no result-manipulating construct in the changed support and runner files |
 | suppressions | ok | 1 new suppression(s), 1 declared |
 | tdd history | ok | 14 task(s); red tests passing at head: step 3 |
@@ -58,8 +58,16 @@ Nothing needs attention.
 | `deploy/observability/otel-collector.yaml` | deploy | relevant | named in the spec |
 | `deploy/observability/prometheus.yml` | deploy | relevant | named in the spec |
 | `docs/OBSERVABILITY.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/.openspec.yaml` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/proposal.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack-fix-1/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1817Z-6a4b.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `openspec/changes/add-local-observability-stack/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `openspec/changes/add-local-observability-stack/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `packages/cli/src/mintmory/cli/main.py` | cli | relevant | named in the spec |
 | `packages/cli/tests/test_cli.py` |  | relevant | named in the spec |
 | `packages/core/src/mintmory/core/telemetry.py` | core | relevant | named in the spec |
@@ -86,8 +94,7 @@ None judged.
 
 ## Fix unit
 
-Fix unit 1 is created for these tasks:
-- F-5758ac1b a skip or xfail marker was added
+Escalated: round 2 failed the same way as round 1: finding F-5758ac1b
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
@@ -118,3 +125,8 @@ Fix unit 1 is created for these tasks:
 - `tests.integration.test_observability_stack::test_stack_published_ports_are_configurable_and_on_loopback` (task 1.1): not in the report
 - `tests.integration.test_observability_stack_readme::test_stack_readme_documents_the_viewers_and_api_profile` (task 1.6): not in the report
 - `tests.integration.test_observability_stack_readme::test_stack_readme_gives_the_quick_start_command` (task 1.6): not in the report
+
+## Guard events
+
+- guard.test_tamper: tests/integration/test_helm_telemetry.py
+- guard.test_tamper: tests/integration/test_observability_stack.py
