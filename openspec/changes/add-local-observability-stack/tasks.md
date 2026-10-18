@@ -108,7 +108,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   three `{"type": "string"}` properties under `otel`. Keep `otel.endpoint` and `otel.serviceName` as they are.
 
 ## 4. Guide
-- [ ] 4.1 Tests "Guide names every variable" and "Guide has its parts and links" (read the files and assert each name,
+- [x] 4.1 Tests "Guide names every variable" and "Guide has its parts and links" (read the files and assert each name,
   heading, command and link).
 - [ ] 4.2 In `docs/OBSERVABILITY.md` section 4, replace the body of `4.5 Exporters & local viewing` with the guide,
   under `####` headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`, and update the
