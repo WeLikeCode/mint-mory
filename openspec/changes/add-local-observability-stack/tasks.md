@@ -51,7 +51,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
         processors: [memory_limiter, batch]
         exporters: [prometheus]
   ```
-- [ ] 1.3 `prometheus.yml`: `scrape_interval: 15s`, one job `otel-collector` with target `otel-collector:8889`.
+- [x] 1.3 `prometheus.yml`: `scrape_interval: 15s`, one job `otel-collector` with target `otel-collector:8889`.
 - [ ] 1.4 `compose.yaml` (Compose specification, no top-level `version`):
   - `otel-collector`: image `${MINTMORY_OBS_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.162.0}`, command
     `--config=/etc/otelcol-contrib/config.yaml`, the config mounted read-only there, ports
