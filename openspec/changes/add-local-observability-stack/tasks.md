@@ -83,7 +83,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
   `telemetry._endpoint_reachable` (do not change `_DEFAULT_ENDPOINT`: the row must still name `http://localhost:4318`),
   remove `MINTMORY_OTEL_ENABLED` with `monkeypatch.delenv` where the scenario says unset (the root `conftest.py` sets
   `false`), and set `monkeypatch.setenv("COLUMNS", "200")` so Rich does not wrap the table.
-- [ ] 2.2 `telemetry.status(settings, default_service_name="mintmory-cli") -> dict[str, str]` with keys `mode`, `state`,
+- [x] 2.2 `telemetry.status(settings, default_service_name="mintmory-cli") -> dict[str, str]` with keys `mode`, `state`,
   `endpoint`, `reachable`, `service`, built from runtime's helpers (`add-telemetry-runtime` tasks 3.2 and 6.2):
   `_resolve_state(settings)` (`off` | `sdk missing` | `export` | `no collector`, mapped per the spec),
   `_traces_endpoint()` (`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` as is, else `OTEL_EXPORTER_OTLP_ENDPOINT` or
