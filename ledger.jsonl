@@ -339,3 +339,5 @@
 {"at":"2026-10-18T18:05:10Z","attempt":1,"cost_usd":2.697237,"runs":8,"type":"plan.charged","unit":"openspec:add-telemetry-boundary-tracing"}
 {"at":"2026-10-18T18:05:10Z","detail":"90 run(s) used of 90","reason":"limit_runs","type":"plan.stopped"}
 {"at":"2026-10-18T18:13:25Z","by":"the+github@ciprianiacobescu.com","extend":{"runs":40},"reason":"the owner asked to finish PR #29 and the plan: the run limit was used up largely by empty chained runs while questions were open; 3 units remain","type":"plan.resumed"}
+{"at":"2026-10-18T18:14:10Z","attempt":1,"cost_usd":2.697237,"runs":9,"type":"plan.charged","unit":"openspec:add-telemetry-boundary-tracing"}
+{"at":"2026-10-18T18:14:10Z","run":"r-20261018T1814Z-655e","type":"unit.dispatched","unit":"openspec:add-telemetry-boundary-tracing"}
