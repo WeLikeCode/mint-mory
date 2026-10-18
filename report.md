@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at a424242ebe35f197f4950cbe2e4bc79cdb84025b
+- Target: staging at f29487b0b8be568c91a2d400927d43a372d26eca
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-18T18:05:10Z
-- Stopped: limit_runs: 90 run(s) used of 90
+- Written: 2026-10-18T19:45:19Z
+- Stopped: unit_escalated (openspec:add-local-observability-stack): round 2 failed the same way as round 1: finding F-5758ac1b
 
 ## Units
 
@@ -54,18 +54,18 @@
   - F-89e0b1 [feasibility/minor] The unit touches `telemetry.py`, both storage backends, `hybrid_search.py`, `embedder.py`, history ingest, `dreaming.py` and `cli/main.py`, and adds about 20 scenarios. It is large for one automatic run but cohesive. The spec relies on unseen `staging` code: `_instrument` accepting `unit`, `anchor_candidates` not calling `fuse_and_search`, and the history commands living in `cli/main.py`. If anchoring did call `fuse_and_search`, the "anchoring records no phase" test would fail, because task 2.2 puts `search_phase("fusion")` there.: no answer recorded
 
 ### openspec:add-telemetry-boundary-tracing
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/29
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $2.70, 8 run(s), 1 attempt(s)
+- Result: integrated at 0dc7b35a7e50b9b0d7d112b1decdbbda5d6fd3a3
+- Pull request: 29
+- Merge commit: 0dc7b35a7e50b9b0d7d112b1decdbbda5d6fd3a3
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $2.70, 9 run(s), 1 attempt(s)
 
 ### openspec:add-local-observability-stack
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/33
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $0.27, 1 run(s), 1 attempt(s)
 
 ### openspec:fix-note-bonus-env-name
 - Result: integrated at 61ee36d119da2c4e99cf1352c976ec068b4ed7ef
@@ -110,6 +110,6 @@
 
 ## Usage
 
-- Cost: $31.70
+- Cost: $31.97
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 90
+- Runs that dispatched a unit: 92
