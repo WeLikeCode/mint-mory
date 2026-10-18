@@ -52,7 +52,7 @@ change was written; the gates cannot pull them, so only the `docker` test (skipp
         exporters: [prometheus]
   ```
 - [x] 1.3 `prometheus.yml`: `scrape_interval: 15s`, one job `otel-collector` with target `otel-collector:8889`.
-- [ ] 1.4 `compose.yaml` (Compose specification, no top-level `version`):
+- [x] 1.4 `compose.yaml` (Compose specification, no top-level `version`):
   - `otel-collector`: image `${MINTMORY_OBS_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.162.0}`, command
     `--config=/etc/otelcol-contrib/config.yaml`, the config mounted read-only there, ports
     `${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_OTLP_GRPC_PORT:-4317}:4317` and the same for HTTP 4318,
