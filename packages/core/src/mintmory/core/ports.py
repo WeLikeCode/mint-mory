@@ -124,7 +124,7 @@ class StorageBackend(Protocol):
         """Insert a new memory and return the stored record."""
         ...
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         """Fetch a single memory by ID. Returns None if not found."""
         ...
 
@@ -202,15 +202,21 @@ class StorageBackend(Protocol):
         """Graph traversal from anchor_ids via concept_links."""
         ...
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to cap notes that ANNOTATE memory_id."""
         ...
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to cap active image_description memories ANNOTATING memory_id."""
         ...
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
         """Find the most recent ACTIVE file-record matching path_or_rel."""
         ...
 
@@ -223,7 +229,7 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all active, non-archived memories with 'ext' metadata but no 'kind' tag.
 
         Verbatim SQL:
@@ -238,7 +244,7 @@ class StorageBackend(Protocol):
         """Return True iff an embedder is configured AND the vec extension loaded."""
         ...
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
         """Return True if any memory with the exact content already exists.
 
         Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
@@ -256,6 +262,7 @@ class StorageBackend(Protocol):
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """SQL backing for notes_list."""
         ...
@@ -272,6 +279,7 @@ class StorageBackend(Protocol):
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
         """Return all links where memory_id is source OR target."""
         ...
@@ -284,7 +292,7 @@ class StorageBackend(Protocol):
         """Persist a new QuerySession and return it."""
         ...
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
         """Fetch a session by ID. Returns None if not found."""
         ...
 
@@ -329,7 +337,7 @@ class StorageBackend(Protocol):
         """Fetch a summary by ``(tenant_id, concept)``. Returns None if not found."""
         ...
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
         """Return all summaries ordered by concept."""
         ...
 
@@ -357,7 +365,7 @@ class StorageBackend(Protocol):
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
         """Return aggregate statistics."""
         ...
 

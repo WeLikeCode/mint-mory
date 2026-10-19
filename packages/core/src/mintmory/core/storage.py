@@ -716,10 +716,13 @@ class SqliteBackend:
 
     def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         """Fetch a single memory by ID. Returns None if not found."""
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        row = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        sql = "SELECT * FROM memories WHERE id = ?"
+        params: list[Any] = [memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
@@ -1156,20 +1159,22 @@ class SqliteBackend:
         ordered by link strength DESC then created_at DESC. Archived notes are
         excluded. ``cap == 0`` returns [] immediately.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         if cap <= 0:
             return []
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT m.* FROM concept_links l "
             "JOIN memories m ON m.id = l.source_memory_id "
             "WHERE l.target_memory_id = ? AND l.link_type = ? "
             "AND m.is_note = 1 AND m.is_archived = 0 "
-            "ORDER BY l.strength DESC, m.created_at DESC "
-            "LIMIT ?",
-            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
-        ).fetchall()
+        )
+        params: list[Any] = [memory_id, ConceptLinkType.ANNOTATES.value]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY l.strength DESC, m.created_at DESC LIMIT ?"
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_annotating_descriptions(
@@ -1187,21 +1192,23 @@ class SqliteBackend:
         overlap it: notes filter ``is_note = 1``; descriptions filter ``is_note = 0``
         with an explicit ``kind`` predicate.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         if cap <= 0:
             return []
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT m.* FROM concept_links l "
             "JOIN memories m ON m.id = l.source_memory_id "
             "WHERE l.target_memory_id = ? AND l.link_type = ? "
             "AND m.is_note = 0 AND m.is_archived = 0 "
             "AND json_extract(m.metadata, '$.kind') = 'image_description' "
-            "ORDER BY m.created_at DESC "
-            "LIMIT ?",
-            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
-        ).fetchall()
+        )
+        params: list[Any] = [memory_id, ConceptLinkType.ANNOTATES.value]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY m.created_at DESC LIMIT ?"
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def find_image_file_record(
@@ -1217,10 +1224,8 @@ class SqliteBackend:
         Used by ``image_caption_put`` to resolve a path argument to the file-record
         it should ANNOTATE (§8c of the design contract).
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        row = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE is_archived = 0 "
             "AND (json_extract(metadata, '$.path') = ? OR json_extract(metadata, '$.rel') = ?) "
@@ -1229,9 +1234,13 @@ class SqliteBackend:
             # picks the most-recent image rather than any same-path record.
             "AND lower(json_extract(metadata, '$.ext')) IN "
             "('.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg') "
-            "ORDER BY created_at DESC LIMIT 1",
-            (path_or_rel, path_or_rel),
-        ).fetchone()
+        )
+        params: list[Any] = [path_or_rel, path_or_rel]
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY created_at DESC LIMIT 1"
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
@@ -1284,14 +1293,16 @@ class SqliteBackend:
         ``upcoming`` and ``overdue`` both True is rejected at the ``notes_list`` layer
         before reaching here, but this method handles the constraint defensively.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         effective_now = now or _utcnow()
         now_iso = _iso(effective_now)
 
         conn = self.connect()
         sql = "SELECT * FROM memories WHERE is_note = 1"
         params: list[Any] = []
+
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
 
         if upcoming:
             sql += " AND valid_from > ?"
@@ -1512,11 +1523,12 @@ class SqliteBackend:
         tenant_id: str | None = None,
     ) -> list[ConceptLink]:
         """Return all links where memory_id is source OR target."""
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
         sql = "SELECT * FROM concept_links WHERE (source_memory_id = ? OR target_memory_id = ?)"
         params: list[Any] = [memory_id, memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
         if link_type is not None:
             sql += " AND link_type = ?"
             params.append(link_type.value)
@@ -1549,10 +1561,13 @@ class SqliteBackend:
         return session
 
     def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        row = conn.execute("SELECT * FROM query_sessions WHERE id = ?", (session_id,)).fetchone()
+        sql = "SELECT * FROM query_sessions WHERE id = ?"
+        params: list[Any] = [session_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return QuerySession(
@@ -1670,10 +1685,14 @@ class SqliteBackend:
         return self._row_to_summary(row)
 
     def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
+        if tenant_id is None:
+            rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM memory_summaries WHERE tenant_id = ? ORDER BY concept",
+                (tenant_id,),
+            ).fetchall()
         return [self._row_to_summary(row) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1681,25 +1700,46 @@ class SqliteBackend:
     # ------------------------------------------------------------------
 
     def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        total = conn.execute("SELECT COUNT(*) AS c FROM memories").fetchone()["c"]
+        tenant_filter = ""
+        tenant_params: list[Any] = []
+        if tenant_id is not None:
+            tenant_filter = " AND tenant_id = ?"
+            tenant_params = [tenant_id]
+
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM memories"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
         active = conn.execute(
             "SELECT COUNT(*) AS c FROM memories WHERE is_active = 1 AND is_archived = 0"
+            + tenant_filter,
+            tenant_params,
         ).fetchone()["c"]
-        stale = conn.execute("SELECT COUNT(*) AS c FROM memories WHERE is_stale = 1").fetchone()[
-            "c"
-        ]
+        stale = conn.execute(
+            "SELECT COUNT(*) AS c FROM memories WHERE is_stale = 1" + tenant_filter,
+            tenant_params,
+        ).fetchone()["c"]
         archived = conn.execute(
-            "SELECT COUNT(*) AS c FROM memories WHERE is_archived = 1"
+            "SELECT COUNT(*) AS c FROM memories WHERE is_archived = 1" + tenant_filter,
+            tenant_params,
         ).fetchone()["c"]
-        links = conn.execute("SELECT COUNT(*) AS c FROM concept_links").fetchone()["c"]
-        summaries = conn.execute("SELECT COUNT(*) AS c FROM memory_summaries").fetchone()["c"]
+        links = conn.execute(
+            "SELECT COUNT(*) AS c FROM concept_links"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
+        summaries = conn.execute(
+            "SELECT COUNT(*) AS c FROM memory_summaries"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
 
         avg_row = conn.execute(
             "SELECT AVG(usefulness_score) AS u, AVG(staleness_score) AS s "
-            "FROM memories WHERE is_active = 1 AND is_archived = 0"
+            "FROM memories WHERE is_active = 1 AND is_archived = 0" + tenant_filter,
+            tenant_params,
         ).fetchone()
         avg_use = float(avg_row["u"]) if avg_row["u"] is not None else 0.0
         avg_stale = float(avg_row["s"]) if avg_row["s"] is not None else 0.0
@@ -1708,6 +1748,8 @@ class SqliteBackend:
         counter: Counter[str] = Counter()
         for row in conn.execute(
             "SELECT entity_ids FROM memories WHERE is_active = 1 AND is_archived = 0"
+            + tenant_filter,
+            tenant_params,
         ).fetchall():
             for entity in json.loads(row["entity_ids"]):
                 counter[entity] += 1
@@ -1951,16 +1993,19 @@ class SqliteBackend:
         Verbatim SQL relocated from vision.image_jobs(). Python post-filtering
         (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays in vision.py.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE is_archived = 0 "
             "AND json_extract(metadata, '$.kind') IS NULL "
             "AND json_extract(metadata, '$.ext') IS NOT NULL "
-            "ORDER BY json_extract(metadata, '$.rel'), id"
-        ).fetchall()
+        )
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY json_extract(metadata, '$.rel'), id"
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1973,13 +2018,14 @@ class SqliteBackend:
         Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
         Used by the ingest command for dedup checks; portable across backends.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        return (
-            conn.execute("SELECT 1 FROM memories WHERE content = ? LIMIT 1", (content,)).fetchone()
-            is not None
-        )
+        sql = "SELECT 1 FROM memories WHERE content = ?"
+        params: list[Any] = [content]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " LIMIT 1"
+        return conn.execute(sql, params).fetchone() is not None
 
     def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
         """Return the set of existing RELATES_TO concept-link pairs (order-insensitive).

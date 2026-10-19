@@ -495,7 +495,8 @@ class PostgresBackend:
             conn.commit()
         return record
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
+        self._require_global_tenant(tenant_id, "get_memory")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -1046,7 +1047,10 @@ class PostgresBackend:
 
         return list(result)
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_annotating_notes")
         if cap <= 0:
             return []
         assert self._pool is not None
@@ -1071,7 +1075,10 @@ class PostgresBackend:
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_annotating_descriptions")
         if cap <= 0:
             return []
         assert self._pool is not None
@@ -1097,7 +1104,10 @@ class PostgresBackend:
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
+        self._require_global_tenant(tenant_id, "find_image_file_record")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -1131,7 +1141,8 @@ class PostgresBackend:
             limit=limit,
         )
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "list_image_file_records")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1146,7 +1157,8 @@ class PostgresBackend:
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
+        self._require_global_tenant(tenant_id, "memory_exists_with_content")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = conn.execute(
@@ -1164,7 +1176,9 @@ class PostgresBackend:
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "list_notes")
         effective_now = now or _utcnow()
         assert self._pool is not None
         params: list[Any] = []
@@ -1240,7 +1254,9 @@ class PostgresBackend:
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
+        self._require_global_tenant(tenant_id, "get_links")
         assert self._pool is not None
         sql = (
             "SELECT id, source_memory_id, target_memory_id, link_type, entity, "
@@ -1300,7 +1316,8 @@ class PostgresBackend:
             conn.commit()
         return session
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
+        self._require_global_tenant(tenant_id, "get_session")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -1463,7 +1480,8 @@ class PostgresBackend:
             generated_at=_from_pg_dt(row["generated_at"]) or _utcnow(),
         )
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
+        self._require_global_tenant(tenant_id, "list_summaries")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1487,7 +1505,8 @@ class PostgresBackend:
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
+        self._require_global_tenant(tenant_id, "get_stats")
         assert self._pool is not None
         with self._pool.connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]

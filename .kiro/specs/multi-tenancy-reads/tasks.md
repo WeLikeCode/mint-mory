@@ -5,7 +5,7 @@
 > packages/core/`, `uv run ruff check packages/core/`); full `.l4/config.yaml`
 > gates before the PR. No test needs Postgres, Docker or a network service.
 
-- [ ] 1. Record and entity reads (`storage.py`, `ports.py`)
+- [x] 1. Record and entity reads (`storage.py`, `ports.py`)
   - `tenant_id` on `get_memory`, `get_links`, `get_annotating_notes`,
     `get_annotating_descriptions`, `find_image_file_record`,
     `list_image_file_records`, `list_notes`, `list_summaries`, `get_session`,
