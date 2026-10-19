@@ -516,6 +516,13 @@ class PostgresBackend:
         ``reinforcement_count``, ``retrieval_count`` are EXCLUDED from the UPDATE
         unless the caller explicitly includes them in ``fields``.
         """
+        if "tenant_id" in fields:
+            requested_tenant = fields.pop("tenant_id")
+            self._require_global_tenant(
+                None if requested_tenant is None else str(requested_tenant),
+                "update_memory",
+            )
+
         existing = self.get_memory(memory_id)
         if existing is None:
             raise KeyError(f"memory {memory_id!r} not found")
@@ -596,8 +603,7 @@ class PostgresBackend:
         return result
 
     def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
-        if tenant_id is not None:
-            raise NotImplementedError
+        self._require_global_tenant(tenant_id, "archive_memory")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -608,8 +614,7 @@ class PostgresBackend:
             conn.commit()
 
     def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
-        if tenant_id is not None:
-            raise NotImplementedError
+        self._require_global_tenant(tenant_id, "supersede_memory")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -725,8 +730,7 @@ class PostgresBackend:
         Non-notes: stale vote increments staleness_score; exceeding
         STALENESS_THRESHOLD triggers is_stale.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
+        self._require_global_tenant(tenant_id, "apply_feedback")
         assert self._pool is not None
         with self._pool.connection() as conn:
             result = conn.execute(

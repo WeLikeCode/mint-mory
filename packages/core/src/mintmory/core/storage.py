@@ -827,10 +827,10 @@ class SqliteBackend:
 
     def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
         """Soft delete: set is_archived=1, is_active=0, refresh updated_at."""
-        if tenant_id is not None:
-            raise NotImplementedError
         with self.transaction() as conn:
             stored_tenant = self._stored_tenant(conn, memory_id)
+            if tenant_id is not None and stored_tenant != tenant_id:
+                raise KeyError(f"memory {memory_id!r} not found")
             if stored_tenant is not None:
                 self._assert_tenant_writable(conn, stored_tenant)
                 conn.execute(
@@ -943,15 +943,13 @@ class SqliteBackend:
         Sets is_stale=1 when staleness_score >= STALENESS_THRESHOLD (7.0).
         Always refreshes updated_at. Clamping via scoring.increment_*.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         with self.transaction() as txn:
             row = txn.execute(
                 "SELECT usefulness_score, staleness_score, reinforcement_count, is_note, "
                 "tenant_id FROM memories WHERE id = ?",
                 (memory_id,),
             ).fetchone()
-            if row is None:
+            if row is None or (tenant_id is not None and row["tenant_id"] != tenant_id):
                 raise KeyError(f"memory {memory_id!r} not found")
             self._assert_tenant_writable(txn, row["tenant_id"])
 
@@ -1319,11 +1317,20 @@ class SqliteBackend:
         semantics. Does NOT add a SUPERSEDES concept_link — that is the caller's
         responsibility when needed.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         with self.transaction() as conn:
             stored_tenant = self._stored_tenant(conn, memory_id)
-            if stored_tenant is not None:
+            if tenant_id is not None:
+                if stored_tenant != tenant_id:
+                    raise KeyError(f"memory {memory_id!r} not found")
+                if self._stored_tenant(conn, by_id) != tenant_id:
+                    raise KeyError(f"memory {by_id!r} not found")
+                self._assert_tenant_writable(conn, tenant_id)
+                conn.execute(
+                    "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
+                    "updated_at = ? WHERE id = ?",
+                    (by_id, _iso(_utcnow()), memory_id),
+                )
+            elif stored_tenant is not None:
                 by_tenant = self._stored_tenant(conn, by_id)
                 if by_tenant is not None and by_tenant != stored_tenant:
                     raise CrossTenantLinkError(

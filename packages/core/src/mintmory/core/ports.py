@@ -132,11 +132,11 @@ class StorageBackend(Protocol):
         """Partial update — only provided fields are changed."""
         ...
 
-    def archive_memory(self, memory_id: str) -> None:
+    def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
         """Soft delete: set is_archived=1, is_active=0."""
         ...
 
-    def supersede_memory(self, memory_id: str, by_id: str) -> None:
+    def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
         """Mark memory_id superseded by by_id."""
         ...
 
@@ -176,7 +176,9 @@ class StorageBackend(Protocol):
     # Feedback
     # ------------------------------------------------------------------
 
-    def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
+    def apply_feedback(
+        self, memory_id: str, useful: bool, stale: bool, tenant_id: str | None = None
+    ) -> None:
         """Per-memory feedback primitive."""
         ...
 

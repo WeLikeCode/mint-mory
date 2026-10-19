@@ -36,7 +36,7 @@
     `CrossTenantLinkError`).
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-- [ ] 4. `tenant_id` on id-only writes (`storage.py`, `ports.py`, `storage_postgres.py`)
+- [x] 4. `tenant_id` on id-only writes (`storage.py`, `ports.py`, `storage_postgres.py`)
   - Signatures and semantics of R3; Protocol updated; Postgres methods gain the
     parameter and call `_require_global_tenant` first.
   - Tests: R3.5 example; `apply_feedback` foreign id → `KeyError`;
