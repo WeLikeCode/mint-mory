@@ -6,7 +6,7 @@ implement, run the package gate (`uv run pytest packages/core/tests/`,
 before the PR: the gates of `.l4/config.yaml`. No Postgres, Docker or network is
 needed by any test here.
 
-- [ ] 1. Types and errors (`types.py`)
+- [x] 1. Types and errors (`types.py`)
   - `TENANT_GLOBAL`, `TENANT_ID_PATTERN`, `validate_tenant_id`, `Tenant`, the
     error classes with the exact constructors and messages of R1.3, and
     `tenant_id` + validator on `MemoryRecord`, `ConceptLink`, `MemorySummary`,

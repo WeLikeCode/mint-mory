@@ -20,12 +20,16 @@ Correction vs FEATURES.md draft (widemem audit finding):
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, Field, field_validator
+
+TENANT_GLOBAL: Final[str] = "global"
+TENANT_ID_PATTERN: Final[str] = r"^[a-z0-9][a-z0-9_-]{0,127}$"
 
 # ---------------------------------------------------------------------------
 # Enumerations — Object Types and Link Types (Palantir Ontology terminology)
@@ -152,6 +156,8 @@ class MemoryRecord(BaseModel):
     # Extensible metadata (e.g. project_id, session_id, custom tags)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    tenant_id: str = Field(default=TENANT_GLOBAL)
+
     @field_validator("entity_ids", "contradicts_ids", mode="before")
     @classmethod
     def parse_json_list(cls, v: Any) -> list[str]:
@@ -160,6 +166,11 @@ class MemoryRecord(BaseModel):
 
             return list(json.loads(v))
         return v or []
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, v: str) -> str:
+        return validate_tenant_id(v)
 
     def effective_score(
         self,
@@ -218,6 +229,13 @@ class ConceptLink(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+    tenant_id: str = Field(default=TENANT_GLOBAL)
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, v: str) -> str:
+        return validate_tenant_id(v)
+
 
 class MemorySummary(BaseModel):
     """
@@ -231,6 +249,12 @@ class MemorySummary(BaseModel):
     memory_count: int
     is_current: bool = True  # false if any linked memory became stale
     generated_at: datetime = Field(default_factory=datetime.utcnow)
+    tenant_id: str = Field(default=TENANT_GLOBAL)
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, v: str) -> str:
+        return validate_tenant_id(v)
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +271,12 @@ class QueryResult(BaseModel):
     was_accessed: bool = False  # LLM used it in the answer
     was_useful: bool = False  # marked useful in QueryFeedback
     was_stale: bool = False  # marked stale in QueryFeedback
+    tenant_id: str = Field(default=TENANT_GLOBAL)
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, v: str) -> str:
+        return validate_tenant_id(v)
 
 
 class QuerySession(BaseModel):
@@ -269,6 +299,8 @@ class QuerySession(BaseModel):
     stale_ids: list[str] = Field(default_factory=list)
     concluded: bool = False
 
+    tenant_id: str = Field(default=TENANT_GLOBAL)
+
     @field_validator("useful_ids", "stale_ids", mode="before")
     @classmethod
     def parse_json_list(cls, v: Any) -> list[str]:
@@ -277,6 +309,11 @@ class QuerySession(BaseModel):
 
             return list(json.loads(v))
         return v or []
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, v: str) -> str:
+        return validate_tenant_id(v)
 
 
 # ---------------------------------------------------------------------------
@@ -521,45 +558,95 @@ class MemoryStats(BaseModel):
     top_concepts: list[tuple[str, int]] = Field(default_factory=list)  # (concept, count)
 
 
+class Tenant(BaseModel):
+    id: str
+    name: str = ""
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, v: str) -> str:
+        return validate_tenant_id(v)
+
+
 class TenantError(Exception):
     pass
 
 
 class TenantNotFoundError(TenantError):
-    pass
+    def __init__(self, tenant_id: str) -> None:
+        super().__init__(f"tenant {tenant_id!r} not found")
+        self.tenant_id = tenant_id
 
 
 class TenantInactiveError(TenantError):
-    pass
+    def __init__(self, tenant_id: str) -> None:
+        super().__init__(f"tenant {tenant_id!r} is inactive (read-only)")
+        self.tenant_id = tenant_id
 
 
 class ProtectedTenantError(TenantError):
-    pass
+    def __init__(self) -> None:
+        super().__init__("the global tenant cannot be deactivated")
 
 
 class InvalidTenantIdError(TenantError, ValueError):
-    pass
+    def __init__(self, tenant_id: str) -> None:
+        super().__init__(f"invalid tenant id {tenant_id!r}: expected {TENANT_ID_PATTERN}")
+        self.tenant_id = tenant_id
 
 
 class CrossTenantLinkError(TenantError):
-    pass
+    def __init__(
+        self, first_id: str, first_tenant: str, second_id: str, second_tenant: str
+    ) -> None:
+        super().__init__(
+            f"cross-tenant reference: {first_id!r} (tenant {first_tenant!r}) -> "
+            f"{second_id!r} (tenant {second_tenant!r})"
+        )
+        self.first_id = first_id
+        self.first_tenant = first_tenant
+        self.second_id = second_id
+        self.second_tenant = second_tenant
 
 
 class TenantImmutableError(TenantError):
-    pass
+    def __init__(self, memory_id: str, stored_tenant: str, requested_tenant: str) -> None:
+        super().__init__(
+            f"memory {memory_id!r} belongs to tenant {stored_tenant!r}; "
+            f"it cannot move to {requested_tenant!r}"
+        )
+        self.memory_id = memory_id
+        self.stored_tenant = stored_tenant
+        self.requested_tenant = requested_tenant
 
 
 class ScopeRequiredError(TenantError):
-    pass
+    def __init__(self, operation: str, scope: str) -> None:
+        super().__init__(
+            f"{operation} requires the global scope; this process is scoped to tenant {scope!r}"
+        )
+        self.operation = operation
+        self.scope = scope
 
 
 class TenantMigrationError(TenantError):
-    pass
+    def __init__(self, cause: str) -> None:
+        super().__init__(
+            f"tenant migration failed: {cause}; the existing tables were left unchanged"
+        )
+        self.cause = cause
 
 
 class TenancyNotSupportedError(TenantError, NotImplementedError):
-    pass
+    def __init__(self, operation: str) -> None:
+        super().__init__(f"{operation}: tenancy on the Postgres backend is not available yet")
+        self.operation = operation
 
 
 def validate_tenant_id(tenant_id: str) -> str:
-    raise NotImplementedError
+    if re.fullmatch(TENANT_ID_PATTERN, tenant_id):
+        return tenant_id
+    raise InvalidTenantIdError(tenant_id)
