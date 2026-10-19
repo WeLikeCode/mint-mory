@@ -42,3 +42,5 @@
 {"at":"2026-10-19T20:03:42Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"fa4a2494d2e4aae40e044e8badaf6841bde6af82","status":"pass","type":"unit.postcheck","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T20:03:42Z","revision":"fa4a2494d2e4aae40e044e8badaf6841bde6af82","type":"unit.integrated","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T20:03:42Z","attempt":1,"cost_usd":1.59863,"runs":2,"type":"plan.charged","unit":"kiro:multi-tenancy-writes"}
+{"at":"2026-10-19T20:04:20Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-19T20:04:20Z","run":"r-20261019T2004Z-0e3d","type":"unit.dispatched","unit":"kiro:multi-tenancy-reads"}
