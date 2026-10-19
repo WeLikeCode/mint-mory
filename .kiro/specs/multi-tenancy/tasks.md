@@ -46,7 +46,7 @@ needed by any test here.
     `initialise()`; the R3.7 fault injection; the R3.8 stale-plan start.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-- [ ] 4. Persist `tenant_id` on every row (`storage.py`)
+- [x] 4. Persist `tenant_id` on every row (`storage.py`)
   - Lockstep of R4.1–R4.2 (`_MEMORY_COLUMNS`, row values, row mappers, the
     link/session/result inserts).
   - Tests: round trip of every model's `tenant_id`.

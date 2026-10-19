@@ -89,6 +89,7 @@ _MEMORY_COLUMNS: tuple[str, ...] = (
     "updated_at",
     "last_accessed_at",
     "metadata",
+    "tenant_id",
 )
 
 
@@ -606,6 +607,7 @@ class SqliteBackend:
             _iso(record.updated_at),
             _iso(record.last_accessed_at),
             json.dumps(record.metadata),
+            record.tenant_id,
         )
 
     @telemetry.counts_added
@@ -668,6 +670,7 @@ class SqliteBackend:
             updated_at=row["updated_at"],
             last_accessed_at=row["last_accessed_at"],
             metadata=json.loads(row["metadata"]),
+            tenant_id=row["tenant_id"],
         )
 
     def get_memory(self, memory_id: str) -> MemoryRecord | None:
@@ -1338,8 +1341,8 @@ class SqliteBackend:
             conn.execute(
                 "INSERT OR IGNORE INTO concept_links "
                 "(id, source_memory_id, target_memory_id, link_type, entity, "
-                "strength, confidence, source, verified, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "strength, confidence, source, verified, created_at, updated_at, tenant_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     link.id,
                     link.source_memory_id,
@@ -1352,6 +1355,7 @@ class SqliteBackend:
                     _bool(link.verified),
                     _iso(link.created_at),
                     _iso(link.updated_at),
+                    link.tenant_id,
                 ),
             )
         return link
@@ -1369,6 +1373,7 @@ class SqliteBackend:
             verified=bool(row["verified"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            tenant_id=row["tenant_id"],
         )
 
     def get_links(
@@ -1395,7 +1400,7 @@ class SqliteBackend:
             conn.execute(
                 "INSERT INTO query_sessions "
                 "(id, query_text, created_at, confidence_rating, reasoning, "
-                "useful_ids, stale_ids, concluded) VALUES (?,?,?,?,?,?,?,?)",
+                "useful_ids, stale_ids, concluded, tenant_id) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     session.id,
                     session.query_text,
@@ -1405,6 +1410,7 @@ class SqliteBackend:
                     json.dumps(session.useful_ids),
                     json.dumps(session.stale_ids),
                     _bool(session.concluded),
+                    session.tenant_id,
                 ),
             )
         return session
@@ -1423,6 +1429,7 @@ class SqliteBackend:
             useful_ids=row["useful_ids"],
             stale_ids=row["stale_ids"],
             concluded=bool(row["concluded"]),
+            tenant_id=row["tenant_id"],
         )
 
     def record_query_results(self, results: list[QueryResult]) -> None:
@@ -1432,7 +1439,7 @@ class SqliteBackend:
             conn.executemany(
                 "INSERT OR REPLACE INTO query_results "
                 "(session_id, memory_id, relevance_score, was_accessed, "
-                "was_useful, was_stale) VALUES (?,?,?,?,?,?)",
+                "was_useful, was_stale, tenant_id) VALUES (?,?,?,?,?,?,?)",
                 [
                     (
                         r.session_id,
@@ -1441,6 +1448,7 @@ class SqliteBackend:
                         _bool(r.was_accessed),
                         _bool(r.was_useful),
                         _bool(r.was_stale),
+                        r.tenant_id,
                     )
                     for r in results
                 ],
