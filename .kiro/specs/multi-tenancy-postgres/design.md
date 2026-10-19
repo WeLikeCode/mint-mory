@@ -1,79 +1,84 @@
-# Design — Multi-Tenancy Postgres Parity
+# Design — Multi-Tenancy 8/10: Postgres schema, migrations and column parity
 
-> **Depends on:** `multi-tenancy` (`.kiro/specs/multi-tenancy/`). The SQLite
-> backend built there is the behavioural oracle; this spec mirrors it into
-> Postgres and adds the data migration. No model/`types.py` changes.
+## Grounding (base branch, verified)
 
-## Overview
+- `schema_postgres.sql`: `IF NOT EXISTS` DDL for the six tables with
+  `BOOLEAN`/`FLOAT`/`JSONB`/`TIMESTAMP`/`vector`, a generated `content_tsv` with
+  a GIN index, a `pg_trgm` GIN index; `concept_links` has an unnamed `UNIQUE
+  (source_memory_id, target_memory_id, link_type)`, `memory_summaries.concept` is
+  `TEXT NOT NULL UNIQUE`, `index_manifest.path` is `TEXT PRIMARY KEY`.
+- `PostgresBackend.initialise()`: creates the `psycopg_pool.ConnectionPool` only
+  when `self._pool is None`, installs extensions, then in one connection runs
+  `SELECT pg_advisory_xact_lock(…)`, `_create_schema(conn)` (the whole DDL file)
+  and `conn.commit()`, then probes capabilities. Every method uses `with
+  self._pool.connection() as conn:` and `_execute_dict(conn, sql, params)`
+  (`conn.cursor(row_factory=…)`).
+- Conflict targets today: `add_link` `ON CONFLICT (source_memory_id,
+  target_memory_id, link_type)`, `upsert_summary` `ON CONFLICT(concept)`,
+  `manifest_upsert` `ON CONFLICT(path)` — all three stop matching a constraint
+  once the keys change, which is why this unit changes the backend SQL together
+  with the DDL.
+- `migrate.py`: one-shot SQLite→Postgres copy driven by `_FK_ORDER`,
+  `_TABLE_COLS`, `_TABLE_PK`, classification dicts, `_insert_*_batch(conn, rows, *,
+  dry_run=False)` (verified signature; `_TABLE_INSERT_FN` calls them as `fn(conn, rows)`)
+  (`conn.cursor()` + `executemany`), `_pg_truncate_all`, checksum verification;
+  `dry_run=True` opens no Postgres connection; the source is opened
+  `mode=ro`.
+- Real-Postgres tests exist only behind `MINTMORY_TEST_PG_DSN`: the conformance
+  fixture's `postgres` parameter and `test_migrate.py`'s `_SKIP_PG` classes, run
+  by the `conformance-pg` job of `.github/workflows/ci.yml`.
 
-Three edits, all mechanical given the SQLite oracle:
-1. `schema_postgres.sql` — mirror the `tenants` table, `tenant_id` columns + FK,
-   per-tenant UNIQUE, the `(tenant_id, path)` manifest PK, and tenant-leading
-   indexes.
-2. `storage_postgres.py` — mirror the write guard, `tenant_id` threading on the
-   exhaustive read/write set, the predicate injection, the tenant management
-   methods, and the `transaction()` + `_on_conn` contracts.
-3. `migrate.py` — add `tenant_id` to the per-table column tuples and inserts, add
-   the `tenants` table first, handle the pre-seeded `global` row.
+## Migration
 
-## Grounding
+Splitting catalog reading (needs a database) from planning (pure) puts the
+whole decision logic under database-free tests. The catalog queries:
 
-`schema_postgres.sql` today mirrors the SQLite tables with `BOOLEAN`/`FLOAT`/
-`JSONB`/`TIMESTAMP`/`vector`, a `content_tsv` generated column + GIN index and a
-pg_trgm GIN index (no FTS5 triggers). `storage_postgres.py` implements the
-`StorageBackend` protocol structurally. `migrate.py` is a one-shot SQLite→Postgres
-copy with hard-coded `_*_COLS` tuples, `_insert_*_batch` functions, and
-bool/datetime/jsonb/pk classification dicts + checksum verification.
+```sql
+SELECT table_name::text AS table_name, column_name::text AS column_name
+  FROM information_schema.columns
+ WHERE table_schema = current_schema() AND table_name = ANY(%s);
+SELECT r.relname::text AS table_name, c.conname::text AS conname,
+       c.contype::text AS contype,
+       array_agg(a.attname::text ORDER BY k.ord)::text[] AS columns
+  FROM pg_constraint c
+  JOIN pg_class r ON r.oid = c.conrelid
+  JOIN pg_namespace n ON n.oid = r.relnamespace AND n.nspname = current_schema()
+  CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+  JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+ WHERE c.contype IN ('u', 'p') AND r.relname = ANY(%s)
+ GROUP BY r.relname, c.conname, c.contype;
+SELECT indexname::text AS indexname FROM pg_indexes WHERE schemaname = current_schema();
+```
 
-## Schema (`schema_postgres.sql`)
+Every value is cast to `text` (and the column list to `text[]`), so psycopg
+returns plain `str` / `list[str]` and `pg_catalog_snapshot` can be tested with
+the same dicts a `dict_row` cursor produces.
 
-Mirror of the SQLite schema (`multi-tenancy` design), with Postgres types:
-`tenants(id TEXT PK, name TEXT NOT NULL DEFAULT '', is_active BOOLEAN NOT NULL
-DEFAULT true, created_at TIMESTAMP, updated_at TIMESTAMP)` seeded via `ON
-CONFLICT (id) DO NOTHING`; `tenant_id TEXT NOT NULL DEFAULT 'global' REFERENCES
-tenants(id)` on the six tables; the two per-tenant UNIQUE constraints; the
-`(tenant_id, path)` manifest PK; the tenant-leading indexes. `content_tsv` + its
-GIN index and the pg_trgm index are untouched; tenant scoping is `WHERE
-tenant_id = ?` on `memories`.
+Constraints are dropped by the name found in the catalog (the old ones were
+auto-named), so no table rebuild is needed; `ADD COLUMN … REFERENCES` gives
+migrated tables the FK directly (unlike SQLite). `ADD COLUMN … DEFAULT 'global'`
+backfills existing rows. All of it runs in the advisory-locked transaction of
+`initialise()`; a failure rolls the whole transaction back.
 
-## Backend (`storage_postgres.py`)
+## Fakes
 
-Mirror the SQLite backend behaviour exactly:
-- `_assert_tenant_writable(conn, tenant_id)` at the top of every write; a
-  Postgres FK integrity error is caught and re-raised as `TenantNotFoundError`.
-- `tenant_id` threaded on every read in `multi-tenancy` Req 5.1 and every write,
-  with the predicate injected into the Postgres candidate/traversal SQL.
-- `create_tenant(tenant_id: str, name="")` (validate → `ON CONFLICT DO NOTHING`
-  → SELECT), `get_tenant`, `list_tenants`, `set_tenant_active`.
-- `transaction()` context + `_on_conn` no-commit write variants for the copy
-  spec, matching SQLite semantics.
-- In-place migration `_ensure_tenant_columns`-equivalent for an existing Postgres
-  DB: add columns + backfill `global`, add `tenants` + seed, apply the UNIQUE/PK
-  changes by rebuilding (drop the auto-named `concept UNIQUE` via rebuild, not by
-  name), guarded + idempotent, run under the existing `pg_advisory_lock`.
+`pg_fakes.py` records every statement; tests assert on substrings of the SQL
+text and on parameter tuples. `_register_adapters` already swallows errors, so
+`pgvector.register_vector(fake_conn)` failing is harmless. Capability probes get
+`[]` from the default responder (`fetchone()` is `None`), so they report no
+extension, which is what the code already handles.
 
-## Data migration (`migrate.py`)
+## migrate.py
 
-Add `tenant_id` to every `_*_COLS` tuple and `_insert_*_batch`; add `tenants` to
-the migration (copied FIRST, before referencing tables) and to the
-bool/datetime/jsonb/pk classification dicts; copy `tenants` with `ON CONFLICT
-(id) DO NOTHING` so the pre-seeded `global` row does not conflict; keep checksum
-verification passing with `tenant_id` included.
+`tenants` first in `_FK_ORDER` satisfies the FKs of every other table. The
+pre-checks query the read-only source (`sqlite_master`, `PRAGMA table_info`,
+`SELECT DISTINCT tenant_id FROM <t> WHERE tenant_id NOT IN (SELECT id FROM
+tenants)`), so they run in `dry_run` as well and fail before any target write.
 
-## Testing strategy
+## What is not proven automatically
 
-All Postgres tests carry a `postgres` marker and skip when `MINTMORY_STORAGE_DSN`
-is unset. Mirror the SQLite oracle's assertions: schema parity (tables/columns/
-uniqueness/manifest PK/indexes), write guard on fresh + migrated Postgres DB,
-scoped vs unscoped reads, per-tenant uniqueness, the in-place migration
-(idempotent, backfill), and the SQLite→Postgres `migrate.py` moving `tenant_id`
-and `tenants` with checksum passing. Gate: `uv run pytest`,
-`uv run mypy packages/`, `uv run ruff check packages/` all exit 0.
-
-## Risks
-
-- **No Postgres in an unattended run** → tests are marked/skipped; CI with
-  Postgres runs them. The behaviour is pinned by the SQLite oracle, lowering the
-  risk of the skipped path diverging.
-- **Unnamed `concept UNIQUE` constraint** → rebuild the table rather than `DROP
-  CONSTRAINT <name>`.
+The `ALTER` statements of R2.1 are not executed against a real pre-feature
+Postgres database by any automated test: the plan is unit-tested, and the
+catalog SQL runs on a real database in every `conformance-pg` run (where it
+returns the migrated shape). A person can run the in-place migration once on a
+copy of a production database before relying on it.

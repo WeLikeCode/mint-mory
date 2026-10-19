@@ -5,15 +5,21 @@
     "merge": "auto",
     "limits": {"max_unit_attempts": 2, "max_runs": 60, "max_cost_usd": 45},
     "batches": [
-      {"id": "multitenancy", "depends_on": [], "units": [
+      {"id": "tenancy-sqlite", "depends_on": [], "units": [
         {"id": "kiro:multi-tenancy", "depends_on": []},
+        {"id": "kiro:multi-tenancy-writes", "depends_on": ["kiro:multi-tenancy"]},
+        {"id": "kiro:multi-tenancy-reads", "depends_on": ["kiro:multi-tenancy", "kiro:multi-tenancy-writes"]}
+      ]},
+      {"id": "tenancy-surfaces", "depends_on": ["tenancy-sqlite"], "units": [
+        {"id": "kiro:tenant-scoped-core", "depends_on": ["kiro:multi-tenancy-reads", "kiro:multi-tenancy-writes", "kiro:multi-tenancy"]},
+        {"id": "kiro:multi-tenancy-cli", "depends_on": ["kiro:tenant-scoped-core", "kiro:multi-tenancy-reads", "kiro:multi-tenancy", "kiro:multi-tenancy-writes"]},
+        {"id": "kiro:tenant-scoped-mcp", "depends_on": ["kiro:tenant-scoped-core", "kiro:multi-tenancy-reads", "kiro:multi-tenancy", "kiro:multi-tenancy-writes"]},
+        {"id": "kiro:cross-tenant-copy", "depends_on": ["kiro:multi-tenancy-writes", "kiro:multi-tenancy-reads", "kiro:tenant-scoped-mcp", "kiro:multi-tenancy-cli", "kiro:multi-tenancy"]}
+      ]},
+      {"id": "tenancy-postgres", "depends_on": ["tenancy-sqlite"], "units": [
         {"id": "kiro:multi-tenancy-postgres", "depends_on": ["kiro:multi-tenancy"]},
-        {"id": "kiro:tenant-scoped-mcp", "depends_on": ["kiro:multi-tenancy"]},
-        {"id": "kiro:cross-tenant-copy-and-dreaming", "depends_on": ["kiro:multi-tenancy", "kiro:tenant-scoped-mcp"]}
+        {"id": "kiro:multi-tenancy-postgres-writes", "depends_on": ["kiro:multi-tenancy-postgres", "kiro:multi-tenancy-writes", "kiro:multi-tenancy"]},
+        {"id": "kiro:multi-tenancy-postgres-reads", "depends_on": ["kiro:multi-tenancy-postgres-writes", "kiro:multi-tenancy-reads", "kiro:multi-tenancy-postgres"]}
       ]}
-    ],
-    "exclude": [
-      {"id": "openspec:add-image-understanding", "reason": "held by yolo.hold until the owner decides"},
-      {"id": "openspec:add-llm-vision-provider", "reason": "held by yolo.hold until the owner decides"}
     ]
 }

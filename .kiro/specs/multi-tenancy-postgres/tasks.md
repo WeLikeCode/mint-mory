@@ -1,50 +1,40 @@
-# Tasks — Multi-Tenancy Postgres Parity
+# Tasks — Multi-Tenancy 8/10: Postgres schema, migrations and column parity
 
-> **Depends on:** `multi-tenancy` (`.kiro/specs/multi-tenancy/`). Do not start
-> until it is complete; the SQLite backend is the behavioural oracle. No
-> `types.py` changes here.
+> **Depends on:** `multi-tenancy`. TDD per task; package gate after each
+> (`uv run pytest packages/core/tests/`, `uv run mypy packages/core/`,
+> `uv run ruff check packages/core/`); full `.l4/config.yaml` gates before the PR.
+> No test needs Postgres, Docker or a network service; add no skip, skipif or
+> xfail marker and no `pytest.skip(` call.
 
-TDD per task; gate per task: `uv run pytest packages/core/tests/` (Postgres
-tests are `postgres`-marked and skip without `MINTMORY_STORAGE_DSN`),
-`uv run mypy packages/core/`, `uv run ruff check packages/core/`. Full gate
-before PR: `uv run pytest` (≥ 80%), `uv run mypy packages/`,
-`uv run ruff check packages/`.
+- [ ] 1. Test seam (`packages/core/tests/pg_fakes.py`)
+  - `FakePool`, `FakeConnection`, `FakeCursor` per R5.1, with a self-test.
+  - _Requirements: 5.1_
 
----
+- [ ] 2. Fresh DDL (`schema_postgres.sql`)
+  - R1.1–R1.4.
+  - Tests: the text checks of R1.5.
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 1. Postgres schema parity (`schema_postgres.sql`)
-  - Add the `tenants` table (BOOLEAN/TIMESTAMP, `ON CONFLICT DO NOTHING` seed),
-    `tenant_id ... REFERENCES tenants(id)` on the six tables, the two per-tenant
-    UNIQUE constraints, the `(tenant_id, path)` manifest PK, and the
-    tenant-leading indexes. Leave `content_tsv`/GIN/pg_trgm unchanged.
-  - Tests (`postgres`-marked): schema has the table/columns/uniqueness/PK/indexes.
-  - _Requirements: 1.1, 1.2, 1.3, 1.4_
+- [ ] 3. In-place migration (`storage_postgres.py`)
+  - `plan_pg_tenant_migration`, `pg_catalog_snapshot`, `_ensure_tenant_columns`
+    with the catalog reads, the call in `initialise()` inside the pool block,
+    `TenantMigrationError` on failure.
+  - Tests: every case of R2.4.
+  - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 2. Postgres backend parity (`storage_postgres.py`)
-  - Mirror the write guard, `tenant_id` on the exhaustive read/write set, the
-    predicate injection, the tenant management methods, and the `transaction()` +
-    `_on_conn` contracts. Re-raise FK integrity errors as `TenantNotFoundError`.
-  - Tests (`postgres`-marked): write guard (missing/inactive), scoped vs unscoped
-    reads, per-tenant uniqueness, cross-tenant errors, tenant methods — mirroring
-    the SQLite oracle.
-  - _Requirements: 2.1, 2.2, 2.3_
+- [ ] 4. Column parity and per-tenant keys (`storage_postgres.py`)
+  - R3.1–R3.4.
+  - Tests (new file `packages/core/tests/test_pg_tenancy_columns.py`): R3.5 for
+    each listed statement; the existing `test_pg_<method>_tenancy` functions
+    pass unchanged.
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 3. In-place existing-Postgres migration (`storage_postgres.py`)
-  - Idempotent add-column + backfill + `tenants` seed + UNIQUE/PK rebuild (drop
-    auto-named `concept UNIQUE` by rebuild), under `pg_advisory_lock`.
-  - Test (`postgres`-marked): pre-feature Postgres DB → migrated, backfilled,
-    second run no-op.
-  - _Requirements: 3.1, 3.2_
+- [ ] 5. `migrate.py`
+  - R4.1–R4.5.
+  - Tests: R4.6; the existing pure-logic tests of `test_migrate.py` pass
+    (updated in place where they build rows by hand; no test function deleted).
+  - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
-- [ ] 4. SQLite→Postgres data migration (`migrate.py`)
-  - Add `tenant_id` to every `_*_COLS` + `_insert_*_batch`; add `tenants` first
-    with `ON CONFLICT (id) DO NOTHING`; update classification dicts; keep
-    checksum passing.
-  - Test (`postgres`-marked): migrating a tenant-aware SQLite DB yields matching
-    tenant data in Postgres; checksum passes.
-  - _Requirements: 4.1, 4.2, 4.3, 4.4_
-
-- [ ] 5. Full gate
-  - `uv run pytest` (≥ 80%; Postgres tests skip without a DSN), `uv run mypy
-    packages/`, `uv run ruff check packages/` — all exit 0.
-  - _Requirements: 5.1, 5.2, 5.3_
+- [ ] 6. Full gate
+  - `.l4/config.yaml` gates exit 0 with coverage ≥ 80%.
+  - _Requirements: 6.1, 6.2_
