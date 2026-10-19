@@ -519,3 +519,47 @@ class MemoryStats(BaseModel):
     avg_usefulness_score: float
     avg_staleness_score: float
     top_concepts: list[tuple[str, int]] = Field(default_factory=list)  # (concept, count)
+
+
+class TenantError(Exception):
+    pass
+
+
+class TenantNotFoundError(TenantError):
+    pass
+
+
+class TenantInactiveError(TenantError):
+    pass
+
+
+class ProtectedTenantError(TenantError):
+    pass
+
+
+class InvalidTenantIdError(TenantError, ValueError):
+    pass
+
+
+class CrossTenantLinkError(TenantError):
+    pass
+
+
+class TenantImmutableError(TenantError):
+    pass
+
+
+class ScopeRequiredError(TenantError):
+    pass
+
+
+class TenantMigrationError(TenantError):
+    pass
+
+
+class TenancyNotSupportedError(TenantError, NotImplementedError):
+    pass
+
+
+def validate_tenant_id(tenant_id: str) -> str:
+    raise NotImplementedError
