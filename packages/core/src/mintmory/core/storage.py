@@ -1680,6 +1680,12 @@ class SqliteBackend:
         ).fetchall()
         return {frozenset({r["source_memory_id"], r["target_memory_id"]}) for r in rows}
 
+    def _tenant_migration_statements(self, conn: sqlite3.Connection) -> list[str]:
+        raise NotImplementedError
+
+    def _ensure_tenant_columns(self, conn: sqlite3.Connection) -> None:
+        raise NotImplementedError
+
 
 # ---------------------------------------------------------------------------
 # Back-compat alias — keep for one release so code pinned to the old name
