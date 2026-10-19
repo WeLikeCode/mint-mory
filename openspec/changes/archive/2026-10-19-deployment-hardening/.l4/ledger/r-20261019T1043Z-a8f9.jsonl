@@ -269,3 +269,8 @@
 {"ts": "2026-10-19T11:34:31.731149Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 269, "type": "verify.verdict", "round": 1, "verdict": "PASS", "findings": 2, "criteria_passed": 8, "criteria_total": 8}
 {"ts": "2026-10-19T11:34:31.741238Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 270, "type": "phase.changed", "from": "verifying", "to": "verified", "trigger": "verify_pass", "exit_code": null}
 {"ts": "2026-10-19T11:34:35.477140Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 271, "type": "pr.labels", "number": 35, "labels": ["l4:verified"]}
+{"ts": "2026-10-19T11:34:41.210942Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 272, "type": "pr.ready", "url": "<forge>/WeLikeCode/mint-mory/pull/35", "number": 35, "head": "f2a65d1d574afffe22eda45cb0ccb1fd82129b16"}
+{"ts": "2026-10-19T11:34:41.211877Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 273, "type": "phase.changed", "from": "verified", "to": "in_review", "trigger": "hand_off_pushed", "exit_code": 0}
+{"ts": "2026-10-19T11:34:44.834062Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 274, "type": "pr.labels", "number": 35, "labels": ["l4:in_review"]}
+{"ts": "2026-10-19T11:34:46.478502Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 275, "type": "lock.released"}
+{"ts": "2026-10-19T11:34:46.479144Z", "run_id": "r-20261019T1043Z-a8f9", "unit": "openspec:deployment-hardening", "seq": 276, "type": "run.finished", "exit_code": 0}
