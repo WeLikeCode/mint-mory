@@ -46,6 +46,7 @@ from mintmory.core.types import (
     TENANT_GLOBAL,
     ConceptLink,
     ConceptLinkType,
+    CrossTenantLinkError,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -56,6 +57,7 @@ from mintmory.core.types import (
     SearchRequest,
     SearchResponse,
     Tenant,
+    TenantImmutableError,
     TenantInactiveError,
     TenantMigrationError,
     TenantNotFoundError,
@@ -667,6 +669,15 @@ class SqliteBackend:
         columns = ", ".join(_MEMORY_COLUMNS)
 
         with self.transaction() as conn:
+            if record.superseded_by is not None:
+                target_tenant = self._stored_tenant(conn, record.superseded_by)
+                if target_tenant is not None and target_tenant != record.tenant_id:
+                    raise CrossTenantLinkError(
+                        record.id,
+                        record.tenant_id,
+                        record.superseded_by,
+                        target_tenant,
+                    )
             self._assert_tenant_writable(conn, record.tenant_id)
             conn.execute(
                 f"INSERT INTO memories ({columns}) VALUES ({placeholders})",
@@ -721,6 +732,13 @@ class SqliteBackend:
         existing = self.get_memory(memory_id)
         if existing is None:
             raise KeyError(f"memory {memory_id!r} not found")
+
+        # ``tenant_id`` is immutable: compare before building the model so an
+        # invalid id reports the tenancy error (it is not validated here).
+        if "tenant_id" in fields:
+            requested_tenant = fields.pop("tenant_id")
+            if requested_tenant != existing.tenant_id:
+                raise TenantImmutableError(memory_id, existing.tenant_id, str(requested_tenant))
 
         data = existing.model_dump()
         data.update(fields)
@@ -785,9 +803,19 @@ class SqliteBackend:
             params.append(embedding)
         params.append(memory_id)
 
+        superseded_by = fields.get("superseded_by")
         with self.transaction() as conn:
             stored_tenant = self._stored_tenant(conn, memory_id)
             if stored_tenant is not None:
+                if superseded_by is not None:
+                    target_tenant = self._stored_tenant(conn, str(superseded_by))
+                    if target_tenant is not None and target_tenant != stored_tenant:
+                        raise CrossTenantLinkError(
+                            memory_id,
+                            stored_tenant,
+                            str(superseded_by),
+                            target_tenant,
+                        )
                 self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 f"UPDATE memories SET {', '.join(sets)} WHERE id = ?",
@@ -1288,6 +1316,14 @@ class SqliteBackend:
         with self.transaction() as conn:
             stored_tenant = self._stored_tenant(conn, memory_id)
             if stored_tenant is not None:
+                by_tenant = self._stored_tenant(conn, by_id)
+                if by_tenant is not None and by_tenant != stored_tenant:
+                    raise CrossTenantLinkError(
+                        memory_id,
+                        stored_tenant,
+                        by_id,
+                        by_tenant,
+                    )
                 self._assert_tenant_writable(conn, stored_tenant)
                 conn.execute(
                     "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
@@ -1381,6 +1417,23 @@ class SqliteBackend:
     def add_link(self, link: ConceptLink) -> ConceptLink:
         """INSERT OR IGNORE on UNIQUE (source, target, link_type). Returns the link."""
         with self.transaction() as conn:
+            source_tenant = self._stored_tenant(conn, link.source_memory_id)
+            target_tenant = self._stored_tenant(conn, link.target_memory_id)
+            if source_tenant is not None and target_tenant is not None:
+                if source_tenant != target_tenant:
+                    raise CrossTenantLinkError(
+                        link.source_memory_id,
+                        source_tenant,
+                        link.target_memory_id,
+                        target_tenant,
+                    )
+                if link.tenant_id != source_tenant:
+                    raise CrossTenantLinkError(
+                        link.source_memory_id,
+                        source_tenant,
+                        link.target_memory_id,
+                        link.tenant_id,
+                    )
             self._assert_tenant_writable(conn, link.tenant_id)
             conn.execute(
                 "INSERT OR IGNORE INTO concept_links "
@@ -1481,6 +1534,25 @@ class SqliteBackend:
         if not results:
             return
         with self.transaction() as conn:
+            for result in results:
+                session_tenant = self._session_tenant(conn, result.session_id)
+                memory_tenant = self._stored_tenant(conn, result.memory_id)
+                if session_tenant is None or memory_tenant is None:
+                    continue
+                if result.tenant_id != session_tenant:
+                    raise CrossTenantLinkError(
+                        result.session_id,
+                        session_tenant,
+                        result.memory_id,
+                        result.tenant_id,
+                    )
+                if session_tenant != TENANT_GLOBAL and memory_tenant != session_tenant:
+                    raise CrossTenantLinkError(
+                        result.session_id,
+                        session_tenant,
+                        result.memory_id,
+                        memory_tenant,
+                    )
             for result in results:
                 self._assert_tenant_writable(conn, result.tenant_id)
             conn.executemany(

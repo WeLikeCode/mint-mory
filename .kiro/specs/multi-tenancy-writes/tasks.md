@@ -26,7 +26,7 @@
     inactive tenant still work; `_bump_retrieval` skip.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7_
 
-- [ ] 3. Same-tenant references (`storage.py`)
+- [x] 3. Same-tenant references (`storage.py`)
   - Checks of R2.1–R2.5 with the exact `CrossTenantLinkError` /
     `TenantImmutableError` arguments.
   - Tests: every example of R2.7; a batch of `record_query_results` with one bad
