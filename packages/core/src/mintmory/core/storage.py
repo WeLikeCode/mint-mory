@@ -52,6 +52,7 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
     SearchResponse,
+    Tenant,
     TenantMigrationError,
 )
 
@@ -1940,6 +1941,18 @@ class SqliteBackend:
                 raise TenantMigrationError(str(exc)) from exc
         finally:
             conn.execute("PRAGMA foreign_keys = ON")
+
+    def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
+        raise NotImplementedError
+
+    def get_tenant(self, tenant_id: str) -> Tenant | None:
+        raise NotImplementedError
+
+    def list_tenants(self) -> list[Tenant]:
+        raise NotImplementedError
+
+    def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
+        raise NotImplementedError
 
 
 # ---------------------------------------------------------------------------
