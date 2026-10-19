@@ -115,7 +115,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   `with:` (without it, docker/metadata-action's default `latest=auto` also tags a release
   `latest`; the explicit `type=raw,value=latest,enable={{is_default_branch}}`
   line still tags `main` pushes `latest`). Done by the owner in 47d97a5.
-- [ ] 5.4 Chart selector labels. In `deploy/helm/mintmory/templates/_helpers.tpl` add
+- [x] 5.4 Chart selector labels. In `deploy/helm/mintmory/templates/_helpers.tpl` add
   (do NOT edit `mintmory.selectorLabels`):
   ```
   {{- define "mintmory.oauth2ProxySelectorLabels" -}}
