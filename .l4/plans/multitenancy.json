@@ -3,7 +3,7 @@
     "plan_id": "multitenancy",
     "target": "staging",
     "merge": "auto",
-    "limits": {"max_unit_attempts": 2, "max_runs": 60, "max_cost_usd": 45},
+    "limits": {"max_unit_attempts": 2, "max_runs": 140, "max_cost_usd": 60},
     "batches": [
       {"id": "tenancy-sqlite", "depends_on": [], "units": [
         {"id": "kiro:multi-tenancy", "depends_on": []},
