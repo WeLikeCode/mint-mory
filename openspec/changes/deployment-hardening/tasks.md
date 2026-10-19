@@ -80,7 +80,7 @@ in `tests/integration/test_bump_version.py`; find the repository root with
 `Path(__file__).parents[2]` there, and add `import tomllib` and `import yaml` (PyYAML is installed
 through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
 
-- [ ] 5.1 Rendered-chart tests for the oauth2-proxy selectors (tests first; this task's green step
+- [x] 5.1 Rendered-chart tests for the oauth2-proxy selectors (tests first; this task's green step
   makes the chart change that 5.4 describes, and nothing else). Append to
   `tests/integration/test_deploy_hardening.py` a helper `_render(*extra: str) -> list[dict[str, Any]]`
   that runs `subprocess.run(["helm", "template", "t", "deploy/helm/mintmory", *extra], cwd=ROOT,
