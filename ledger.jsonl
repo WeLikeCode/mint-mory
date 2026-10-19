@@ -376,3 +376,5 @@
 {"at":"2026-10-19T04:55:55Z","by":"harness","reason":"the cause is gone: openspec:deployment-hardening is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-19T04:55:57Z","attempt":1,"cost_usd":0.035833,"runs":2,"type":"plan.charged","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T04:55:57Z","run":"r-20261019T0455Z-0039","type":"unit.dispatched","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T07:10:24Z","attempt":1,"cost_usd":0.128464,"runs":2,"type":"plan.charged","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T07:10:24Z","detail":"task 5.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)","reason":"unit_halted","type":"plan.stopped","unit":"openspec:deployment-hardening"}

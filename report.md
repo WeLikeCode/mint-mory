@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at f29487b0b8be568c91a2d400927d43a372d26eca
+- Target: staging at 465af8a4fa3e1771f3ca6bd576cdff5e2e972c82
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-18T21:11:50Z
-- Stopped: unit_escalated (openspec:add-local-observability-stack): round 5 failed the same way as round 4: finding F-5758ac1b
+- Written: 2026-10-19T07:10:24Z
+- Stopped: unit_halted (openspec:deployment-hardening): task 5.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)
 
 ## Units
 
@@ -61,11 +61,11 @@
 - Usage: $2.70, 9 run(s), 1 attempt(s)
 
 ### openspec:add-local-observability-stack
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/33
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.38, 3 run(s), 1 attempt(s)
+- Result: integrated at 652da4fd4574368de633d58ef3c8379785be38c2
+- Pull request: 33
+- Merge commit: 652da4fd4574368de633d58ef3c8379785be38c2
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $0.99, 4 run(s), 1 attempt(s)
 
 ### openspec:fix-note-bonus-env-name
 - Result: integrated at 61ee36d119da2c4e99cf1352c976ec068b4ed7ef
@@ -97,19 +97,19 @@
 
 ### openspec:deployment-hardening
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/35
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $0.13, 2 run(s), 1 attempt(s)
 
 ## Batches
 
 - warm-up (profile none): accepted at 7942c5591c0bcd29f2f50fabefeea04ea99fe9f9
-- telemetry (profile none): not checked
+- telemetry (profile none): accepted at 9731739f44a27a403716475df4b9c276454a2bde
 - fixes (profile none): not checked
 
 ## Usage
 
-- Cost: $32.08
+- Cost: $32.82
 - Of which the readiness review: $10.70
-- Runs that dispatched a unit: 94
+- Runs that dispatched a unit: 97
