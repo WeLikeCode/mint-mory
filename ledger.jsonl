@@ -12,3 +12,4 @@
 {"at":"2026-10-19T14:36:27Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner's delegate: task 2's red tests failed by TypeError and two invariant criteria (R2.4, R2.5) were not discriminating; the retry note says how to write them","type":"plan.resumed"}
 {"at":"2026-10-19T14:37:07Z","attempt":1,"cost_usd":0.13272,"runs":2,"type":"plan.charged","unit":"kiro:multi-tenancy"}
 {"at":"2026-10-19T14:37:07Z","run":"r-20261019T1437Z-76f9","type":"unit.dispatched","unit":"kiro:multi-tenancy"}
+{"at":"2026-10-19T16:36:47Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy"}
