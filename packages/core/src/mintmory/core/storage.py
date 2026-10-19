@@ -714,8 +714,10 @@ class SqliteBackend:
             tenant_id=row["tenant_id"],
         )
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         """Fetch a single memory by ID. Returns None if not found."""
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         row = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
         if row is None:
@@ -1144,7 +1146,9 @@ class SqliteBackend:
         rows = conn.execute(f"SELECT * FROM memories WHERE id IN ({placeholders})", ids).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to ``cap`` notes that ANNOTATE ``memory_id``.
 
         Performs a reverse traversal of the asymmetric ANNOTATES edge: the note is
@@ -1152,6 +1156,8 @@ class SqliteBackend:
         ordered by link strength DESC then created_at DESC. Archived notes are
         excluded. ``cap == 0`` returns [] immediately.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         if cap <= 0:
             return []
         conn = self.connect()
@@ -1166,7 +1172,9 @@ class SqliteBackend:
         ).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to ``cap`` ACTIVE image_description memories that ANNOTATE ``memory_id``.
 
         Performs a reverse traversal of the ANNOTATES edge (MM-16 pattern): the
@@ -1179,6 +1187,8 @@ class SqliteBackend:
         overlap it: notes filter ``is_note = 1``; descriptions filter ``is_note = 0``
         with an explicit ``kind`` predicate.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         if cap <= 0:
             return []
         conn = self.connect()
@@ -1194,7 +1204,9 @@ class SqliteBackend:
         ).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
         """Find the most recent ACTIVE file-record matching ``path_or_rel`` (path or rel).
 
         A file-record is distinguished from an image_description by the absence of a
@@ -1205,6 +1217,8 @@ class SqliteBackend:
         Used by ``image_caption_put`` to resolve a path argument to the file-record
         it should ANNOTATE (§8c of the design contract).
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         row = conn.execute(
             "SELECT * FROM memories "
@@ -1256,6 +1270,7 @@ class SqliteBackend:
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """SQL backing for ``notes_list`` (design §5c). Always filters is_note = 1.
 
@@ -1269,6 +1284,8 @@ class SqliteBackend:
         ``upcoming`` and ``overdue`` both True is rejected at the ``notes_list`` layer
         before reaching here, but this method handles the constraint defensively.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         effective_now = now or _utcnow()
         now_iso = _iso(effective_now)
 
@@ -1492,8 +1509,11 @@ class SqliteBackend:
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
         """Return all links where memory_id is source OR target."""
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         sql = "SELECT * FROM concept_links WHERE (source_memory_id = ? OR target_memory_id = ?)"
         params: list[Any] = [memory_id, memory_id]
@@ -1528,7 +1548,9 @@ class SqliteBackend:
             )
         return session
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         row = conn.execute("SELECT * FROM query_sessions WHERE id = ?", (session_id,)).fetchone()
         if row is None:
@@ -1647,7 +1669,9 @@ class SqliteBackend:
             return None
         return self._row_to_summary(row)
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
         return [self._row_to_summary(row) for row in rows]
@@ -1656,7 +1680,9 @@ class SqliteBackend:
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         total = conn.execute("SELECT COUNT(*) AS c FROM memories").fetchone()["c"]
         active = conn.execute(
@@ -1919,12 +1945,14 @@ class SqliteBackend:
     # Port — absorbed vision.py raw-SQL site (verbatim SQL relocation)
     # ------------------------------------------------------------------
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all active, non-archived memories with 'ext' metadata but no 'kind' tag.
 
         Verbatim SQL relocated from vision.image_jobs(). Python post-filtering
         (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays in vision.py.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         rows = conn.execute(
             "SELECT * FROM memories "
@@ -1939,12 +1967,14 @@ class SqliteBackend:
     # Port — absorbed cli/main.py ingest dedup (task 2.1a)
     # ------------------------------------------------------------------
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
         """Return True if any memory with the exact content already exists.
 
         Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
         Used by the ingest command for dedup checks; portable across backends.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         conn = self.connect()
         return (
             conn.execute("SELECT 1 FROM memories WHERE content = ? LIMIT 1", (content,)).fetchone()
