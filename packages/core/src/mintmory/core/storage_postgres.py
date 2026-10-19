@@ -625,6 +625,7 @@ class PostgresBackend:
             memory_ids=row["memory_ids"],  # TEXT → string (matches Protocol)
             online_only=int(bool(row["online_only"])),
             last_seen=str(row["last_seen"]) if row["last_seen"] else "",
+            tenant_id="global",
         )
 
     def manifest_upsert(

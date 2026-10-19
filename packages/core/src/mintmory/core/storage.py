@@ -386,7 +386,7 @@ class SqliteBackend:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS index_manifest_new (
-                    path          TEXT PRIMARY KEY,
+                    path          TEXT NOT NULL,
                     collection    TEXT NOT NULL,
                     size          INTEGER NOT NULL,
                     mtime         REAL NOT NULL,
@@ -395,11 +395,13 @@ class SqliteBackend:
                                       CHECK (index_mode IN ('metadata','content','vision')),
                     memory_ids    TEXT NOT NULL DEFAULT '[]',
                     online_only   INTEGER NOT NULL DEFAULT 0,
-                    last_seen     TEXT NOT NULL
+                    last_seen     TEXT NOT NULL,
+                    tenant_id     TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+                    PRIMARY KEY (tenant_id, path)
                 );
                 INSERT OR IGNORE INTO index_manifest_new
                     SELECT path, collection, size, mtime, content_hash,
-                           index_mode, memory_ids, online_only, last_seen
+                           index_mode, memory_ids, online_only, last_seen, 'global'
                     FROM index_manifest;
                 DROP TABLE index_manifest;
                 ALTER TABLE index_manifest_new RENAME TO index_manifest;
@@ -630,12 +632,13 @@ class SqliteBackend:
     # Index manifest — per-path state for recurrent tree indexing
     # ------------------------------------------------------------------
     def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
-        """Return the manifest row for ``path`` (absolute), or None."""
-        if tenant_id is None:
-            raise NotImplementedError
+        """Return the manifest row for ``(tenant_id, path)`` (absolute), or None."""
         row: sqlite3.Row | None = (
             self.connect()
-            .execute("SELECT * FROM index_manifest WHERE path = ?", (path,))
+            .execute(
+                "SELECT * FROM index_manifest WHERE tenant_id = ? AND path = ?",
+                (tenant_id, path),
+            )
             .fetchone()
         )
         if row is None:
@@ -650,6 +653,7 @@ class SqliteBackend:
             memory_ids=row["memory_ids"],
             online_only=row["online_only"],
             last_seen=row["last_seen"],
+            tenant_id=row["tenant_id"],
         )
 
     def manifest_upsert(
@@ -665,16 +669,14 @@ class SqliteBackend:
         content_hash: str | None = None,
         tenant_id: str = "global",
     ) -> None:
-        """Insert or replace the manifest row for ``path``."""
-        if tenant_id is None:
-            raise NotImplementedError
+        """Insert or replace the manifest row for ``(tenant_id, path)``."""
         with self.transaction() as conn:
             conn.execute(
                 "INSERT INTO index_manifest "
                 "(path, collection, size, mtime, content_hash, index_mode, "
-                " memory_ids, online_only, last_seen) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(path) DO UPDATE SET "
+                " memory_ids, online_only, last_seen, tenant_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(tenant_id, path) DO UPDATE SET "
                 "collection=excluded.collection, size=excluded.size, mtime=excluded.mtime, "
                 "content_hash=excluded.content_hash, index_mode=excluded.index_mode, "
                 "memory_ids=excluded.memory_ids, online_only=excluded.online_only, "
@@ -689,26 +691,29 @@ class SqliteBackend:
                     json.dumps(memory_ids),
                     _bool(online_only),
                     _iso(_utcnow()),
+                    tenant_id,
                 ),
             )
 
     def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
-        """All paths currently tracked under ``collection``."""
-        if tenant_id is None:
-            raise NotImplementedError
+        """All paths currently tracked under ``collection`` for ``tenant_id``."""
         rows = (
             self.connect()
-            .execute("SELECT path FROM index_manifest WHERE collection = ?", (collection,))
+            .execute(
+                "SELECT path FROM index_manifest WHERE tenant_id = ? AND collection = ?",
+                (tenant_id, collection),
+            )
             .fetchall()
         )
         return {row["path"] for row in rows}
 
     def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
-        """Drop the manifest row for ``path`` (memories are archived separately)."""
-        if tenant_id is None:
-            raise NotImplementedError
+        """Drop the ``(tenant_id, path)`` manifest row (memories are archived separately)."""
         with self.transaction() as conn:
-            conn.execute("DELETE FROM index_manifest WHERE path = ?", (path,))
+            conn.execute(
+                "DELETE FROM index_manifest WHERE tenant_id = ? AND path = ?",
+                (tenant_id, path),
+            )
 
     def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
         """Per-memory feedback primitive (PLAN.md §1b).
@@ -1305,15 +1310,19 @@ class SqliteBackend:
     # ------------------------------------------------------------------
 
     def upsert_summary(self, summary: MemorySummary) -> MemorySummary:
-        """INSERT OR REPLACE keyed on the UNIQUE ``concept`` column."""
-        existing = self.get_summary(summary.concept)
+        """Upsert keyed on the ``(tenant_id, concept)`` unique constraint.
+
+        Keeps the existing id of a ``(tenant_id, concept)`` row so an update does
+        not change the summary id.
+        """
+        existing = self.get_summary(summary.concept, summary.tenant_id)
         summary_id = existing.id if existing is not None else summary.id
         with self.transaction() as conn:
             conn.execute(
                 "INSERT INTO memory_summaries "
-                "(id, concept, summary_text, memory_count, is_current, generated_at) "
-                "VALUES (?,?,?,?,?,?) "
-                "ON CONFLICT(concept) DO UPDATE SET "
+                "(id, concept, summary_text, memory_count, is_current, generated_at, tenant_id) "
+                "VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(tenant_id, concept) DO UPDATE SET "
                 "summary_text = excluded.summary_text, "
                 "memory_count = excluded.memory_count, "
                 "is_current = excluded.is_current, "
@@ -1325,9 +1334,10 @@ class SqliteBackend:
                     summary.memory_count,
                     _bool(summary.is_current),
                     _iso(summary.generated_at),
+                    summary.tenant_id,
                 ),
             )
-        result = self.get_summary(summary.concept)
+        result = self.get_summary(summary.concept, summary.tenant_id)
         assert result is not None  # just upserted
         return result
 
@@ -1339,14 +1349,15 @@ class SqliteBackend:
             memory_count=row["memory_count"],
             is_current=bool(row["is_current"]),
             generated_at=row["generated_at"],
+            tenant_id=row["tenant_id"],
         )
 
     def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
-        if tenant_id is None:
-            raise NotImplementedError
+        """Fetch the summary for ``(tenant_id, concept)``. Returns None if not found."""
         conn = self.connect()
         row = conn.execute(
-            "SELECT * FROM memory_summaries WHERE concept = ?", (concept,)
+            "SELECT * FROM memory_summaries WHERE tenant_id = ? AND concept = ?",
+            (tenant_id, concept),
         ).fetchone()
         if row is None:
             return None

@@ -17,7 +17,7 @@ needed by any test here.
     `NotImplementedError`.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 2. Pre-feature fixture, SQLite schema and per-tenant keys (`schema.sql`, `storage.py`, `ports.py`)
+- [x] 2. Pre-feature fixture, SQLite schema and per-tenant keys (`schema.sql`, `storage.py`, `ports.py`)
   - First, in this task's red commit, copy today's `schema.sql` byte for byte to
     `packages/core/tests/fixtures/pre_tenancy_schema.sql` (a test-support file
     under `**/fixtures/**`: L4 freezes it once added, later tasks only read it).

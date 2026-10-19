@@ -58,6 +58,7 @@ class ManifestEntry(TypedDict):
     memory_ids: str  # JSON-encoded list[str]
     online_only: int  # INTEGER bool (0 or 1)
     last_seen: str  # ISO-8601 timestamp
+    tenant_id: str
 
 
 # ---------------------------------------------------------------------------
