@@ -389,3 +389,6 @@
 {"at":"2026-10-19T11:35:23Z","head":"f2a65d1d574afffe22eda45cb0ccb1fd82129b16","pr":35,"target_before":"a83c6bf80ecb58c14d7e39ad2cf381f011b9fd18","type":"unit.merge_requested","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T11:35:28Z","head":"f2a65d1d574afffe22eda45cb0ccb1fd82129b16","merge_commit":"a48df4750ad91c40ff5567dae7940875d6c01a75","method":"squash","pr":35,"raced":false,"type":"unit.merged","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T11:35:32Z","branch":"l4/openspec/deployment-hardening","head":"f2a65d1d574afffe22eda45cb0ccb1fd82129b16","type":"unit.branch_deleted","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T11:36:47Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"a48df4750ad91c40ff5567dae7940875d6c01a75","status":"pass","type":"unit.postcheck","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T11:36:47Z","revision":"a48df4750ad91c40ff5567dae7940875d6c01a75","type":"unit.integrated","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T11:36:47Z","attempt":1,"cost_usd":0.696515,"runs":3,"type":"plan.charged","unit":"openspec:deployment-hardening"}

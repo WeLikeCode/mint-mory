@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-19T11:36:47Z",
+  "integrated_revision": "a48df4750ad91c40ff5567dae7940875d6c01a75",
+  "merge_commit": "a48df4750ad91c40ff5567dae7940875d6c01a75",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 35,
+  "receipt_id": "telemetry-and-fixes/openspec:deployment-hardening/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "f2a65d1d574afffe22eda45cb0ccb1fd82129b16",
+  "spec_digest": "10dced31eb931511",
+  "target": "staging",
+  "unit_id": "openspec:deployment-hardening"
+}
