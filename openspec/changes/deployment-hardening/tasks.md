@@ -80,7 +80,7 @@ in `tests/integration/test_bump_version.py`; find the repository root with
 `Path(__file__).parents[2]` there, and add `import tomllib` and `import yaml` (PyYAML is installed
 through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
 
-- [ ] 5.1 Rendered-chart tests for the oauth2-proxy selectors (tests first; this task's green step
+- [x] 5.1 Rendered-chart tests for the oauth2-proxy selectors (tests first; this task's green step
   makes the chart change that 5.4 describes, and nothing else). Append to
   `tests/integration/test_deploy_hardening.py` a helper `_render(*extra: str) -> list[dict[str, Any]]`
   that runs `subprocess.run(["helm", "template", "t", "deploy/helm/mintmory", *extra], cwd=ROOT,
@@ -115,7 +115,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   `with:` (without it, docker/metadata-action's default `latest=auto` also tags a release
   `latest`; the explicit `type=raw,value=latest,enable={{is_default_branch}}`
   line still tags `main` pushes `latest`). Done by the owner in 47d97a5.
-- [ ] 5.4 Chart selector labels. In `deploy/helm/mintmory/templates/_helpers.tpl` add
+- [x] 5.4 Chart selector labels. In `deploy/helm/mintmory/templates/_helpers.tpl` add
   (do NOT edit `mintmory.selectorLabels`):
   ```
   {{- define "mintmory.oauth2ProxySelectorLabels" -}}
@@ -149,7 +149,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   (Without the three OIDC values `templates/oauth2proxy-secret.yaml` calls `fail`;
   without `ingress.enabled=true` the auth-url/auth-signin annotations are not
   rendered.) Then tick 4.1. Done by the owner in 465af8a.
-- [ ] 5.6 `scripts/bump_version.py` (today: `PYPROJECTS`, `bump_text(text, new_version)`,
+- [x] 5.6 `scripts/bump_version.py` (today: `PYPROJECTS`, `bump_text(text, new_version)`,
   `main()` reading `sys.argv`, root `Path(__file__).parents[1]`). Add
   `bump_chart_text(text: str, new_version: str) -> str` that rewrites only the first line
   matching `^appVersion: "[^"]+"` (re.M, count=1) to `appVersion: "<new_version>"` and raises
@@ -191,7 +191,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   `test_bump_main_rejects_bad_version`. Each test asserts on the outcome (the returned text,
   the files, the `SystemExit` message), so a function that answers its zero value fails it by
   assertion.
-- [ ] 5.7 Docs. In `deploy/helm/mintmory/README.md`, section "Pulling the image (GHCR)": say CI
+- [x] 5.7 Docs. In `deploy/helm/mintmory/README.md`, section "Pulling the image (GHCR)": say CI
   publishes on pushes to
   the default branch (`main`, `sha-<sha>`, `latest`) and on release tags `vX.Y.Z` as
   the image tag `X.Y.Z` (e.g. `0.1.0`, the chart's default `appVersion`); `latest`
@@ -203,7 +203,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   README documents the tag scheme and the upgrade step") to
   `tests/integration/test_deploy_hardening.py`; it fails by assertion today (the README has no
   `vX.Y.Z`).
-- [ ] 5.8 Gates (the L4 gates only): `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+- [x] 5.8 Gates (the L4 gates only): `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). Do NOT run `npx`/`openspec`
   here: it needs Node and network, which the runner and `ci.yml` do not provide; the spec files
   are validated with `openspec validate deployment-hardening --strict` by the author before the
