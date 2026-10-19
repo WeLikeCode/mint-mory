@@ -53,6 +53,7 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
     SearchResponse,
+    Tenant,
 )
 
 if TYPE_CHECKING:
@@ -1613,3 +1614,19 @@ class PostgresBackend:
                 (ConceptLinkType.RELATES_TO.value,),
             ).fetchall()
         return {frozenset({r[0], r[1]}) for r in rows}
+
+    @staticmethod
+    def _require_global_tenant(tenant_id: str | None, operation: str) -> None:
+        raise NotImplementedError
+
+    def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
+        raise NotImplementedError
+
+    def get_tenant(self, tenant_id: str) -> Tenant | None:
+        raise NotImplementedError
+
+    def list_tenants(self) -> list[Tenant]:
+        raise NotImplementedError
+
+    def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
+        raise NotImplementedError
