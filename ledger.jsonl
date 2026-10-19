@@ -20,3 +20,4 @@
 {"at":"2026-10-19T17:22:46Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-19T17:22:48Z","attempt":1,"cost_usd":0.481777,"runs":4,"type":"plan.charged","unit":"kiro:multi-tenancy"}
 {"at":"2026-10-19T17:22:48Z","run":"r-20261019T1722Z-e4be","type":"unit.dispatched","unit":"kiro:multi-tenancy"}
+{"at":"2026-10-19T17:42:59Z","detail":"awaiting_human: no new answers (verdicts open: Q-003, Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy"}
