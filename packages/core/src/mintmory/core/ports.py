@@ -6,9 +6,11 @@ domain method the REST API, MCP server, and CLI need from a storage backend.
 
 Deliberately excluded from the Protocol (SQLite-only, stay on ``SqliteBackend``):
   - ``connect()`` — returns a raw ``sqlite3.Connection``
-  - ``transaction()`` — context-manager yielding a raw connection
 
-These remain on ``SqliteBackend`` so the history DB, cochange module, and the
+``transaction()`` IS on the Protocol: callers (the cross-tenant copy) must be
+able to compose many public writes into one atomic unit on any backend, but they
+MUST NOT use the yielded value — it is backend-specific (a raw
+``sqlite3.Connection`` on SQLite). The history DB, cochange module, and the
 ``history scrub`` CLI sub-command keep working unchanged; they are explicitly
 typed to ``SqliteBackend`` and documented as SQLite-by-design.
 
@@ -19,6 +21,7 @@ can verify every field access.
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -99,6 +102,16 @@ class StorageBackend(Protocol):
         """Cheap reachability check — SELECT 1. Returns True on success, never raises."""
         ...
 
+    def transaction(self) -> AbstractContextManager[object]:
+        """Compose the calls made inside the block into one atomic unit.
+
+        The outermost entry commits on a clean exit and rolls back + re-raises
+        on an exception; a nested entry joins the outer block. Protocol callers
+        MUST NOT use the yielded value — it is backend-specific (on SQLite it is
+        a raw ``sqlite3.Connection``).
+        """
+        ...
+
     # ------------------------------------------------------------------
     # MemoryRecord CRUD
     # ------------------------------------------------------------------
@@ -119,11 +132,11 @@ class StorageBackend(Protocol):
         """Partial update — only provided fields are changed."""
         ...
 
-    def archive_memory(self, memory_id: str) -> None:
+    def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
         """Soft delete: set is_archived=1, is_active=0."""
         ...
 
-    def supersede_memory(self, memory_id: str, by_id: str) -> None:
+    def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
         """Mark memory_id superseded by by_id."""
         ...
 
@@ -163,7 +176,9 @@ class StorageBackend(Protocol):
     # Feedback
     # ------------------------------------------------------------------
 
-    def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
+    def apply_feedback(
+        self, memory_id: str, useful: bool, stale: bool, tenant_id: str | None = None
+    ) -> None:
         """Per-memory feedback primitive."""
         ...
 

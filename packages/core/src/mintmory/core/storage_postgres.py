@@ -27,6 +27,8 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -327,6 +329,17 @@ class PostgresBackend:
         except Exception:  # noqa: BLE001
             return False
 
+    @contextmanager
+    def transaction(self) -> Generator[Any, None, None]:
+        """Interim stub: transaction composition is not available on Postgres yet.
+
+        Raises ``TenancyNotSupportedError`` before yielding (the real
+        implementation arrives with ``multi-tenancy-postgres-writes``), so no
+        pool access ever happens.
+        """
+        raise TenancyNotSupportedError("transaction")
+        yield  # unreachable — keeps the generator a usable context-manager factory
+
     # ------------------------------------------------------------------
     # Test-isolation helper (not part of Protocol; called from conftest)
     # ------------------------------------------------------------------
@@ -503,6 +516,13 @@ class PostgresBackend:
         ``reinforcement_count``, ``retrieval_count`` are EXCLUDED from the UPDATE
         unless the caller explicitly includes them in ``fields``.
         """
+        if "tenant_id" in fields:
+            requested_tenant = fields.pop("tenant_id")
+            self._require_global_tenant(
+                None if requested_tenant is None else str(requested_tenant),
+                "update_memory",
+            )
+
         existing = self.get_memory(memory_id)
         if existing is None:
             raise KeyError(f"memory {memory_id!r} not found")
@@ -582,7 +602,8 @@ class PostgresBackend:
         assert result is not None
         return result
 
-    def archive_memory(self, memory_id: str) -> None:
+    def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
+        self._require_global_tenant(tenant_id, "archive_memory")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -592,7 +613,8 @@ class PostgresBackend:
             )
             conn.commit()
 
-    def supersede_memory(self, memory_id: str, by_id: str) -> None:
+    def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
+        self._require_global_tenant(tenant_id, "supersede_memory")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -698,7 +720,9 @@ class PostgresBackend:
     # Feedback — ATOMIC server-side (design §6.3)
     # ------------------------------------------------------------------
 
-    def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
+    def apply_feedback(
+        self, memory_id: str, useful: bool, stale: bool, tenant_id: str | None = None
+    ) -> None:
         """
         Atomic server-side feedback (single UPDATE, no read-modify-write).
 
@@ -706,6 +730,7 @@ class PostgresBackend:
         Non-notes: stale vote increments staleness_score; exceeding
         STALENESS_THRESHOLD triggers is_stale.
         """
+        self._require_global_tenant(tenant_id, "apply_feedback")
         assert self._pool is not None
         with self._pool.connection() as conn:
             result = conn.execute(

@@ -19,6 +19,7 @@ from mintmory.core.types import (
     MemoryRecord,
     QueryResult,
     QuerySession,
+    TenantImmutableError,
 )
 
 
@@ -88,7 +89,10 @@ def test_update_memory_does_not_write_tenant_id(store: StorageAdapter) -> None:
         )
     )
 
-    updated = store.update_memory(record.id, content="Alice works at Globex", tenant_id="t2")
+    updated = store.update_memory(record.id, content="Alice works at Globex")
+
+    with pytest.raises(TenantImmutableError):
+        store.update_memory(record.id, tenant_id="t2")
 
     assert updated.tenant_id == "t1"
     fetched = store.get_memory(record.id)
