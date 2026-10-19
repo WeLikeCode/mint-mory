@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 3 | ambiguous | packages/core/tests/test_tenant_persistence.py:91 contradicts requirement 2.5 |
+| Q-001 | answered | 3 | ambiguous | packages/core/tests/test_tenant_persistence.py:91 contradicts requirement 2.5 |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/core/tests/test_tenant_persistence.py:91 contradicts requirement 2.5
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 3
 - **Kind:** ambiguous
 - **Asked:** 2026-10-19T19:22Z by deepseek, run r-20261019T1754Z-ec85, task 3
@@ -33,3 +33,4 @@ test_update_memory_does_not_write_tenant_id expects update_memory(record.id, con
 
 ### Answer
 <!-- write below this line -->
+Option 1. Requirement 2.5 of this unit deliberately changes the behaviour the multi-tenancy unit pinned: a differing tenant_id on update_memory now raises TenantImmutableError, while the stored tenant is still never written. So the older test changes, not the requirement: in packages/core/tests/test_tenant_persistence.py, make line 91 a content-only update, add pytest.raises(TenantImmutableError) for update_memory(record.id, tenant_id="t2"), and keep the assertions that the stored tenant stays t1.
