@@ -77,6 +77,6 @@ needed by any test here.
     R7.2 (response schemas only).
   - _Requirements: 7.1, 7.2_
 
-- [ ] 8. Full gate
+- [x] 8. Full gate
   - Run the `.l4/config.yaml` gates; all exit 0 with coverage ≥ 80%.
   - _Requirements: 8.1_
