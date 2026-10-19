@@ -22,3 +22,5 @@
 {"at":"2026-10-19T17:22:48Z","run":"r-20261019T1722Z-e4be","type":"unit.dispatched","unit":"kiro:multi-tenancy"}
 {"at":"2026-10-19T17:42:59Z","detail":"awaiting_human: no new answers (verdicts open: Q-003, Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy"}
 {"at":"2026-10-19T17:50:29Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-19T17:50:31Z","attempt":1,"cost_usd":1.265136,"runs":5,"type":"plan.charged","unit":"kiro:multi-tenancy"}
+{"at":"2026-10-19T17:50:31Z","run":"r-20261019T1750Z-1d6d","type":"unit.dispatched","unit":"kiro:multi-tenancy"}
