@@ -359,3 +359,4 @@
 {"at":"2026-10-18T20:54:03Z","run":"r-20261018T2054Z-83ab","type":"unit.dispatched","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-18T21:11:50Z","attempt":1,"cost_usd":0.375631,"runs":3,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-18T21:11:50Z","detail":"round 5 failed the same way as round 4: finding F-5758ac1b","reason":"unit_escalated","type":"plan.stopped","unit":"openspec:add-local-observability-stack"}
+{"at":"2026-10-19T04:31:36Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner approved a person's commit that removes the skip markers the spec asked for; the unit is retried","type":"plan.resumed"}
