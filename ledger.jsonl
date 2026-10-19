@@ -394,3 +394,4 @@
 {"at":"2026-10-19T11:36:47Z","attempt":1,"cost_usd":0.696515,"runs":3,"type":"plan.charged","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T11:37:38Z","branch":"l4/archive/openspec/deployment-hardening","head":"d07f326b2f430fecd51cdff6c732bbfbfea51a6e","type":"unit.branch_deleted","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T11:37:39Z","batch":"fixes","profile":"none","revision":"d07f326b2f430fecd51cdff6c732bbfbfea51a6e","type":"batch.accepted"}
+{"at":"2026-10-19T11:38:21Z","revision":"d07f326b2f430fecd51cdff6c732bbfbfea51a6e","type":"plan.completed"}
