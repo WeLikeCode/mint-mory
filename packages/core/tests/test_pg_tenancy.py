@@ -285,3 +285,20 @@ def test_pg_set_tenant_active_tenancy() -> None:
     with pytest.raises(TenancyNotSupportedError):
         backend.set_tenant_active("global", False)
     assert backend._pool is None
+
+
+# ---------------------------------------------------------------------------
+# Task 1 — the Postgres interim transaction() raises before any pool access
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-74b68113")
+def test_pg_transaction_tenancy() -> None:
+    backend = _backend()
+    transaction = getattr(backend, "transaction", None)
+    assert transaction is not None, "PostgresBackend must provide an interim transaction()"
+    with pytest.raises(TenancyNotSupportedError) as excinfo, transaction():
+        pass  # pragma: no cover — the interim raises before yielding
+    assert isinstance(excinfo.value, TenancyNotSupportedError)
+    assert getattr(excinfo.value, "operation", None) == "transaction"
+    assert backend._pool is None
