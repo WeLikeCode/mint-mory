@@ -378,3 +378,4 @@
 {"at":"2026-10-19T04:55:57Z","run":"r-20261019T0455Z-0039","type":"unit.dispatched","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T07:10:24Z","attempt":1,"cost_usd":0.128464,"runs":2,"type":"plan.charged","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T07:10:24Z","detail":"task 5.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)","reason":"unit_halted","type":"plan.stopped","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T09:00:41Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner's delegate: PR #36 fixed the last unit's spec and applied its CI changes; the unit is retried","type":"plan.resumed"}
