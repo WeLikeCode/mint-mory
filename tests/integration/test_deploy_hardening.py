@@ -18,6 +18,7 @@ yaml = pytest.importorskip("yaml")
 
 ROOT = Path(__file__).resolve().parents[2]
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+CHART_README = ROOT / "deploy" / "helm" / "mintmory" / "README.md"
 
 
 def _deploy_validate_steps() -> list[dict[str, Any]]:
@@ -138,6 +139,21 @@ def test_postgres_pdb_does_not_select_oauth2proxy() -> None:
     assert pdb_labels == expected_app_labels
     proxy_pod_labels = proxy["spec"]["template"]["metadata"]["labels"]
     assert not (pdb_labels.items() <= proxy_pod_labels.items())
+
+
+@pytest.mark.l4("C-2f129c5f")
+def test_chart_readme_documents_tag_scheme_and_upgrade_step() -> None:
+    text = CHART_README.read_text(encoding="utf-8")
+    required = (
+        "vX.Y.Z",
+        "X.Y.Z",
+        "latest",
+        "app.kubernetes.io/name",
+        "oauth2-proxy Deployment",
+        "helm upgrade",
+    )
+    missing = [substring for substring in required if substring not in text]
+    assert not missing, f"chart README must contain {missing!r}"
 
 
 @pytest.mark.l4("C-ce708748")
