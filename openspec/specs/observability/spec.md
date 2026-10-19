@@ -611,3 +611,17 @@ If FastMCP differs from these facts, the tests fail and the unit fails; a MintMo
 #### Scenario: Guide has its parts and links
 - **WHEN** the guide, `deploy/observability/README.md` and `README.md` are read
 - **THEN** section 4 has the headings `Modes`, `Variables`, `Local stack`, `Finding a slow phase` and `Production`, and still the headings `4.3 Spans to emit`, `4.4 Metrics to emit` and `Distributed tracing` of parts 2 and 3; the guide and the stack README contain `docker compose -f deploy/observability/compose.yaml up -d`; the guide contains `mintmory_search_latency_ms_bucket`; and `README.md` links to `docs/OBSERVABILITY.md` and `deploy/observability/README.md`
+
+### Requirement: Guard route.path and the status comparison in the middleware's finally — feedback FB-001
+The behaviour pinned by the scenarios below SHALL hold.
+
+#### Scenario: Guard route.path and the status comparison in the middleware's finally
+- **WHEN** the matched route in scope["route"] has no path attribute, or the response status the app sent is not an int
+- **THEN** the middleware still returns or raises exactly what the app did, and the request span is ended
+
+### Requirement: Telemetry must not change what an LLM call raises: reading — feedback FB-002
+The behaviour pinned by the scenarios below SHALL hold.
+
+#### Scenario: Telemetry must not change what an LLM call raises: reading
+- **WHEN** post_chat_completion is called with a base_url whose port is malformed (for example :abc or :99999)
+- **THEN** it raises the same exception class as it did before telemetry was added (http.client.InvalidURL or urllib.error.URLError), not ValueError from reading the port
