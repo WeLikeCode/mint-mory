@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # Release tags (vX.Y.Z) run CI too, so publish-image pushes the release's image tag (MM-44).
+    tags: ["v*"]
   pull_request:
 
 concurrency:
@@ -221,6 +223,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Tags: `main` and `latest` for a default-branch push, `sha-<short sha>` always, and
+      # `X.Y.Z` for a release tag `vX.Y.Z` (the chart's default image tag, its appVersion).
+      # `latest=false` stops the action's default `latest=auto` from also tagging a release
+      # `latest`: only the explicit default-branch line below sets it.
       - name: Docker metadata (tags + labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -229,8 +235,10 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix=sha-
-            type=ref,event=tag
+            type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=false
 
       # LIGHT variant only. The full/torch image (~2 GB) is build-on-demand
       # (`docker build --build-arg VARIANT=full`), never auto-published.
