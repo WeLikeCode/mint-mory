@@ -62,20 +62,26 @@ Sections 1–3 of `tasks.md` shipped in 317e0bf. Four things do not hold on `sta
 4. **CI never renders `auth.mode=oauth2proxy`.** Task 4.1 asked for it; only the
    simple, advanced and postgres renders are validated.
 
-Each fix has a pytest check that needs no `helm`, `docker` or network (the L4 gates
-are ruff, mypy and pytest), plus a `helm template` check that is skipped when `helm`
-is not installed.
+The CI parts (1, the metadata half of 2, and 4) edit `.github/workflows/ci.yml`, which L4
+never edits: the owner applied them (4 in 465af8a, 1 and 2 in 47d97a5), and the repository CI
+and review check them (`design.md` section 2). What L4 builds is the rest: the chart's own
+selector labels (3), `scripts/bump_version.py` keeping the Chart `appVersion` equal to the
+package version (2), and the chart README. Each has a pytest check that runs the code or
+renders the chart with `helm template` (helm is on the L4 gate runner; no test skips).
 
 ## Impact
 
-- Affected specs: **deployment** (ADDED: reproducible/pinned image, GHCR publish,
-  oauth2-proxy auth mode).
+- Affected specs: **deployment** (ADDED: the published image's release tag equals the
+  chart `appVersion` through `scripts/bump_version.py`, the oauth2-proxy auth mode, and the
+  oauth2-proxy pods' own selector labels). The lock-pinned builds, the GHCR publishing rules
+  and the CI oauth2proxy render are in `design.md` section 2, checked by the repository CI and
+  by review.
 - New/changed files: `.gitignore` (unignore uv.lock) + committed `uv.lock`;
   `Dockerfile` (restore `--frozen` + lock COPY); `.github/workflows/ci.yml` (frozen
   sync + a `publish-image` job); `deploy/helm/mintmory/` (values `auth.mode` +
   oauth2-proxy templates + schema + README/NOTES). No Python app code.
   The remaining gap adds: `ci.yml` (`tags: ["v*"]`, semver image tag,
-  `latest=false`, an oauth2proxy render step), `templates/_helpers.tpl` +
+  `latest=false`, an oauth2proxy render step; applied by the owner), `templates/_helpers.tpl` +
   `templates/oauth2proxy-{deployment,service}.yaml` (own selector labels),
   `scripts/bump_version.py` (Chart `appVersion`), chart README, and the tests
   `tests/integration/test_deploy_hardening.py` + `tests/integration/test_bump_version.py`.

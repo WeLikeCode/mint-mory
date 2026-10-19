@@ -2,46 +2,16 @@
 
 ## ADDED Requirements
 
-### Requirement: Reproducible lock-pinned container image
-The dependency lockfile (`uv.lock`) SHALL be committed to the repository, and the
-container image build SHALL install dependencies from it with a frozen sync
-(`uv sync --frozen`) so that image builds are reproducible and supply-chain-pinned.
-CI SHALL likewise sync frozen, so a lockfile that has drifted from `pyproject.toml`
-fails the build rather than silently resolving new versions.
-
-#### Scenario: A drifted lockfile fails the build
-- **GIVEN** `uv.lock` is committed and the Dockerfile/CI use `uv sync --frozen`
-- **WHEN** an image is built or CI runs
-- **THEN** dependencies install from the committed lock, and if the lock is out of sync with `pyproject.toml` the build/CI fails rather than resolving unpinned versions.
-
 ### Requirement: Published container image
-CI SHALL publish the light image to `ghcr.io/<owner>/<repo>` on pushes to the
-default branch and on release tags `v*`, using the built-in `GITHUB_TOKEN`. A release
-tag `vX.Y.Z` SHALL publish the image tag `X.Y.Z`, the chart's default image tag
-(`appVersion`). `latest` SHALL track only the default branch. Pull requests SHALL
-build the image but SHALL NOT publish. The full (torch) variant SHALL NOT be
-auto-published.
-
-#### Scenario: A default-branch push publishes branch, sha and latest
-- **WHEN** a commit is pushed to `main`
-- **THEN** the `publish-image` job runs after `gates` and `deploy-validate` succeed and pushes the light image tagged `main`, `sha-<short sha>` and `latest`.
-
-#### Scenario: A release tag publishes the chart's default image tag
-- **GIVEN** `deploy/helm/mintmory/Chart.yaml` has `appVersion: "0.1.0"` and `packages/meta/pyproject.toml` has `version = "0.1.0"`
-- **WHEN** the tag `v0.1.0` is pushed
-- **THEN** `.github/workflows/ci.yml` runs (its `on.push.tags` includes `"v*"`), `publish-image` runs and pushes `ghcr.io/welikecode/mint-mory:0.1.0`, and that push does NOT tag the image `latest`. The same push also gets `sha-<short sha>` (from `type=sha`).
-
-#### Scenario: A non-release v-tag publishes no version tag
-- **WHEN** a tag `vfoo` or `v1` is pushed (the filter `v*` matches it; `release.yml` rejects it, it accepts only `vX.Y.Z` equal to the package version)
-- **THEN** `type=semver,pattern={{version}}` yields no tag, so only `sha-<short sha>` is pushed, and never `latest` or a `v`-prefixed tag.
-
-#### Scenario: A pull request never publishes
-- **WHEN** CI runs for a `pull_request` event
-- **THEN** `deploy-validate` builds the light image and `publish-image` is skipped (its `if` is `github.event_name == 'push'`).
-
-#### Scenario: The workflow is checked without helm, docker or network
-- **WHEN** `tests/integration/test_deploy_hardening.py` loads `.github/workflows/ci.yml` with `yaml.safe_load` (PyYAML reads the key `on` as the boolean `True`, so the test reads `wf.get("on", wf.get(True))`)
-- **THEN** `on.push.branches` is `["main"]`, `on.push.tags` contains `"v*"`, `pull_request` is still a trigger, `jobs.publish-image.needs` contains `gates` and `deploy-validate`, its `if` is `github.event_name == 'push'`, and the `docker/metadata-action` step's `with.tags` lines include `type=ref,event=branch`, `type=sha,prefix=sha-`, `type=semver,pattern={{version}}` and `type=raw,value=latest,enable={{is_default_branch}}`, do NOT include `type=ref,event=tag`, and its `with.flavor` contains `latest=false`.
+CI publishes the light image to `ghcr.io/<owner>/<repo>`, and a release tag `vX.Y.Z`
+publishes the image tag `X.Y.Z` (the CI behaviour is in `design.md` section 2: it is
+checked by the repository CI and by review, not by these scenarios). For that tag to be
+the chart's default image tag, the chart's `appVersion` SHALL equal the package version,
+and `scripts/bump_version.py` SHALL rewrite the double-quoted `appVersion` line of
+`deploy/helm/mintmory/Chart.yaml` with the five package `pyproject.toml` files, through
+`bump_chart_text(text: str, new_version: str) -> str` and
+`main(argv: list[str] | None = None, root: Path | None = None) -> None`. A chart without
+that line, or a version that is not `X.Y.Z`, SHALL fail the bump with nothing written.
 
 #### Scenario: The chart's default tag tracks the release version
 - **WHEN** the test compares `appVersion` from `deploy/helm/mintmory/Chart.yaml` with `project.version` from `packages/meta/pyproject.toml`
@@ -62,20 +32,17 @@ auto-published.
 - **THEN** `SystemExit("usage: bump_version.py X.Y.Z")` is raised and no file is modified.
 
 ### Requirement: Selectable ingress authentication mode
-The chart SHALL support `auth.mode` values `none` (default), `basic` and
-`oauth2proxy`. `basic` gates the ingress with HTTP basic auth backed by an htpasswd
-Secret. `oauth2proxy` deploys oauth2-proxy for a bring-your-own OIDC provider and
-routes ingress auth through it with ingress-nginx external-auth annotations. No mode
-SHALL require an application code change, and health probes SHALL stay reachable.
+The chart's `auth.mode` is `none` (default), `basic` or `oauth2proxy`; `none` and
+`basic` are the simple and advanced tiers of the deployment spec's requirement "Simple
+and advanced deployment tiers" and do not change here. In `oauth2proxy` mode the chart
+SHALL deploy oauth2-proxy for a bring-your-own OIDC provider and SHALL route ingress auth
+through it with ingress-nginx external-auth annotations, with no application code or
+container change, the health probes still reachable, and application traffic kept on
+the application pods.
 
 #### Scenario: oauth2-proxy mode wires external auth without app changes
-- **GIVEN** `auth.mode: oauth2proxy` with an OIDC issuer and client
-- **WHEN** the chart is rendered
-- **THEN** an oauth2-proxy Deployment + Service + Secret are produced (the OIDC client secret and cookie secret live only in that Secret), the Ingress carries `auth-url`/`auth-signin` external-auth annotations pointing at oauth2-proxy plus an `/oauth2` path, no application container changes, and `/healthz`/`/readyz` remain reachable by the kubelet (probes hit the pod directly, not the ingress).
-
-#### Scenario: Default is unauthenticated and basic still works
-- **WHEN** the chart is rendered with the default `auth.mode: none`
-- **THEN** no auth is configured; and with `auth.mode: basic` the ingress gets HTTP basic-auth annotations backed by an htpasswd Secret.
+- **WHEN** the chart is rendered with `helm template` as release `t` twice: in mode `none` with only `--set ingress.enabled=true`, and in mode `oauth2proxy` with `--set auth.mode=oauth2proxy --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com --set auth.oauth2proxy.clientId=mintmory-ci --set auth.oauth2proxy.clientSecret=ci-placeholder --set ingress.enabled=true`
+- **THEN** the `oauth2proxy` render has a Deployment, a Service and a Secret named `t-mintmory-oauth2-proxy` (the Secret holds the keys `client-secret` and `cookie-secret`); its Ingress `t-mintmory` has the annotation `nginx.ingress.kubernetes.io/auth-url` starting with `http://t-mintmory-oauth2-proxy.` and `nginx.ingress.kubernetes.io/auth-signin` containing `/oauth2/start`, and a path `/oauth2` whose backend is Service `t-mintmory-oauth2-proxy`; the containers of its Deployment `t-mintmory` equal those of the `none` render, and their liveness and readiness probes are `httpGet` on `/healthz` and `/readyz` (the kubelet calls the pod, not the ingress); and the selector of Service `t-mintmory` is NOT a subset of the pod-template labels of Deployment `t-mintmory-oauth2-proxy`, so no application request reaches oauth2-proxy.
 
 ### Requirement: oauth2-proxy pods have their own selector labels
 In `auth.mode: oauth2proxy` the oauth2-proxy pods SHALL carry
@@ -85,39 +52,15 @@ PodDisruptionBudget selectors never match an oauth2-proxy pod and application
 traffic never reaches oauth2-proxy. The application selectors SHALL NOT change.
 
 #### Scenario: The rendered selectors are disjoint
-- **GIVEN** `helm` is on PATH (the test is skipped with `pytest.mark.skipif(shutil.which("helm") is None, ...)` otherwise)
-- **WHEN** the chart is rendered as release `t` with `--set auth.mode=oauth2proxy --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com --set auth.oauth2proxy.clientId=mintmory-ci --set auth.oauth2proxy.clientSecret=ci-placeholder --set ingress.enabled=true`
-- **THEN** Deployment `t-mintmory-oauth2-proxy` has pod-template labels `{app.kubernetes.io/name: mintmory-oauth2-proxy, app.kubernetes.io/instance: t, app.kubernetes.io/component: oauth2-proxy}` and the same `matchLabels`; the selector of Service `t-mintmory` is NOT a subset of those pod labels; the selector of Service `t-mintmory-oauth2-proxy` IS a subset of them and is NOT a subset of the pod labels of Deployment `t-mintmory`; and Deployment `t-mintmory` still has `matchLabels` `{app.kubernetes.io/name: mintmory, app.kubernetes.io/instance: t}`.
+- **WHEN** the chart is rendered with `helm template` as release `t` with `--set auth.mode=oauth2proxy --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com --set auth.oauth2proxy.clientId=mintmory-ci --set auth.oauth2proxy.clientSecret=ci-placeholder --set ingress.enabled=true`
+- **THEN** Deployment `t-mintmory-oauth2-proxy` has pod-template labels `{app.kubernetes.io/name: mintmory-oauth2-proxy, app.kubernetes.io/instance: t, app.kubernetes.io/component: oauth2-proxy}` and the same `matchLabels`; the selector of Service `t-mintmory` is NOT a subset of those pod labels; the selector of Service `t-mintmory-oauth2-proxy` IS a subset of them and is NOT a subset of the pod labels of Deployment `t-mintmory`; and the application selectors are unchanged: Deployment `t-mintmory` still has `matchLabels` `{app.kubernetes.io/name: mintmory, app.kubernetes.io/instance: t}` and Service `t-mintmory` still has exactly that selector.
 
 Facts the render relies on (read from the chart): the oauth2-proxy pod template carries only the helper labels (no `podLabels` are merged into it; `podLabels` apply to `deployment.yaml` only), and `values-postgres.yaml` renders the PDB `t-mintmory` with no further required values (CI already renders it that way).
 
 #### Scenario: The postgres-mode PodDisruptionBudget does not cover oauth2-proxy
-- **GIVEN** `helm` is on PATH
 - **WHEN** the same render adds `-f deploy/helm/mintmory/values-postgres.yaml`
-- **THEN** the `matchLabels` of PodDisruptionBudget `t-mintmory` are NOT a subset of the oauth2-proxy pod-template labels.
-
-#### Scenario: The template wiring is checked without helm
-- **WHEN** `tests/integration/test_deploy_hardening.py` reads the chart templates as text
-- **THEN** `templates/_helpers.tpl` defines `mintmory.oauth2ProxySelectorLabels` whose body contains `app.kubernetes.io/name: {{ printf "%s-oauth2-proxy" (include "mintmory.name" .)`, `app.kubernetes.io/instance: {{ .Release.Name }}` and `app.kubernetes.io/component: oauth2-proxy`; `templates/oauth2proxy-deployment.yaml` contains `include "mintmory.oauth2ProxySelectorLabels"` exactly 2 times and `include "mintmory.selectorLabels"` 0 times; `templates/oauth2proxy-service.yaml` contains `include "mintmory.oauth2ProxySelectorLabels"` exactly 1 time and `include "mintmory.selectorLabels"` 0 times.
-
-#### Scenario: The application selectors are unchanged
-- **WHEN** the same test reads `_helpers.tpl`, `deployment.yaml`, `service.yaml` and `pdb.yaml`
-- **THEN** the body of the `mintmory.selectorLabels` define is still exactly the two lines `app.kubernetes.io/name: {{ include "mintmory.name" . }}` and `app.kubernetes.io/instance: {{ .Release.Name }}`, and each of `deployment.yaml`, `service.yaml` and `pdb.yaml` still contains `include "mintmory.selectorLabels"`.
+- **THEN** the `matchLabels` of PodDisruptionBudget `t-mintmory` are NOT a subset of the oauth2-proxy pod-template labels, and are still exactly `{app.kubernetes.io/name: mintmory, app.kubernetes.io/instance: t}`.
 
 #### Scenario: The README documents the tag scheme and the upgrade step
 - **WHEN** `tests/integration/test_deploy_hardening.py` reads `deploy/helm/mintmory/README.md`
 - **THEN** the text contains each of the substrings `vX.Y.Z`, `X.Y.Z`, `latest`, `app.kubernetes.io/name`, `oauth2-proxy Deployment` and `helm upgrade`.
-
-### Requirement: CI validates the oauth2proxy auth render
-The CI `deploy-validate` job SHALL render the chart with `auth.mode=oauth2proxy`
-(placeholder OIDC values, ingress enabled) and validate the output with kubeconform,
-as it already does for the simple, advanced and postgres renders, so a broken
-oauth2proxy template fails CI.
-
-#### Scenario: The oauth2proxy render is validated in CI
-- **WHEN** CI runs the `deploy-validate` job
-- **THEN** a step runs `helm template t deploy/helm/mintmory --set auth.mode=oauth2proxy --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com --set auth.oauth2proxy.clientId=mintmory-ci --set auth.oauth2proxy.clientSecret=ci-placeholder --set ingress.enabled=true` piped into `kubeconform -strict -summary -kubernetes-version 1.29.0 -`, and the job fails if any rendered resource is invalid.
-
-#### Scenario: The CI step is checked without helm
-- **WHEN** `tests/integration/test_deploy_hardening.py` loads `.github/workflows/ci.yml` with `yaml.safe_load`
-- **THEN** some step of `jobs.deploy-validate.steps` has a `run` string containing all of `auth.mode=oauth2proxy`, `auth.oauth2proxy.oidcIssuerUrl=`, `auth.oauth2proxy.clientId=`, `auth.oauth2proxy.clientSecret=`, `ingress.enabled=true` and `kubeconform -strict`.
