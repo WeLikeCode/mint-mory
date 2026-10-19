@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 5 | technical | packages/core/tests/test_tenant_directory.py:191 |
 | Q-002 | accepted | 7 | technical | packages/core/tests/test_tenant_schema_gate.py:29 |
-| Q-003 | open | none | verdict | Criterion C-877680dc (Req 4.6): accept as satisfied? |
+| Q-003 | answered | none | verdict | Criterion C-877680dc (Req 4.6): accept as satisfied? |
 | Q-004 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
@@ -69,7 +69,7 @@ Edit `packages/core/tests/test_schema.py`: add `tenants` to `REQUIRED_TABLES`; a
 
 ## Q-003: Criterion C-877680dc (Req 4.6): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -95,6 +95,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: Req 4.6 is an invariant over the existing suite. The tests gate ran the whole suite green in round 1 (step 3 ok), and the only pre-existing test file the unit changed is packages/core/tests/test_schema.py, with 65 added lines and none removed: the R7.1 additions accepted in Q-002. No other existing test changed.
 ---
 
 ## Q-004: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
