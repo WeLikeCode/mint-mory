@@ -42,11 +42,13 @@ from mintmory.core.hybrid_search import collect_scores, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
+    TENANT_GLOBAL,
     ConceptLink,
     ConceptLinkType,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
+    ProtectedTenantError,
     QueryResult,
     QuerySession,
     SearchAroundSpec,
@@ -54,6 +56,8 @@ from mintmory.core.types import (
     SearchResponse,
     Tenant,
     TenantMigrationError,
+    TenantNotFoundError,
+    validate_tenant_id,
 )
 
 if TYPE_CHECKING:
@@ -1943,16 +1947,56 @@ class SqliteBackend:
             conn.execute("PRAGMA foreign_keys = ON")
 
     def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
-        raise NotImplementedError
+        """Create a tenant idempotently; an existing id is returned unchanged."""
+        validate_tenant_id(tenant_id)
+        now = _iso(_utcnow())
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO tenants "
+                "(id, name, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+                (tenant_id, name, now, now),
+            )
+            row = conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+        assert row is not None
+        return self._row_to_tenant(row)
 
     def get_tenant(self, tenant_id: str) -> Tenant | None:
-        raise NotImplementedError
+        """Return the tenant row, or None for an unknown/invalid id."""
+        row = self.connect().execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+        return None if row is None else self._row_to_tenant(row)
 
     def list_tenants(self) -> list[Tenant]:
-        raise NotImplementedError
+        """Every tenant (active and inactive), ordered by id ascending."""
+        rows = self.connect().execute("SELECT * FROM tenants ORDER BY id").fetchall()
+        return [self._row_to_tenant(row) for row in rows]
 
     def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
-        raise NotImplementedError
+        """Activate/deactivate a tenant; ``global`` cannot be deactivated."""
+        existing = self.get_tenant(tenant_id)
+        if existing is None:
+            raise TenantNotFoundError(tenant_id)
+        if tenant_id == TENANT_GLOBAL:
+            if not active:
+                raise ProtectedTenantError()
+            return existing
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE tenants SET is_active = ?, updated_at = ? WHERE id = ?",
+                (_bool(active), _iso(_utcnow()), tenant_id),
+            )
+        updated = self.get_tenant(tenant_id)
+        assert updated is not None
+        return updated
+
+    @staticmethod
+    def _row_to_tenant(row: sqlite3.Row) -> Tenant:
+        return Tenant(
+            id=row["id"],
+            name=row["name"],
+            is_active=bool(row["is_active"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
 
 
 # ---------------------------------------------------------------------------

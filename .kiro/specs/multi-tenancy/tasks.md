@@ -52,7 +52,7 @@ needed by any test here.
   - Tests: round trip of every model's `tenant_id`.
   - _Requirements: 4.1, 4.2, 4.6, 4.7_
 
-- [ ] 5. Tenant directory (`storage.py`)
+- [x] 5. Tenant directory (`storage.py`)
   - `create_tenant`, `get_tenant`, `list_tenants`, `set_tenant_active` per R5.
   - Tests: create/get/list order; existing id returns the row unchanged (name
     kept); invalid id raises plain `InvalidTenantIdError`; `get_tenant` of an

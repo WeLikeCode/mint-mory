@@ -187,7 +187,13 @@ def test_list_tenants_on_fresh_database_returns_only_global(store: StorageAdapte
 
 @pytest.mark.l4("C-0df6c3f3")
 def test_set_tenant_active_updates_flag_and_timestamp(store: StorageAdapter) -> None:
-    _insert_tenant(store, "acme", name="Acme", updated_at="2020-01-01T00:00:00")
+    _insert_tenant(
+        store,
+        "acme",
+        name="Acme",
+        created_at="2020-01-01T00:00:00",
+        updated_at="2020-01-01T00:00:00",
+    )
     _insert_tenant(store, "beta", name="Beta")
 
     updated = store.set_tenant_active("acme", False)
