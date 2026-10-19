@@ -1,4 +1,4 @@
-# Verification: kiro:multi-tenancy: NEEDS_HUMAN (round 1)
+# Verification: kiro:multi-tenancy: PASS (round 2)
 
 traceability: 35/36 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 35/36 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.0 | base merged: staging@b956492330 as c4777739bb (1 commit) |
-| 1 | integrity | ok | 0.3 | 7 sub-checks (+1 unfrozen by human answers); scope: 25 changed file(s) |
-| 2 | build | ok | 0.8 |  |
-| 3 | tests | ok | 65.9 |  |
-| 4 | traceability | ok | 0.1 | 35/36 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 4.0 | 33/36 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 32.4 | 1 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -180,6 +180,11 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-58364fba | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-d424e27b | ok | 0.800 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-003 accept C-877680dc by human: Req 4.6 is an invariant over the existing suite. The tests gate ran the whole suite green in round 1 (step 3 ok), and the only pre-existing test file the unit changed is packages/core/tests/test_schema.py, with 65 added lines and none removed: the R7.1 additions accepted in Q-002. No other existing ...
+- Q-004 accept H-e0757174 by human: the cut fell inside test files only. The judge's diff after the harness exclusions is 158,407 characters; every production file (ports.py, schema.sql, storage.py, storage_postgres.py, types.py, the OpenAPI yaml) and the pre-tenancy fixture lie before 120,000 and were judged. The unseen part is the t...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -207,7 +212,7 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-619bc1e6 | Req 4.3 | pass | pass | the judge passed it and a discriminating test passes |
 | C-a41e591b | Req 4.4 | pass | pass | the judge passed it and a discriminating test passes |
 | C-5b9008af | Req 4.5 | pass | pass | the judge passed it and a discriminating test passes |
-| C-877680dc | Req 4.6 | pass | needs_human | uncovered: no adequate discriminating test traces it |
+| C-877680dc | Req 4.6 | pass | pass | accepted by human: Req 4.6 is an invariant over the existing suite. The tests gate ran the whole suite green in round 1 (step 3 ok), and the only pre-existing test file the unit changed is packages/core/tests/test_schema.py, with 65 added lines and none removed: the R7.1 additions accepted in Q-002.... |
 | C-03910be6 | Req 4.7 | pass | pass | the judge passed it and a discriminating test passes |
 | C-13c99d09 | Req 5.1 | pass | pass | the judge passed it and a discriminating test passes |
 | C-ef053fe0 | Req 5.2 | pass | pass | the judge passed it and a discriminating test passes |
@@ -228,10 +233,6 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 - [minor, deterministic] a test is ignored as evidence (criterion C-877680dc): packages.core.tests.test_tenant_persistence::test_memory_tenant_id_persists_and_round_trips: it traces 4 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-03910be6): packages.core.tests.test_tenant_persistence::test_memory_tenant_id_persists_and_round_trips: it traces 4 criteria (verifier.max_criteria_per_test=3)
 - [minor, judge] Postgres get_tenant with invalid id (spec gap) (criterion C-a7f825e4): PostgresBackend.get_tenant returns None for any non-'global' id including invalid ones; unpinned but consistent.
-
-## Needs a human
-
-- the diff is longer than 120000 characters: the judge saw only the start
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
