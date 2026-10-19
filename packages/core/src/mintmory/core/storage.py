@@ -629,8 +629,10 @@ class SqliteBackend:
     # ------------------------------------------------------------------
     # Index manifest — per-path state for recurrent tree indexing
     # ------------------------------------------------------------------
-    def manifest_get(self, path: str) -> ManifestEntry | None:
+    def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
         """Return the manifest row for ``path`` (absolute), or None."""
+        if tenant_id is None:
+            raise NotImplementedError
         row: sqlite3.Row | None = (
             self.connect()
             .execute("SELECT * FROM index_manifest WHERE path = ?", (path,))
@@ -661,8 +663,11 @@ class SqliteBackend:
         index_mode: str,
         memory_ids: list[str],
         content_hash: str | None = None,
+        tenant_id: str = "global",
     ) -> None:
         """Insert or replace the manifest row for ``path``."""
+        if tenant_id is None:
+            raise NotImplementedError
         with self.transaction() as conn:
             conn.execute(
                 "INSERT INTO index_manifest "
@@ -687,8 +692,10 @@ class SqliteBackend:
                 ),
             )
 
-    def manifest_paths(self, collection: str) -> set[str]:
+    def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
         """All paths currently tracked under ``collection``."""
+        if tenant_id is None:
+            raise NotImplementedError
         rows = (
             self.connect()
             .execute("SELECT path FROM index_manifest WHERE collection = ?", (collection,))
@@ -696,8 +703,10 @@ class SqliteBackend:
         )
         return {row["path"] for row in rows}
 
-    def manifest_delete(self, path: str) -> None:
+    def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
         """Drop the manifest row for ``path`` (memories are archived separately)."""
+        if tenant_id is None:
+            raise NotImplementedError
         with self.transaction() as conn:
             conn.execute("DELETE FROM index_manifest WHERE path = ?", (path,))
 
@@ -1332,7 +1341,9 @@ class SqliteBackend:
             generated_at=row["generated_at"],
         )
 
-    def get_summary(self, concept: str) -> MemorySummary | None:
+    def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
+        if tenant_id is None:
+            raise NotImplementedError
         conn = self.connect()
         row = conn.execute(
             "SELECT * FROM memory_summaries WHERE concept = ?", (concept,)
