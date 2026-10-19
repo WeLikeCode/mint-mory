@@ -52,6 +52,7 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
     SearchResponse,
+    TenantMigrationError,
 )
 
 if TYPE_CHECKING:
@@ -88,6 +89,145 @@ _MEMORY_COLUMNS: tuple[str, ...] = (
     "updated_at",
     "last_accessed_at",
     "metadata",
+)
+
+
+# Tables that carry a ``tenant_id`` column.  Order is the fresh-DDL order.
+_TENANT_TABLES: tuple[str, ...] = (
+    "memories",
+    "concept_links",
+    "memory_summaries",
+    "index_manifest",
+    "query_sessions",
+    "query_results",
+)
+
+# Fresh DDL of the three tables the migration rebuilds (kept in lockstep with
+# schema.sql; the R3.6 test compares a migrated database against a fresh one).
+_TENANT_REBUILD_DDL: dict[str, str] = {
+    "concept_links": """
+        CREATE TABLE concept_links__tenant_new (
+            id                  TEXT PRIMARY KEY,
+            source_memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            target_memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            link_type           TEXT NOT NULL CHECK (link_type IN (
+                                    'relates_to','contradicts','refines','supersedes',
+                                    'enables','depends_on','similar_to','part_of',
+                                    'uses','before','valid_until','annotates'
+                                )),
+            entity              TEXT NOT NULL DEFAULT '',
+            strength            REAL NOT NULL DEFAULT 0.5
+                                    CHECK (strength >= 0.0 AND strength <= 1.0),
+            confidence          REAL NOT NULL DEFAULT 0.5
+                                    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+            source              TEXT NOT NULL DEFAULT 'dreaming'
+                                    CHECK (source IN ('extraction','inference','dreaming','user')),
+            verified            INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT NOT NULL,
+            updated_at          TEXT NOT NULL,
+            tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+            UNIQUE (tenant_id, source_memory_id, target_memory_id, link_type)
+        )
+    """,
+    "memory_summaries": """
+        CREATE TABLE memory_summaries__tenant_new (
+            id              TEXT PRIMARY KEY,
+            concept         TEXT NOT NULL,
+            summary_text    TEXT NOT NULL,
+            memory_count    INTEGER NOT NULL DEFAULT 0,
+            is_current      INTEGER NOT NULL DEFAULT 1,
+            generated_at    TEXT NOT NULL,
+            tenant_id       TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+            UNIQUE (tenant_id, concept)
+        )
+    """,
+    "index_manifest": """
+        CREATE TABLE index_manifest__tenant_new (
+            path          TEXT NOT NULL,
+            collection    TEXT NOT NULL,
+            size          INTEGER NOT NULL,
+            mtime         REAL NOT NULL,
+            content_hash  TEXT,
+            index_mode    TEXT NOT NULL DEFAULT 'metadata'
+                              CHECK (index_mode IN ('metadata','content','vision')),
+            memory_ids    TEXT NOT NULL DEFAULT '[]',
+            online_only   INTEGER NOT NULL DEFAULT 0,
+            last_seen     TEXT NOT NULL,
+            tenant_id     TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+            PRIMARY KEY (tenant_id, path)
+        )
+    """,
+}
+
+_TENANT_REBUILD_COLUMNS: dict[str, tuple[str, ...]] = {
+    "concept_links": (
+        "id",
+        "source_memory_id",
+        "target_memory_id",
+        "link_type",
+        "entity",
+        "strength",
+        "confidence",
+        "source",
+        "verified",
+        "created_at",
+        "updated_at",
+        "tenant_id",
+    ),
+    "memory_summaries": (
+        "id",
+        "concept",
+        "summary_text",
+        "memory_count",
+        "is_current",
+        "generated_at",
+        "tenant_id",
+    ),
+    "index_manifest": (
+        "path",
+        "collection",
+        "size",
+        "mtime",
+        "content_hash",
+        "index_mode",
+        "memory_ids",
+        "online_only",
+        "last_seen",
+        "tenant_id",
+    ),
+}
+
+_TENANT_REBUILD_INDEXES: dict[str, tuple[str, ...]] = {
+    "concept_links": (
+        "CREATE INDEX IF NOT EXISTS idx_links_source ON concept_links(source_memory_id, link_type)",
+        "CREATE INDEX IF NOT EXISTS idx_links_target ON concept_links(target_memory_id, link_type)",
+        "CREATE INDEX IF NOT EXISTS idx_links_type_strength "
+        "ON concept_links(link_type, strength DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_links_entity ON concept_links(entity) WHERE entity != ''",
+    ),
+    "memory_summaries": (),
+    "index_manifest": (
+        "CREATE INDEX IF NOT EXISTS idx_manifest_collection ON index_manifest(collection)",
+    ),
+}
+
+# Missing tenant indexes, in the order required by R3.2(c).
+_TENANT_INDEX_DDL: tuple[tuple[str, str], ...] = (
+    (
+        "idx_memories_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_memories_tenant "
+        "ON memories(tenant_id, is_active, is_archived)",
+    ),
+    (
+        "idx_links_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_links_tenant "
+        "ON concept_links(tenant_id, source_memory_id, link_type)",
+    ),
+    (
+        "idx_sessions_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_tenant "
+        "ON query_sessions(tenant_id, concluded, created_at)",
+    ),
 )
 
 
@@ -277,6 +417,7 @@ class SqliteBackend:
         self._ensure_trigram(conn)
         self._ensure_is_note_column(conn)
         self._ensure_index_mode_vision(conn)
+        self._ensure_tenant_columns(conn)
 
     def _ensure_trigram(self, conn: sqlite3.Connection) -> None:
         """
@@ -1680,11 +1821,117 @@ class SqliteBackend:
         ).fetchall()
         return {frozenset({r["source_memory_id"], r["target_memory_id"]}) for r in rows}
 
+    @staticmethod
+    def _unique_index_columns(conn: sqlite3.Connection, table: str) -> list[tuple[str, ...]]:
+        """Columns of every unique index on ``table`` (in index order)."""
+        result: list[tuple[str, ...]] = []
+        for index in conn.execute(f"PRAGMA index_list({table})").fetchall():
+            if not index["unique"]:
+                continue
+            columns = tuple(
+                str(row["name"])
+                for row in conn.execute(f"PRAGMA index_info({index['name']})").fetchall()
+            )
+            result.append(columns)
+        return result
+
+    @staticmethod
+    def _primary_key_columns(conn: sqlite3.Connection, table: str) -> tuple[str, ...]:
+        """Column names of ``table``'s primary key, in key order."""
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return tuple(
+            str(row["name"])
+            for row in sorted((row for row in rows if row["pk"]), key=lambda r: r["pk"])
+        )
+
     def _tenant_migration_statements(self, conn: sqlite3.Connection) -> list[str]:
-        raise NotImplementedError
+        """Return only the tenant DDL this database still needs, in the required order.
+
+        Plan and execution are separate so tests can inject faults and so the
+        plan can be recomputed inside the migration transaction (R3.3).
+        """
+        table_columns: dict[str, list[str]] = {
+            table: [
+                str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            ]
+            for table in _TENANT_TABLES
+        }
+
+        statements: list[str] = []
+        for table in _TENANT_TABLES:
+            if "tenant_id" not in table_columns[table]:
+                statements.append(
+                    f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'global'"
+                )
+
+        rebuilt: set[str] = set()
+        if (
+            "tenant_id",
+            "source_memory_id",
+            "target_memory_id",
+            "link_type",
+        ) not in self._unique_index_columns(conn, "concept_links"):
+            rebuilt.add("concept_links")
+        if ("tenant_id", "concept") not in self._unique_index_columns(conn, "memory_summaries"):
+            rebuilt.add("memory_summaries")
+        if self._primary_key_columns(conn, "index_manifest") != ("tenant_id", "path"):
+            rebuilt.add("index_manifest")
+
+        for table in _TENANT_TABLES:
+            if table not in rebuilt:
+                continue
+            columns = ", ".join(_TENANT_REBUILD_COLUMNS[table])
+            statements.extend(
+                (
+                    _TENANT_REBUILD_DDL[table].strip(),
+                    f"INSERT INTO {table}__tenant_new ({columns}) SELECT {columns} FROM {table}",
+                    f"DROP TABLE {table}",
+                    f"ALTER TABLE {table}__tenant_new RENAME TO {table}",
+                )
+            )
+            statements.extend(_TENANT_REBUILD_INDEXES[table])
+
+        existing_indexes = {
+            str(row["name"])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+        index_tables = {
+            "idx_memories_tenant": "memories",
+            "idx_links_tenant": "concept_links",
+            "idx_sessions_tenant": "query_sessions",
+        }
+        for name, ddl in _TENANT_INDEX_DDL:
+            if name not in existing_indexes or index_tables[name] in rebuilt:
+                statements.append(ddl)
+        return statements
 
     def _ensure_tenant_columns(self, conn: sqlite3.Connection) -> None:
-        raise NotImplementedError
+        """Apply the tenant migration atomically, or fail closed (R3.3/R3.4).
+
+        The plan is computed once without a lock (a migrated database never takes
+        a write lock at startup) and again inside ``BEGIN IMMEDIATE`` so two
+        processes starting together cannot replay a stale plan.
+        """
+        if not self._tenant_migration_statements(conn):
+            return
+
+        # Foreign keys must be off outside the transaction: SQLite ignores the
+        # pragma while a transaction is open. They are restored in ``finally``.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                statements = self._tenant_migration_statements(conn)
+                for statement in statements:
+                    conn.execute(statement)
+                conn.commit()
+            except sqlite3.Error as exc:
+                conn.rollback()
+                raise TenantMigrationError(str(exc)) from exc
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
 
 
 # ---------------------------------------------------------------------------

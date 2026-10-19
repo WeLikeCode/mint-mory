@@ -36,7 +36,7 @@ needed by any test here.
     pass unchanged.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 4.3, 4.4, 4.5_
 
-- [ ] 3. Migration (`storage.py`)
+- [x] 3. Migration (`storage.py`)
   - `_tenant_migration_statements(conn)` (R3.2 detection rules and order) and
     `_ensure_tenant_columns(conn)` (R3.3 transaction, R3.4 fail closed), called
     from `initialise()` after `_ensure_index_mode_vision`.
