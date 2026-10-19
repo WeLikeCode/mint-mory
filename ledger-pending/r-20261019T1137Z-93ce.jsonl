@@ -2,3 +2,4 @@
 {"ts": "2026-10-19T11:37:22.431705Z", "run_id": "r-20261019T1137Z-93ce", "unit": "openspec:deployment-hardening", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 35, "merge_commit": "a48df4750ad91c40ff5567dae7940875d6c01a75"}
 {"ts": "2026-10-19T11:37:28.592876Z", "run_id": "r-20261019T1137Z-93ce", "unit": "openspec:deployment-hardening", "seq": 3, "type": "archive.opened", "number": 38, "url": "<forge>/WeLikeCode/mint-mory/pull/38", "branch": "l4/archive/openspec/deployment-hardening"}
 {"ts": "2026-10-19T11:37:30.180384Z", "run_id": "r-20261019T1137Z-93ce", "unit": "openspec:deployment-hardening", "seq": 4, "type": "archive.merged", "head": "d07f326b2f430fecd51cdff6c732bbfbfea51a6e", "number": 38}
+{"ts": "2026-10-19T11:37:31.821654Z", "run_id": "r-20261019T1137Z-93ce", "unit": "openspec:deployment-hardening", "seq": 5, "type": "run.finished", "exit_code": 0}
