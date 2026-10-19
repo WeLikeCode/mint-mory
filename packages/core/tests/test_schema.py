@@ -52,6 +52,7 @@ def schema_sql() -> str:
 
 
 REQUIRED_TABLES = {
+    "tenants",
     "memories",
     "concept_links",
     "memory_summaries",
@@ -76,6 +77,18 @@ def test_fts5_virtual_table_exists(conn: sqlite3.Connection) -> None:
         "SELECT name FROM sqlite_master WHERE type='table' AND name='memories_fts'"
     ).fetchone()
     assert row is not None, "FTS5 virtual table 'memories_fts' is missing"
+
+
+def test_tenants_has_exactly_one_global_row(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("SELECT id, name, is_active, created_at FROM tenants").fetchall()
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row["id"], row["name"], row["is_active"], row["created_at"]) == (
+        "global",
+        "Global (default) tenant",
+        1,
+        "1970-01-01T00:00:00",
+    )
 
 
 def test_memories_trigram_is_not_in_core_schema(conn: sqlite3.Connection) -> None:
@@ -129,6 +142,7 @@ REQUIRED_MEMORIES_COLUMNS = {
     "updated_at",
     "last_accessed_at",
     "metadata",
+    "tenant_id",
 }
 
 
@@ -156,6 +170,7 @@ REQUIRED_LINKS_COLUMNS = {
     "verified",
     "created_at",
     "updated_at",
+    "tenant_id",
 }
 
 
@@ -180,6 +195,7 @@ REQUIRED_SESSIONS_COLUMNS = {
     "useful_ids",
     "stale_ids",
     "concluded",
+    "tenant_id",
 }
 
 
@@ -188,6 +204,68 @@ def test_query_sessions_columns_exist(conn: sqlite3.Connection) -> None:
     existing = {row["name"] for row in info}
     missing = REQUIRED_SESSIONS_COLUMNS - existing
     assert not missing, f"query_sessions table missing columns: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# Column existence — memory_summaries, query_results, index_manifest
+# ---------------------------------------------------------------------------
+
+
+REQUIRED_SUMMARY_COLUMNS = {
+    "id",
+    "concept",
+    "summary_text",
+    "memory_count",
+    "is_current",
+    "generated_at",
+    "tenant_id",
+}
+
+
+def test_memory_summaries_columns_exist(conn: sqlite3.Connection) -> None:
+    info = conn.execute("PRAGMA table_info(memory_summaries)").fetchall()
+    existing = {row["name"] for row in info}
+    missing = REQUIRED_SUMMARY_COLUMNS - existing
+    assert not missing, f"memory_summaries table missing columns: {missing}"
+
+
+REQUIRED_RESULTS_COLUMNS = {
+    "session_id",
+    "memory_id",
+    "relevance_score",
+    "was_accessed",
+    "was_useful",
+    "was_stale",
+    "tenant_id",
+}
+
+
+def test_query_results_columns_exist(conn: sqlite3.Connection) -> None:
+    info = conn.execute("PRAGMA table_info(query_results)").fetchall()
+    existing = {row["name"] for row in info}
+    missing = REQUIRED_RESULTS_COLUMNS - existing
+    assert not missing, f"query_results table missing columns: {missing}"
+
+
+REQUIRED_MANIFEST_COLUMNS = {
+    "path",
+    "collection",
+    "size",
+    "mtime",
+    "content_hash",
+    "index_mode",
+    "memory_ids",
+    "online_only",
+    "last_seen",
+    "tenant_id",
+}
+
+
+def test_index_manifest_columns_exist(conn: sqlite3.Connection) -> None:
+    info = conn.execute("PRAGMA table_info(index_manifest)").fetchall()
+    existing = {row["name"] for row in info}
+    missing = REQUIRED_MANIFEST_COLUMNS - existing
+    assert not missing, f"index_manifest table missing columns: {missing}"
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +287,9 @@ REQUIRED_INDEXES = {
     "idx_sessions_concluded",
     "idx_results_session",
     "idx_results_memory",
+    "idx_memories_tenant",
+    "idx_links_tenant",
+    "idx_sessions_tenant",
 }
 
 

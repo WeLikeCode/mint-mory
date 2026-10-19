@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         SearchAroundSpec,
         SearchRequest,
         SearchResponse,
+        Tenant,
     )
 
 
@@ -58,6 +59,7 @@ class ManifestEntry(TypedDict):
     memory_ids: str  # JSON-encoded list[str]
     online_only: int  # INTEGER bool (0 or 1)
     last_seen: str  # ISO-8601 timestamp
+    tenant_id: str
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +131,8 @@ class StorageBackend(Protocol):
     # Index manifest
     # ------------------------------------------------------------------
 
-    def manifest_get(self, path: str) -> ManifestEntry | None:
-        """Return the manifest row for path, or None."""
+    def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
+        """Return the manifest row for ``(tenant_id, path)``, or None."""
         ...
 
     def manifest_upsert(
@@ -144,16 +146,17 @@ class StorageBackend(Protocol):
         index_mode: str,
         memory_ids: list[str],
         content_hash: str | None = None,
+        tenant_id: str = "global",
     ) -> None:
-        """Insert or replace the manifest row for path."""
+        """Insert or replace the manifest row for ``(tenant_id, path)``."""
         ...
 
-    def manifest_paths(self, collection: str) -> set[str]:
-        """All paths currently tracked under collection."""
+    def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
+        """All paths currently tracked under ``collection`` for ``tenant_id``."""
         ...
 
-    def manifest_delete(self, path: str) -> None:
-        """Drop the manifest row for path."""
+    def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
+        """Drop the ``(tenant_id, path)`` manifest row."""
         ...
 
     # ------------------------------------------------------------------
@@ -307,12 +310,32 @@ class StorageBackend(Protocol):
         """INSERT OR REPLACE keyed on the UNIQUE concept column."""
         ...
 
-    def get_summary(self, concept: str) -> MemorySummary | None:
-        """Fetch a summary by concept. Returns None if not found."""
+    def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
+        """Fetch a summary by ``(tenant_id, concept)``. Returns None if not found."""
         ...
 
     def list_summaries(self) -> list[MemorySummary]:
         """Return all summaries ordered by concept."""
+        ...
+
+    # ------------------------------------------------------------------
+    # Tenant directory
+    # ------------------------------------------------------------------
+
+    def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
+        """Create a tenant idempotently; an existing id is returned unchanged."""
+        ...
+
+    def get_tenant(self, tenant_id: str) -> Tenant | None:
+        """Return the tenant row, or None for an unknown/invalid id."""
+        ...
+
+    def list_tenants(self) -> list[Tenant]:
+        """Every tenant (active and inactive), ordered by id ascending."""
+        ...
+
+    def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
+        """Activate/deactivate a tenant; ``global`` cannot be deactivated."""
         ...
 
     # ------------------------------------------------------------------
