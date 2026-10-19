@@ -28,7 +28,9 @@ def bump_text(text: str, new_version: str) -> str:
     )
 
 
-def main() -> None:
+def main(argv: list[str] | None = None, root: Path | None = None) -> None:
+    if argv is not None or root is not None:
+        raise NotImplementedError
     if len(sys.argv) != 2 or not re.fullmatch(r"\d+\.\d+\.\d+", sys.argv[1]):
         sys.exit("usage: bump_version.py X.Y.Z")
     new_version = sys.argv[1]
@@ -44,3 +46,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def bump_chart_text(text: str, new_version: str) -> str:
+    raise NotImplementedError
