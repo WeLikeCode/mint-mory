@@ -38,3 +38,4 @@
 {"at":"2026-10-19T19:28:19Z","run":"r-20261019T1928Z-bd5a","type":"unit.dispatched","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T20:02:01Z","head":"23ea34768919ec2fb41b04713fb138ec1071d30d","pr":41,"target_before":"5d73c5c56746a639ee128bd0e3975a20243fbe65","type":"unit.merge_requested","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T20:02:06Z","head":"23ea34768919ec2fb41b04713fb138ec1071d30d","merge_commit":"fa4a2494d2e4aae40e044e8badaf6841bde6af82","method":"squash","pr":41,"raced":false,"type":"unit.merged","unit":"kiro:multi-tenancy-writes"}
+{"at":"2026-10-19T20:02:13Z","branch":"l4/kiro/multi-tenancy-writes","head":"23ea34768919ec2fb41b04713fb138ec1071d30d","type":"unit.branch_deleted","unit":"kiro:multi-tenancy-writes"}
