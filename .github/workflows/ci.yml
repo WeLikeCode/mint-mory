@@ -167,6 +167,18 @@ jobs:
             -f deploy/helm/mintmory/values-postgres.yaml \
             | kubeconform -strict -summary -kubernetes-version 1.29.0 -
 
+      # oauth2-proxy / OIDC SSO auth mode (MM-44): placeholder OIDC values so the oauth2-proxy
+      # Deployment, Service and Secret and the ingress auth annotations render.
+      - name: Validate rendered manifests (oauth2proxy auth)
+        run: |
+          helm template t deploy/helm/mintmory \
+            --set auth.mode=oauth2proxy \
+            --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com \
+            --set auth.oauth2proxy.clientId=mintmory-ci \
+            --set auth.oauth2proxy.clientSecret=ci-placeholder \
+            --set ingress.enabled=true \
+            | kubeconform -strict -summary -kubernetes-version 1.29.0 -
+
       # The SQLite single-writer guardrail is non-negotiable: prove the schema still
       # rejects a multi-writer sqlite topology (this MUST fail — inverted exit check).
       - name: Guardrail negative test (sqlite + replicaCount=2 must be rejected)
