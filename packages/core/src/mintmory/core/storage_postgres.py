@@ -27,6 +27,8 @@ from __future__ import annotations
 import json
 import re
 from collections import Counter
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -326,6 +328,17 @@ class PostgresBackend:
             return True
         except Exception:  # noqa: BLE001
             return False
+
+    @contextmanager
+    def transaction(self) -> Generator[Any, None, None]:
+        """Interim stub: transaction composition is not available on Postgres yet.
+
+        Raises ``TenancyNotSupportedError`` before yielding (the real
+        implementation arrives with ``multi-tenancy-postgres-writes``), so no
+        pool access ever happens.
+        """
+        raise TenancyNotSupportedError("transaction")
+        yield  # unreachable — keeps the generator a usable context-manager factory
 
     # ------------------------------------------------------------------
     # Test-isolation helper (not part of Protocol; called from conftest)

@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 from collections import Counter
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -360,6 +361,12 @@ class SqliteBackend:
         # busy_timeout_ms: explicit override (from factory/settings). None means
         # "read from MINTMORY_SQLITE_BUSY_TIMEOUT_MS env var" (legacy path).
         self._busy_timeout_ms_override: int | None = busy_timeout_ms
+        # Re-entrant transaction scope (multi-tenancy-writes task 1). The RLock
+        # makes ``transaction()`` re-entrant in one thread and serialises writers
+        # from different threads on the shared connection; ``_tx_depth`` lets a
+        # nested block join the outermost block instead of committing early.
+        self._tx_lock = threading.RLock()
+        self._tx_depth = 0
 
     # ------------------------------------------------------------------
     # Connection management
@@ -402,13 +409,29 @@ class SqliteBackend:
 
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = self.connect()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
+        """Re-entrant transaction scope over the shared connection.
+
+        The outermost entry commits on a clean exit and rolls back + re-raises
+        on any exception; a nested entry joins the outer block and neither
+        commits nor rolls back (if the caller catches a nested exception, the
+        outermost block commits the statements that succeeded — no savepoints).
+        The lock also keeps a second thread's write from interleaving with this
+        thread's uncommitted work on the shared connection.
+        """
+        with self._tx_lock:
+            conn = self.connect()
+            self._tx_depth += 1
+            try:
+                yield conn
+            except BaseException:
+                self._tx_depth -= 1
+                if self._tx_depth == 0:
+                    conn.rollback()
+                raise
+            else:
+                self._tx_depth -= 1
+                if self._tx_depth == 0:
+                    conn.commit()
 
     def initialise(self) -> None:
         """

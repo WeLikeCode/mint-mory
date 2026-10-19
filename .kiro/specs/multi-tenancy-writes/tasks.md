@@ -5,7 +5,7 @@
 > `uv run ruff check packages/core/`); full `.l4/config.yaml` gates before the PR.
 > No test needs Postgres, Docker or a network service.
 
-- [ ] 1. Re-entrant `transaction()` (`storage.py`, `ports.py`)
+- [x] 1. Re-entrant `transaction()` (`storage.py`, `ports.py`)
   - `_tx_lock` (`threading.RLock`) and `_tx_depth` in `__init__`; the outermost
     entry commits or rolls back; nested entries join. Add `transaction()` to the
     Protocol (`AbstractContextManager[object]`) and update the `ports.py`
