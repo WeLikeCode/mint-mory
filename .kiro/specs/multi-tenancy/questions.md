@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 5 | technical | packages/core/tests/test_tenant_directory.py:191 |
 | Q-002 | accepted | 7 | technical | packages/core/tests/test_tenant_schema_gate.py:29 |
 | Q-003 | answered | none | verdict | Criterion C-877680dc (Req 4.6): accept as satisfied? |
-| Q-004 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
+| Q-004 | answered | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -100,7 +100,7 @@ accept: Req 4.6 is an invariant over the existing suite. The tests gate ran the 
 
 ## Q-004: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -116,3 +116,4 @@ Answer `accept` if the unit can go on as it stands, or `reject` and say why; end
 
 ### Answer
 <!-- write below this line -->
+accept: the cut fell inside test files only. The judge's diff after the harness exclusions is 158,407 characters; every production file (ports.py, schema.sql, storage.py, storage_postgres.py, types.py, the OpenAPI yaml) and the pre-tenancy fixture lie before 120,000 and were judged. The unseen part is the tail of test_tenant_migration.py and test_tenant_persistence, test_tenant_schema, test_tenant_schema_gate and test_tenant_types (47 tests, 201 assertions, no skip or xfail), which the tests gate ran green and traceability checked deterministically (35/36 discriminating).
