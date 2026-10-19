@@ -72,7 +72,7 @@ needed by any test here.
     synthetic `global`; `uv run mypy packages` passes.
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 7. Schema gate and OpenAPI
+- [x] 7. Schema gate and OpenAPI
   - `test_schema.py` additions of R7.1; `docs/openapi/mintmory.yaml` additions of
     R7.2 (response schemas only).
   - _Requirements: 7.1, 7.2_
