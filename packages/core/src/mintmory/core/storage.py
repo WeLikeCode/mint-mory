@@ -56,6 +56,7 @@ from mintmory.core.types import (
     SearchRequest,
     SearchResponse,
     Tenant,
+    TenantInactiveError,
     TenantMigrationError,
     TenantNotFoundError,
     validate_tenant_id,
@@ -666,6 +667,7 @@ class SqliteBackend:
         columns = ", ".join(_MEMORY_COLUMNS)
 
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, record.tenant_id)
             conn.execute(
                 f"INSERT INTO memories ({columns}) VALUES ({placeholders})",
                 values,
@@ -784,6 +786,9 @@ class SqliteBackend:
         params.append(memory_id)
 
         with self.transaction() as conn:
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 f"UPDATE memories SET {', '.join(sets)} WHERE id = ?",
                 params,
@@ -795,10 +800,14 @@ class SqliteBackend:
     def archive_memory(self, memory_id: str) -> None:
         """Soft delete: set is_archived=1, is_active=0, refresh updated_at."""
         with self.transaction() as conn:
-            conn.execute(
-                "UPDATE memories SET is_archived = 1, is_active = 0, updated_at = ? WHERE id = ?",
-                (_iso(_utcnow()), memory_id),
-            )
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
+                conn.execute(
+                    "UPDATE memories SET is_archived = 1, is_active = 0, updated_at = ? "
+                    "WHERE id = ?",
+                    (_iso(_utcnow()), memory_id),
+                )
 
     # ------------------------------------------------------------------
     # Index manifest — per-path state for recurrent tree indexing
@@ -843,6 +852,7 @@ class SqliteBackend:
     ) -> None:
         """Insert or replace the manifest row for ``(tenant_id, path)``."""
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, tenant_id)
             conn.execute(
                 "INSERT INTO index_manifest "
                 "(path, collection, size, mtime, content_hash, index_mode, "
@@ -882,6 +892,7 @@ class SqliteBackend:
     def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
         """Drop the ``(tenant_id, path)`` manifest row (memories are archived separately)."""
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, tenant_id)
             conn.execute(
                 "DELETE FROM index_manifest WHERE tenant_id = ? AND path = ?",
                 (tenant_id, path),
@@ -900,35 +911,35 @@ class SqliteBackend:
         Sets is_stale=1 when staleness_score >= STALENESS_THRESHOLD (7.0).
         Always refreshes updated_at. Clamping via scoring.increment_*.
         """
-        conn = self.connect()
-        row = conn.execute(
-            "SELECT usefulness_score, staleness_score, reinforcement_count, is_note "
-            "FROM memories WHERE id = ?",
-            (memory_id,),
-        ).fetchone()
-        if row is None:
-            raise KeyError(f"memory {memory_id!r} not found")
-
-        usefulness = row["usefulness_score"]
-        staleness = row["staleness_score"]
-        reinforcement = row["reinforcement_count"]
-        note = bool(row["is_note"])
-
-        if useful:
-            usefulness = scoring.increment_usefulness(usefulness, scoring.USEFUL_INCREMENT)
-            reinforcement += 1
-
-        flag = 0
-        if stale:
-            if note:
-                # A contested note is flagged for human review; staleness unchanged.
-                flag = 1
-            else:
-                staleness = scoring.increment_staleness(staleness, scoring.STALE_INCREMENT)
-
-        is_stale = 1 if staleness >= scoring.STALENESS_THRESHOLD else 0
-
         with self.transaction() as txn:
+            row = txn.execute(
+                "SELECT usefulness_score, staleness_score, reinforcement_count, is_note, "
+                "tenant_id FROM memories WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"memory {memory_id!r} not found")
+            self._assert_tenant_writable(txn, row["tenant_id"])
+
+            usefulness = row["usefulness_score"]
+            staleness = row["staleness_score"]
+            reinforcement = row["reinforcement_count"]
+            note = bool(row["is_note"])
+
+            if useful:
+                usefulness = scoring.increment_usefulness(usefulness, scoring.USEFUL_INCREMENT)
+                reinforcement += 1
+
+            flag = 0
+            if stale:
+                if note:
+                    # A contested note is flagged for human review; staleness unchanged.
+                    flag = 1
+                else:
+                    staleness = scoring.increment_staleness(staleness, scoring.STALE_INCREMENT)
+
+            is_stale = 1 if staleness >= scoring.STALENESS_THRESHOLD else 0
+
             txn.execute(
                 "UPDATE memories SET usefulness_score = ?, staleness_score = ?, "
                 "reinforcement_count = ?, is_stale = ?, updated_at = ?, "
@@ -1275,11 +1286,14 @@ class SqliteBackend:
         responsibility when needed.
         """
         with self.transaction() as conn:
-            conn.execute(
-                "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
-                "updated_at = ? WHERE id = ?",
-                (by_id, _iso(_utcnow()), memory_id),
-            )
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
+                conn.execute(
+                    "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
+                    "updated_at = ? WHERE id = ?",
+                    (by_id, _iso(_utcnow()), memory_id),
+                )
 
     def _bump_retrieval(self, ids: list[str], now: datetime) -> None:
         if not ids:
@@ -1288,7 +1302,8 @@ class SqliteBackend:
         with self.transaction() as conn:
             conn.execute(
                 f"UPDATE memories SET retrieval_count = retrieval_count + 1, "
-                f"last_accessed_at = ? WHERE id IN ({placeholders})",
+                f"last_accessed_at = ? WHERE id IN ({placeholders}) "
+                f"AND tenant_id IN (SELECT id FROM tenants WHERE is_active = 1)",
                 [_iso(now), *ids],
             )
 
@@ -1366,6 +1381,7 @@ class SqliteBackend:
     def add_link(self, link: ConceptLink) -> ConceptLink:
         """INSERT OR IGNORE on UNIQUE (source, target, link_type). Returns the link."""
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, link.tenant_id)
             conn.execute(
                 "INSERT OR IGNORE INTO concept_links "
                 "(id, source_memory_id, target_memory_id, link_type, entity, "
@@ -1425,6 +1441,7 @@ class SqliteBackend:
 
     def create_session(self, session: QuerySession) -> QuerySession:
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, session.tenant_id)
             conn.execute(
                 "INSERT INTO query_sessions "
                 "(id, query_text, created_at, confidence_rating, reasoning, "
@@ -1464,6 +1481,8 @@ class SqliteBackend:
         if not results:
             return
         with self.transaction() as conn:
+            for result in results:
+                self._assert_tenant_writable(conn, result.tenant_id)
             conn.executemany(
                 "INSERT OR REPLACE INTO query_results "
                 "(session_id, memory_id, relevance_score, was_accessed, "
@@ -1495,6 +1514,7 @@ class SqliteBackend:
         existing = self.get_summary(summary.concept, summary.tenant_id)
         summary_id = existing.id if existing is not None else summary.id
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, summary.tenant_id)
             conn.execute(
                 "INSERT INTO memory_summaries "
                 "(id, concept, summary_text, memory_count, is_current, generated_at, tenant_id) "
@@ -1768,6 +1788,9 @@ class SqliteBackend:
         useful_set = set(useful_ids)
         stale_set = set(stale_ids)
         with self.transaction() as conn:
+            stored_tenant = self._session_tenant(conn, session_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 "UPDATE query_sessions SET confidence_rating = ?, reasoning = ?, "
                 "useful_ids = ?, stale_ids = ?, concluded = 1 WHERE id = ?",
@@ -1797,6 +1820,9 @@ class SqliteBackend:
         Verbatim SQL relocated from session.conclude_session().
         """
         with self.transaction() as conn:
+            stored_tenant = self._session_tenant(conn, session_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 "UPDATE query_sessions SET concluded = 1 WHERE id = ?",
                 (session_id,),
@@ -2021,8 +2047,25 @@ class SqliteBackend:
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
+    def _stored_tenant(self, conn: sqlite3.Connection, memory_id: str) -> str | None:
+        """Stored tenant of a memory row, or ``None`` when the row is missing."""
+        row = conn.execute("SELECT tenant_id FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        return None if row is None else str(row["tenant_id"])
+
+    def _session_tenant(self, conn: sqlite3.Connection, session_id: str) -> str | None:
+        """Stored tenant of a session row, or ``None`` when the row is missing."""
+        row = conn.execute(
+            "SELECT tenant_id FROM query_sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        return None if row is None else str(row["tenant_id"])
+
     def _assert_tenant_writable(self, conn: sqlite3.Connection, tenant_id: str) -> None:
-        raise NotImplementedError
+        """Raise unless ``tenant_id`` exists and is active."""
+        row = conn.execute("SELECT is_active FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+        if row is None:
+            raise TenantNotFoundError(tenant_id)
+        if not row["is_active"]:
+            raise TenantInactiveError(tenant_id)
 
 
 # ---------------------------------------------------------------------------

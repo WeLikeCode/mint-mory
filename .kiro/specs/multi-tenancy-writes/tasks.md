@@ -17,7 +17,7 @@
     raises (`test_pg_transaction_tenancy` in `test_pg_tenancy.py`).
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 2. Write guard (`storage.py`)
+- [x] 2. Write guard (`storage.py`)
   - `_assert_tenant_writable` and its call in every method of the R1.2 table,
     inside the method's transaction, before any SQL write; `_bump_retrieval`
     filtered to active tenants.
