@@ -370,3 +370,5 @@
 {"at":"2026-10-19T04:39:22Z","attempt":1,"cost_usd":0.990577,"runs":4,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-19T04:40:24Z","branch":"l4/archive/openspec/add-local-observability-stack","head":"9731739f44a27a403716475df4b9c276454a2bde","type":"unit.branch_deleted","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-19T04:40:25Z","batch":"telemetry","profile":"none","revision":"9731739f44a27a403716475df4b9c276454a2bde","type":"batch.accepted"}
+{"at":"2026-10-19T04:40:59Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T04:40:59Z","run":"r-20261019T0440Z-a1ca","type":"unit.dispatched","unit":"openspec:deployment-hardening"}
