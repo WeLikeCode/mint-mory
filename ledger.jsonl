@@ -36,3 +36,4 @@
 {"at":"2026-10-19T19:28:17Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-writes is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-19T19:28:19Z","attempt":1,"cost_usd":0.181231,"runs":2,"type":"plan.charged","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T19:28:19Z","run":"r-20261019T1928Z-bd5a","type":"unit.dispatched","unit":"kiro:multi-tenancy-writes"}
+{"at":"2026-10-19T20:02:01Z","head":"23ea34768919ec2fb41b04713fb138ec1071d30d","pr":41,"target_before":"5d73c5c56746a639ee128bd0e3975a20243fbe65","type":"unit.merge_requested","unit":"kiro:multi-tenancy-writes"}
