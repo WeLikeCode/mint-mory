@@ -362,3 +362,4 @@
 {"at":"2026-10-19T04:31:36Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"the owner approved a person's commit that removes the skip markers the spec asked for; the unit is retried","type":"plan.resumed"}
 {"at":"2026-10-19T04:32:07Z","attempt":1,"cost_usd":0.375631,"runs":4,"type":"plan.charged","unit":"openspec:add-local-observability-stack"}
 {"at":"2026-10-19T04:32:07Z","run":"r-20261019T0432Z-4d29","type":"unit.dispatched","unit":"openspec:add-local-observability-stack"}
+{"at":"2026-10-19T04:38:03Z","head":"724ecc84d5d2d8c70eef8d689a1c4dc3e2f10e02","pr":33,"target_before":"f29487b0b8be568c91a2d400927d43a372d26eca","type":"unit.merge_requested","unit":"openspec:add-local-observability-stack"}
