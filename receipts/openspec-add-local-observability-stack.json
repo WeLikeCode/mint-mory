@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-19T04:39:22Z",
+  "integrated_revision": "652da4fd4574368de633d58ef3c8379785be38c2",
+  "merge_commit": "652da4fd4574368de633d58ef3c8379785be38c2",
+  "plan_digest": "4dad5bac5e2446dc",
+  "plan_id": "telemetry-and-fixes",
+  "postcheck": "pass",
+  "pr": 33,
+  "receipt_id": "telemetry-and-fixes/openspec:add-local-observability-stack/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "724ecc84d5d2d8c70eef8d689a1c4dc3e2f10e02",
+  "spec_digest": "a858583cefb72ca5",
+  "target": "staging",
+  "unit_id": "openspec:add-local-observability-stack"
+}
