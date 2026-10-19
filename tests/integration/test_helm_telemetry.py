@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -119,7 +118,6 @@ def test_configmap_renders_disabled_in_the_else_branch() -> None:
 
 
 @pytest.mark.l4("C-7836148e")
-@pytest.mark.skipif(shutil.which("helm") is None, reason="helm is not installed")
 def test_helm_template_defaults_disable_telemetry() -> None:
     output = _helm_template()
     assert 'MINTMORY_OTEL_ENABLED: "false"' in output
@@ -127,7 +125,6 @@ def test_helm_template_defaults_disable_telemetry() -> None:
 
 
 @pytest.mark.l4("C-7836148e")
-@pytest.mark.skipif(shutil.which("helm") is None, reason="helm is not installed")
 def test_helm_template_renders_sampler_values() -> None:
     output = _helm_template(
         "--set",

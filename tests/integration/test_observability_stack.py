@@ -9,7 +9,6 @@ The Docker check runs only where ``docker`` exists (the gates have none).
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -195,7 +194,6 @@ def test_env_example_documents_every_compose_variable() -> None:
 
 
 @pytest.mark.l4("C-d797e1ac")
-@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is not installed")
 def test_docker_compose_config_accepts_the_stack() -> None:
     result = subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE), "config"],
