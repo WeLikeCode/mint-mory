@@ -108,6 +108,12 @@ otel:
   # OTLP/HTTP endpoint, e.g. "http://otel-collector:4318".
   endpoint: ""
   serviceName: "mintmory-api"
+  # Trace sampler, e.g. "parentbased_traceidratio" for head-based sampling.
+  sampler: ""
+  # Sampler argument, e.g. "0.1" (a ratio between 0 and 1).
+  samplerArg: ""
+  # Comma-separated resource attributes, e.g. "deployment.environment=staging".
+  resourceAttributes: ""
 
 # Ingress (advanced tier). Off by default -> reach the API via the Service or
 # `kubectl port-forward`.

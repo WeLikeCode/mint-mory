@@ -379,9 +379,12 @@ Both are env-tunable and revert to legacy behaviour at `summary_top_k=0`,
 
 ### 4.1 Principles
 
-- **Off by default, zero-cost when off.** A no-op shim is used unless
-  `MINTMORY_OTEL_ENABLED=true`. The `opentelemetry-*` packages are an **optional
-  extra** (`mintmory-core[otel]`); importing the shim never imports the SDK.
+- **Auto by default, zero-cost when off.** With `MINTMORY_OTEL_ENABLED=auto`
+  (the default) a no-op shim is used unless a collector is configured (a standard
+  `OTEL_EXPORTER_OTLP_*` endpoint variable is set) or answers on
+  `http://localhost:4318`; `true` forces export on and `false` forces it off.
+  The `opentelemetry-*` packages are an **optional extra**
+  (`mintmory-core[otel]`); importing the shim never imports the SDK.
 - **Standard semantics.** Use the OTel GenAI semantic conventions for LLM spans
   (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`,
   `gen_ai.usage.output_tokens`) so traces render in any OTel-aware backend.
@@ -474,14 +477,98 @@ per model) and the §3 perf work (dream duration before/after K + concurrency).
 
 ### 4.5 Exporters & local viewing
 
-- `MINTMORY_OTEL_EXPORTER=console` → `ConsoleSpanExporter` +
-  `ConsoleMetricExporter` (PeriodicExportingMetricReader). Zero infra; spans/metrics
-  print to stderr — enough to read a single dream's tree locally.
-- `MINTMORY_OTEL_EXPORTER=otlp` → OTLP/HTTP exporter using the standard
-  `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` env (e.g. a local
-  Jaeger/Tempo/Grafana or `otel-tui`). We do not invent our own endpoint vars.
-- Suggested local stack (docs only, not a dependency): `jaegertracing/all-in-one`
-  on `:4318` for traces; `otel-tui` for a no-infra terminal view.
+#### Modes
+
+`MINTMORY_OTEL_ENABLED` chooses the mode:
+
+| Value | Behaviour |
+|---|---|
+| `auto` (default) | export when a collector is configured (any `OTEL_EXPORTER_OTLP_*` endpoint variable is set) or answers on `http://localhost:4318`; otherwise the no-op shim stays in place |
+| `true` | always export; the SDK missing is the only reason not to |
+| `false` | never export; the no-op shim stays in place |
+
+`OTEL_SDK_DISABLED` is the standard kill switch: `true` (any case) stops export
+whatever the mode. With `MINTMORY_OTEL_ENABLED=true` but the optional
+`opentelemetry` SDK absent, one warning is logged and the no-op shim stays in
+place — `mintmory doctor` reports `state=SDK missing`.
+
+#### Variables
+
+MintMory's own `MINTMORY_OTEL_*` variables and the standard `OTEL_*` ones. Where
+they overlap the standard variable wins, so an existing OpenTelemetry setup needs
+no MintMory-specific configuration; the per-signal variable beats the shared one.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MINTMORY_OTEL_ENABLED` | `auto` | `auto` \| `true` \| `false` (see Modes) |
+| `MINTMORY_OTEL_EXPORTER` | `otlp` | `otlp` \| `console` \| `none` |
+| `MINTMORY_OTEL_EXPORT_TIMEOUT_S` | `3` | per-export timeout in seconds; used only when no standard timeout variable is set |
+| `MINTMORY_OTEL_SERVICE_NAME` | _(unset)_ | resource `service.name`; the entry point's own default is used when unset |
+| `OTEL_SDK_DISABLED` | _(unset)_ | standard kill switch; `true` wins over every mode |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | shared OTLP/HTTP collector base; `/v1/traces` and `/v1/metrics` are appended |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | _(unset)_ | traces endpoint; beats the shared one |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | _(unset)_ | metrics endpoint; beats the shared one |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | only `http/protobuf` is supported; anything else warns and falls back |
+| `OTEL_EXPORTER_OTLP_HEADERS` | _(unset)_ | comma-separated `key=value` headers for an authenticated collector |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | _(unset)_ | standard export timeout; beats `MINTMORY_OTEL_EXPORT_TIMEOUT_S` |
+| `OTEL_TRACES_EXPORTER` | _(unset)_ | per-signal exporter; beats `MINTMORY_OTEL_EXPORTER` |
+| `OTEL_METRICS_EXPORTER` | _(unset)_ | per-signal exporter; beats `MINTMORY_OTEL_EXPORTER` |
+| `OTEL_SERVICE_NAME` | _(unset)_ | standard `service.name`; beats `OTEL_RESOURCE_ATTRIBUTES` and `MINTMORY_OTEL_SERVICE_NAME` |
+| `OTEL_RESOURCE_ATTRIBUTES` | _(unset)_ | extra resource attributes (`k=v` pairs); its `service.name` beats `MINTMORY_OTEL_SERVICE_NAME` |
+| `OTEL_TRACES_SAMPLER` | `parentbased_always_on` | standard sampling strategy |
+| `OTEL_TRACES_SAMPLER_ARG` | _(unset)_ | argument for the sampler (e.g. the ratio for `parentbased_traceidratio`) |
+| `OTEL_PROPAGATORS` | `tracecontext` | standard context propagators |
+| `OTEL_PYTHON_EXCLUDED_URLS` | _(unset)_ | comma-separated regexes the REST API middleware does not trace |
+
+`MINTMORY_OTEL_SERVICE_NAME` also loses to `OTEL_SERVICE_NAME`; the entry points
+default it to `mintmory-cli`, `mintmory-api` or `mintmory-mcp`.
+
+#### Local stack
+
+`deploy/observability/` holds a Docker Compose stack — an OpenTelemetry Collector
+(OTLP in on `4317`/`4318`), Jaeger 2 (trace UI on `16686`) and Prometheus (metrics
+UI on `9090`). Three commands:
+
+```bash
+docker compose -f deploy/observability/compose.yaml up -d   # start the stack
+mintmory search "anything"                                  # run any MintMory command
+# open http://localhost:16686 (Jaeger) and http://localhost:9090 (Prometheus)
+```
+
+Ports, bind address and image tags are variables with defaults; copy
+`deploy/observability/.env.example` to `.env` to change them. Add the `api`
+profile to build and run the repository's API wired to the collector:
+`docker compose -f deploy/observability/compose.yaml --profile api up -d --build`.
+Stop with `down` (or `down -v` to drop the data volume). The full quick start is
+in `deploy/observability/README.md`.
+
+#### Finding a slow phase
+
+In **Jaeger** (`http://localhost:16686`): pick the service (`mintmory-cli`,
+`mintmory-api` or `mintmory-mcp`) and the operation, sort the traces by duration
+and open the slowest one. The `mintmory.search.*` children show which phase
+(`fts`, `substring`, `vector`, `fusion`) dominates, and a `gen_ai.chat` child
+shows the model, token counts and latency of an LLM call.
+
+In **Prometheus** (`http://localhost:9090`), the search-latency histogram gives
+the p95 per phase over a long-running process (the API or an MCP server; a one-shot
+CLI command exports under its own `service.instance.id`):
+
+```promql
+histogram_quantile(0.95, sum by (le, phase) (rate(mintmory_search_latency_ms_bucket[5m])))
+```
+
+#### Production
+
+Set the Helm values (`otel.enabled: "true"`, `otel.sampler`,
+`otel.samplerArg`, `otel.resourceAttributes`) so the chart renders
+`MINTMORY_OTEL_ENABLED`, `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` and
+`OTEL_RESOURCE_ATTRIBUTES`. Sample in production — e.g.
+`otel.sampler=parentbased_traceidratio` with `otel.samplerArg=0.1` — and point the
+workloads at the collector with `OTEL_EXPORTER_OTLP_ENDPOINT`. For a collector
+that authenticates, set `OTEL_EXPORTER_OTLP_HEADERS` (e.g. an
+`authorization=Bearer …` pair) from a Kubernetes Secret, never inline in the
+values file.
 
 ### 4.6 Optional extra
 

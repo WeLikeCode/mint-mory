@@ -1,0 +1,426 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 1,
+  "verdict": "FAIL",
+  "base_sha": "428a9b6e1abaec7aa7bfe273ef1500607ce2297a",
+  "head_sha": "73d4e3db3da09005e6f29ee1cf78f5b53270d0d2",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "ok",
+      "seconds": 0.4,
+      "note": "base staging@428a9b6e1a contained"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "failed",
+      "seconds": 0.5,
+      "note": "a skip or xfail marker was added; scope: 19 changed file(s)"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "blocker",
+      "title": "a skip or xfail marker was added",
+      "detail": "tests/integration/test_helm_telemetry.py::test_helm_template_defaults_disable_telemetry, tests/integration/test_helm_telemetry.py::test_helm_template_renders_sampler_values, tests/integration/test_observability_stack.py::test_docker_compose_config_accepts_the_stack",
+      "source": "deterministic",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-5758ac1b",
+      "feedback": null
+    }
+  ],
+  "holds": [],
+  "subject_sha": "73d4e3db3da09005e6f29ee1cf78f5b53270d0d2",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": {
+    "checks": [
+      {
+        "name": "protected paths",
+        "status": "ok",
+        "note": "no protected path differs from the base"
+      },
+      {
+        "name": "pre-existing tests",
+        "status": "failed",
+        "note": "5 test file(s) compared with the base"
+      },
+      {
+        "name": "red-green freeze",
+        "status": "ok",
+        "note": "5 task(s): red and green compared"
+      },
+      {
+        "name": "test path freeze",
+        "status": "ok",
+        "note": "5 harness step commit(s) checked"
+      },
+      {
+        "name": "content scan",
+        "status": "ok",
+        "note": "no result-manipulating construct in the changed support and runner files"
+      },
+      {
+        "name": "suppressions",
+        "status": "ok",
+        "note": "1 new suppression(s), 1 declared"
+      },
+      {
+        "name": "tdd history",
+        "status": "ok",
+        "note": "14 task(s); red tests passing at head: step 3"
+      }
+    ],
+    "findings": [
+      {
+        "severity": "blocker",
+        "title": "a skip or xfail marker was added",
+        "detail": "tests/integration/test_helm_telemetry.py::test_helm_template_defaults_disable_telemetry, tests/integration/test_helm_telemetry.py::test_helm_template_renders_sampler_values, tests/integration/test_observability_stack.py::test_docker_compose_config_accepts_the_stack",
+        "source": "deterministic",
+        "criterion": null,
+        "log": null,
+        "spec_gap": false,
+        "suggested_fix": "",
+        "id": "F-5758ac1b",
+        "feedback": null
+      }
+    ],
+    "declared": [
+      "packages/cli/src/mintmory/cli/main.py:480 # noqa: BLE001 (declared: doctor must report telemetry status, not raise; matches the surrounding doctor rows.)"
+    ],
+    "human_protected": [],
+    "human_tests": [],
+    "unfrozen": [],
+    "human_suppressions": [],
+    "human_scan": []
+  },
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": {
+    "schema": "l4/evidence@1",
+    "holds": [],
+    "items": {},
+    "scope": {
+      "declared": [
+        "http://user:token@host",
+        "tests/integration",
+        "deploy/observability/compose.yaml",
+        "packages/cli/src/mintmory/cli/main.py",
+        "packages/core/src/mintmory/core/telemetry.py",
+        "deploy/helm/mintmory/templates/configmap.yaml",
+        "docs/OBSERVABILITY.md",
+        "tests/integration/test_observability_stack.py",
+        "tests/integration/test_bump_version.py",
+        "packages/cli/tests/test_cli.py",
+        "deploy/observability",
+        "otel/opentelemetry-collector-contrib:0.162.0",
+        "${MINTMORY_OBS_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.162.0}",
+        "--config=/etc/otelcol-contrib/config.yaml",
+        "${MINTMORY_OBS_JAEGER_IMAGE:-jaegertracing/jaeger:2.22.0}",
+        "${MINTMORY_OBS_PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0}",
+        "MINTMORY_DB=/data/memories.db",
+        "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector",
+        "http://localhost",
+        "deploy/helm/mintmory",
+        "templates/configmap.yaml",
+        "**/?",
+        "**/values.schema.json",
+        "**/prometheus.yml",
+        "**/values.yaml",
+        "**/mintmory.search.*",
+        "**/configmap.yaml",
+        "**/compose.yaml",
+        "**/MINTMORY_OBS_*",
+        "**/telemetry.py",
+        "**/test_cli.py",
+        "**/conftest.py",
+        "module ${MINTMORY_OBS_COLLECTOR_IMAGE:-otel",
+        "module ${MINTMORY_OBS_JAEGER_IMAGE:-jaegertracing",
+        "module ${MINTMORY_OBS_PROMETHEUS_IMAGE:-prom",
+        "module --config=",
+        "module MINTMORY_DB=",
+        "module OTEL_EXPORTER_OTLP_ENDPOINT=http:",
+        "module cli",
+        "module core",
+        "module deploy",
+        "module docs",
+        "module http:",
+        "module otel",
+        "module templates",
+        "module tests"
+      ],
+      "skipped": false,
+      "note": "",
+      "holds": [],
+      "files": [
+        {
+          "path": "README.md",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "deploy/helm/mintmory/templates/configmap.yaml",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "deploy/helm/mintmory/values.schema.json",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "deploy/helm/mintmory/values.yaml",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "deploy/observability/.env.example",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "deploy/observability/README.md",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "deploy/observability/compose.yaml",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "deploy/observability/otel-collector.yaml",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "deploy/observability/prometheus.yml",
+          "module": "deploy",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "docs/OBSERVABILITY.md",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1817Z-6a4b.jsonl",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "openspec/changes/add-local-observability-stack/tasks.md",
+          "module": null,
+          "kind": "exempt",
+          "label": null,
+          "reason": "exempt: harness, spec or documentation path"
+        },
+        {
+          "path": "packages/cli/src/mintmory/cli/main.py",
+          "module": "cli",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "packages/cli/tests/test_cli.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "packages/core/src/mintmory/core/telemetry.py",
+          "module": "core",
+          "kind": "code",
+          "label": "relevant",
+          "reason": "named in the spec"
+        },
+        {
+          "path": "tests/integration/test_helm_telemetry.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/integration/test_observability_guide.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/integration/test_observability_stack.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        },
+        {
+          "path": "tests/integration/test_observability_stack_readme.py",
+          "module": null,
+          "kind": "test",
+          "label": "relevant",
+          "reason": "new test file"
+        }
+      ]
+    },
+    "diff_coverage": null,
+    "tests_ran": null
+  },
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 1,
+    "tasks": [
+      "F-5758ac1b a skip or xfail marker was added"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "cx_runs": {},
+  "tests": {},
+  "red_green": {
+    "tests.integration.test_observability_stack::test_api_profile_is_wired_to_the_collector": "1.1",
+    "tests.integration.test_observability_stack::test_collector_metrics_pipeline_is_scraped_by_prometheus": "1.1",
+    "tests.integration.test_observability_stack::test_collector_otlp_receiver_listens_on_grpc_and_http": "1.1",
+    "tests.integration.test_observability_stack::test_collector_traces_pipeline_exports_to_jaeger": "1.1",
+    "tests.integration.test_observability_stack::test_docker_compose_config_accepts_the_stack": "1.1",
+    "tests.integration.test_observability_stack::test_env_example_documents_every_compose_variable": "1.1",
+    "tests.integration.test_observability_stack::test_jaeger_serves_ui_without_publishing_its_otlp_ports": "1.1",
+    "tests.integration.test_observability_stack::test_stack_defines_collector_jaeger_and_prometheus": "1.1",
+    "tests.integration.test_observability_stack::test_stack_images_are_pinned_and_not_latest": "1.1",
+    "tests.integration.test_observability_stack::test_stack_published_ports_are_configurable_and_on_loopback": "1.1",
+    "tests.integration.test_observability_stack_readme::test_stack_readme_documents_the_viewers_and_api_profile": "1.6",
+    "tests.integration.test_observability_stack_readme::test_stack_readme_gives_the_quick_start_command": "1.6",
+    "packages.cli.tests.test_cli::test_doctor_telemetry_endpoint_it_cannot_parse": "2.1",
+    "packages.cli.tests.test_cli::test_doctor_telemetry_hides_credentials": "2.1",
+    "packages.cli.tests.test_cli::test_doctor_telemetry_sdk_missing_and_hides_headers": "2.1",
+    "packages.cli.tests.test_cli::test_doctor_telemetry_survives_a_failing_status": "2.1",
+    "packages.cli.tests.test_cli::test_doctor_telemetry_without_a_collector": "2.1",
+    "tests.integration.test_helm_telemetry::test_configmap_guards_sampler_variables_on_their_otel_values": "3.1",
+    "tests.integration.test_helm_telemetry::test_configmap_renders_disabled_in_the_else_branch": "3.1",
+    "tests.integration.test_helm_telemetry::test_helm_template_defaults_disable_telemetry": "3.1",
+    "tests.integration.test_helm_telemetry::test_helm_template_renders_sampler_values": "3.1",
+    "tests.integration.test_helm_telemetry::test_schema_declares_sampler_settings_as_strings": "3.1",
+    "tests.integration.test_helm_telemetry::test_values_yaml_declares_empty_sampler_settings": "3.1",
+    "tests.integration.test_observability_guide::test_guide_has_its_own_and_the_parts_headings": "4.1",
+    "tests.integration.test_observability_guide::test_guide_has_the_local_stack_command_and_phase_query": "4.1",
+    "tests.integration.test_observability_guide::test_guide_names_every_variable": "4.1",
+    "tests.integration.test_observability_guide::test_readme_links_to_the_guide_and_the_stack_readme": "4.1"
+  },
+  "guards": [],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "b72b584b3ade4ee3b55b1e38ab14dab66ff8e787",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}

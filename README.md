@@ -172,6 +172,13 @@ for the topologies, discovery, and concurrency tuning.
 See [`AGENTS.md`](AGENTS.md) for the deep design contract and
 [`docs/`](docs/) for ADRs, the OpenAPI spec, and experiment records.
 
+**Observability.** MintMory exports OpenTelemetry traces and metrics from every
+entry point (CLI, REST API, MCP) when a collector is configured. See
+[`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) for the modes, the variables and
+their precedence, and
+[`deploy/observability/README.md`](deploy/observability/README.md) for a local
+Jaeger + Prometheus stack in three commands.
+
 ---
 
 ## Configuration

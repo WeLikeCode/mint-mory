@@ -1,0 +1,42 @@
+services:
+  otel-collector:
+    image: ${MINTMORY_OBS_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.162.0}
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_OTLP_GRPC_PORT:-4317}:4317"
+      - "${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_OTLP_HTTP_PORT:-4318}:4318"
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: ${MINTMORY_OBS_JAEGER_IMAGE:-jaegertracing/jaeger:2.22.0}
+    ports:
+      - "${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_JAEGER_UI_PORT:-16686}:16686"
+
+  prometheus:
+    image: ${MINTMORY_OBS_PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0}
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_PROMETHEUS_PORT:-9090}:9090"
+
+  mintmory-api:
+    profiles: [api]
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    volumes:
+      - mintmory-data:/data
+    ports:
+      - "${MINTMORY_OBS_BIND:-127.0.0.1}:${MINTMORY_OBS_API_PORT:-8080}:8080"
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      MINTMORY_OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: mintmory-api
+    depends_on:
+      - otel-collector
+
+volumes:
+  mintmory-data:
