@@ -13,6 +13,8 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 5 | technical | packages/core/tests/test_tenant_directory.py:191 |
 | Q-002 | accepted | 7 | technical | packages/core/tests/test_tenant_schema_gate.py:29 |
+| Q-003 | open | none | verdict | Criterion C-877680dc (Req 4.6): accept as satisfied? |
+| Q-004 | open | none | verdict | Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start |
 <!-- l4:index:end -->
 
 ---
@@ -59,6 +61,57 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/core/tests/test_schema.py`: add `tenants` to `REQUIRED_TABLES`; add `tenant_id` to `REQUIRED_MEMORIES_COLUMNS`, `REQUIRED_LINKS_COLUMNS` and `REQUIRED_SESSIONS_COLUMNS`; add `REQUIRED_SUMMARY_COLUMNS`, `REQUIRED_RESULTS_COLUMNS` and `REQUIRED_MANIFEST_COLUMNS` (each including `tenant_id`) with column tests using `PRAGMA table_info(memory_summaries)`, `PRAGMA table_info(query_results)` and `PRAGMA table_info(index_manifest)`; add `idx_memories_tenant`, `idx_links_tenant` and `idx_sessions_tenant` to `REQUIRED_INDEXES`; and add `test_tenants_has_exactly_one_global_row` asserting the seeded row `('global', 'Global (default) tenant', 1, '1970-01-01T00:00:00')` via a `SELECT ... FROM tenants` query.
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-003: Criterion C-877680dc (Req 4.6): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+- **Criteria:** C-877680dc (Req 4.6)
+
+### Context
+Criterion C-877680dc (Req 4.6) is needs human after round 1.
+
+Scenario:
+With only the `global` tenant, every existing test SHALL pass unchanged (`test_schema.py` gets the additions of R7 only).
+
+Why: uncovered: no adequate discriminating test traces it
+Judge: pass
+Tracing tests: none
+Ignored tests: packages.core.tests.test_tenant_persistence::test_memory_tenant_id_persists_and_round_trips (it traces 4 criteria (verifier.max_criteria_per_test=3))
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+If the code is right and the scenarios are incomplete, `reject` with a scenario: WHEN ... THEN ...
+
+### Options
+1. accept
+2. reject: <reason>, or WHEN ... THEN ... for a spec gap
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-004: Hold H-e0757174: the diff is longer than 120000 characters: the judge saw only the start
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+
+### Context
+After round 1 the verifier cannot decide on its own: the diff is longer than 120000 characters: the judge saw only the start
+
+Answer `accept` if the unit can go on as it stands, or `reject` and say why; end the reason with a sentence WHEN ... THEN ... so that a fix unit can be made.
+
+### Options
+1. accept
+2. reject: <reason>
 
 ### Answer
 <!-- write below this line -->
