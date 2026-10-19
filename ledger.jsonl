@@ -33,3 +33,4 @@
 {"at":"2026-10-19T17:54:28Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T17:54:28Z","run":"r-20261019T1754Z-ec85","type":"unit.dispatched","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T19:23:26Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy-writes"}
+{"at":"2026-10-19T19:28:17Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-writes is awaiting_human","type":"plan.resumed"}
