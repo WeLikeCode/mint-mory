@@ -10,18 +10,18 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | taken | behaviour | packages/api/src/mintmory/api/telemetry_middleware.py:126 | Guard route.path and the status comparison in the middleware's finally |
-| FB-002 | taken | behaviour | packages/core/src/mintmory/core/llm.py:107 | Telemetry must not change what an LLM call raises: reading |
-| FB-003 | taken | tests | packages/core/tests/test_telemetry_outbound.py:218 | The 'baggage is never forwarded' half of the outbound criterion is not |
-| FB-004 | taken | tests | packages/mcp/tests/test_telemetry_mcp.py:237 | test_tool_arguments_never_reach_telemetry never asserts that any span |
-| FB-005 | taken | tests |  | Weak or missing tests from the review of PR #29: (1) in |
+| FB-001 | addressed | behaviour | packages/api/src/mintmory/api/telemetry_middleware.py:126 | Guard route.path and the status comparison in the middleware's finally |
+| FB-002 | addressed | behaviour | packages/core/src/mintmory/core/llm.py:107 | Telemetry must not change what an LLM call raises: reading |
+| FB-003 | addressed | tests | packages/core/tests/test_telemetry_outbound.py:218 | The 'baggage is never forwarded' half of the outbound criterion is not |
+| FB-004 | addressed | tests | packages/mcp/tests/test_telemetry_mcp.py:237 | test_tool_arguments_never_reach_telemetry never asserts that any span |
+| FB-005 | addressed | tests |  | Weak or missing tests from the review of PR #29: (1) in |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: Guard route.path and the status comparison in the middleware's finally
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Where:** `packages/api/src/mintmory/api/telemetry_middleware.py:126-146`
 - **Lesson:** no
@@ -61,13 +61,13 @@ Guard route.path and the status comparison in the middleware's finally block: th
 
 ### Outcome
 <!-- written by the harness -->
-Taken into add-telemetry-boundary-tracing-followup-1
+Addressed in round 1 at e9ca959da2: telemetry_middleware.py finally block: route.path read through _safe(getattr...) with an isinstance str check, and status guarded by isinstance int. Tests in test_telemetry_http_middleware.py.
 
 ---
 
 ## FB-002: Telemetry must not change what an LLM call raises: reading
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** behaviour
 - **Where:** `packages/core/src/mintmory/core/llm.py:107-110`
 - **Lesson:** no
@@ -90,13 +90,13 @@ Telemetry must not change what an LLM call raises: reading urlsplit(base_url).po
 
 ### Outcome
 <!-- written by the harness -->
-Taken into add-telemetry-boundary-tracing-followup-1
+Addressed in round 1 at e9ca959da2: llm.py: `try: port = parsed.port except ValueError: port = None`. test_telemetry_llm_errors.py covers abc and 99999.
 
 ---
 
 ## FB-003: The 'baggage is never forwarded' half of the outbound criterion is not
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** tests
 - **Where:** `packages/core/tests/test_telemetry_outbound.py:218-240`
 - **Lesson:** no
@@ -132,13 +132,13 @@ The 'baggage is never forwarded' half of the outbound criterion is not tested: w
 
 ### Outcome
 <!-- written by the harness -->
-Taken into add-telemetry-boundary-tracing-followup-1
+Addressed in round 1 at e9ca959da2: test_telemetry_outbound_current_context.py attaches the caller context as current around the chat request and around inject_trace_headers, and asserts no baggage header.
 
 ---
 
 ## FB-004: test_tool_arguments_never_reach_telemetry never asserts that any span
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** tests
 - **Where:** `packages/mcp/tests/test_telemetry_mcp.py:237-260`
 - **Lesson:** no
@@ -177,13 +177,13 @@ test_tool_arguments_never_reach_telemetry never asserts that any span was export
 
 ### Outcome
 <!-- written by the harness -->
-Taken into add-telemetry-boundary-tracing-followup-1
+Addressed in round 1 at e9ca959da2: test_telemetry_mcp_tool_arguments_exported.py asserts exported spans and the tools/call SERVER spans exist before checking that the sentinels are absent.
 
 ---
 
 ## FB-005: Weak or missing tests from the review of PR #29: (1) in
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** tests
 - **Lesson:** no
 - **By:** CiprianSpot, 2026-10-18T18:32:26Z
@@ -193,4 +193,4 @@ Weak or missing tests from the review of PR #29: (1) in packages/api/tests/test_
 
 ### Outcome
 <!-- written by the harness -->
-Taken into add-telemetry-boundary-tracing-followup-1
+Addressed in round 1 at e9ca959da2: The four items are covered by test_telemetry_http_middleware_specific_failures.py (specific exception classes), test_telemetry_outbound_embed_batch_headers.py (embed_batch extra_headers, and the off switch of inject_trace_headers) and test_telemetry_llm_default_port.py (80/443).
