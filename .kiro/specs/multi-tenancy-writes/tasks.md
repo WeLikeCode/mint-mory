@@ -48,7 +48,7 @@
     `test_pg_tenancy.py`).
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 5. Full gate
+- [x] 5. Full gate
   - Existing suite unchanged on a one-tenant database; `.l4/config.yaml` gates
     exit 0 with coverage ≥ 80%.
   - _Requirements: 5.1, 5.2_
