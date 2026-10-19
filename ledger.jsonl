@@ -17,3 +17,4 @@
 {"at":"2026-10-19T16:45:50Z","attempt":1,"cost_usd":0.356051,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy"}
 {"at":"2026-10-19T16:45:50Z","run":"r-20261019T1645Z-97d7","type":"unit.dispatched","unit":"kiro:multi-tenancy"}
 {"at":"2026-10-19T17:16:59Z","detail":"awaiting_human: no new answers (open: Q-002)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy"}
+{"at":"2026-10-19T17:22:46Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy is awaiting_human","type":"plan.resumed"}
