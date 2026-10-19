@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 4.1 | technical | tests/integration/test_deploy_hardening.py:42 needs a deploy-validate oauth2proxy step in the protected .github/workflows/ci.yml |
+| Q-001 | answered | 4.1 | technical | tests/integration/test_deploy_hardening.py:42 needs a deploy-validate oauth2proxy step in the protected .github/workflows/ci.yml |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: tests/integration/test_deploy_hardening.py:42 needs a deploy-validate oauth2proxy step in the protected .github/workflows/ci.yml
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 4.1
 - **Kind:** technical
 - **Asked:** 2026-10-19T04:50Z by deepseek, run r-20261019T0440Z-a1ca, task 4.1
@@ -48,3 +48,4 @@ Edit `.github/workflows/ci.yml`: within `jobs.deploy-validate.steps`, insert imm
 
 ### Answer
 <!-- write below this line -->
+Done by the owner: the oauth2proxy validation step is now in the deploy-validate job on staging (465af8a), and staging is merged into this unit branch (ace4ba7), so test_ci_validates_oauth2proxy_render passes as it stands. Do not edit the CI workflow or the test; run the green step of 4.1 again.
