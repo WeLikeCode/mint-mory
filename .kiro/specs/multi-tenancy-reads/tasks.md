@@ -13,7 +13,7 @@
   - Tests: three-way (`t1` / `None` / `nope`) per method; R1.2–R1.4.
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. Dreaming helper reads (`storage.py`, `ports.py`)
+- [x] 2. Dreaming helper reads (`storage.py`, `ports.py`)
   - `tenant_id` on the ten dreaming helpers of R1.1; Protocol updated.
   - Tests: three-way per helper with the seed of the design.
   - _Requirements: 1.1_

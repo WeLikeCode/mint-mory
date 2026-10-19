@@ -373,24 +373,27 @@ class StorageBackend(Protocol):
     # Dreaming helpers (absorbed from dreaming.py's raw connect() sites)
     # ------------------------------------------------------------------
 
-    def get_flagged_memories(self) -> list[MemoryRecord]:
+    def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all memories where flagged_for_review = 1."""
         ...
 
     def get_never_accessed_stale(
-        self, days_old: int = 7, min_staleness: float = 3.0
+        self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
         """Anomaly detection: never retrieved + staleness_score >= min_staleness."""
         ...
 
     def get_high_staleness_useful(
-        self, min_staleness: float = 5.0, min_usefulness: float = 3.0
+        self,
+        min_staleness: float = 5.0,
+        min_usefulness: float = 3.0,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """Anomaly detection: stale but still useful."""
         ...
 
     def get_anomaly_high_staleness_useful_ids(
-        self, min_staleness: float, min_usefulness: float
+        self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
         """IDs of high-staleness + still-useful memories (anomaly step 1a).
 
@@ -402,7 +405,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+    def get_anomaly_never_accessed_ids(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of never-retrieved memories created before cutoff (anomaly step 1b).
 
         Verbatim SQL:
@@ -413,7 +418,7 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_anomaly_flagged_ids(self) -> list[str]:
+    def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
         """IDs of flagged_for_review memories (anomaly step 1c).
 
         Verbatim SQL:
@@ -421,7 +426,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+    def list_active_memory_ids(
+        self, *, ordered: bool = False, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of all active, non-archived memories.
 
         Verbatim SQL (ordered=False):
@@ -430,7 +437,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+    def get_stale_archivable_ids(
+        self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of memories eligible for staleness archival (dreaming step 5).
 
         Verbatim SQL:
@@ -442,7 +451,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+    def get_rehabilitable_rows(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[tuple[str, float]]:
         """(id, staleness_score) pairs eligible for rehabilitation (dreaming step 6).
 
         Verbatim SQL:
@@ -454,7 +465,7 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+    def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
         """Return the set of existing RELATES_TO link pairs (order-insensitive).
 
         Used by create_concept_links() to pre-check which pairs exist so the

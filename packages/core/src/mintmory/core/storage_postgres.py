@@ -1553,7 +1553,8 @@ class PostgresBackend:
     # Dreaming helpers (absorbed from dreaming.py's raw connect() sites)
     # ------------------------------------------------------------------
 
-    def get_flagged_memories(self) -> list[MemoryRecord]:
+    def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_flagged_memories")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1563,8 +1564,9 @@ class PostgresBackend:
         return [self._row_to_memory(r) for r in rows]
 
     def get_never_accessed_stale(
-        self, days_old: int = 7, min_staleness: float = 3.0
+        self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_never_accessed_stale")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1579,8 +1581,12 @@ class PostgresBackend:
         return [self._row_to_memory(r) for r in rows]
 
     def get_high_staleness_useful(
-        self, min_staleness: float = 5.0, min_usefulness: float = 3.0
+        self,
+        min_staleness: float = 5.0,
+        min_usefulness: float = 3.0,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_high_staleness_useful")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1595,8 +1601,9 @@ class PostgresBackend:
         return [self._row_to_memory(r) for r in rows]
 
     def get_anomaly_high_staleness_useful_ids(
-        self, min_staleness: float, min_usefulness: float
+        self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_anomaly_high_staleness_useful_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1608,7 +1615,10 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+    def get_anomaly_never_accessed_ids(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_anomaly_never_accessed_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1620,7 +1630,8 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def get_anomaly_flagged_ids(self) -> list[str]:
+    def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_anomaly_flagged_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1628,7 +1639,10 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+    def list_active_memory_ids(
+        self, *, ordered: bool = False, tenant_id: str | None = None
+    ) -> list[str]:
+        self._require_global_tenant(tenant_id, "list_active_memory_ids")
         assert self._pool is not None
         sql = "SELECT id FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
         if ordered:
@@ -1637,7 +1651,10 @@ class PostgresBackend:
             rows = conn.execute(sql).fetchall()
         return [r[0] for r in rows]
 
-    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+    def get_stale_archivable_ids(
+        self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_stale_archivable_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1650,7 +1667,10 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+    def get_rehabilitable_rows(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[tuple[str, float]]:
+        self._require_global_tenant(tenant_id, "get_rehabilitable_rows")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1663,7 +1683,8 @@ class PostgresBackend:
             ).fetchall()
         return [(r[0], float(r[1])) for r in rows]
 
-    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+    def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
+        self._require_global_tenant(tenant_id, "get_existing_relates_to_pairs")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(

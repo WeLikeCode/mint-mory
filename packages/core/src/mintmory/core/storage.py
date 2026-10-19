@@ -1773,10 +1773,13 @@ class SqliteBackend:
 
     def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all memories where flagged_for_review = 1."""
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute("SELECT * FROM memories WHERE flagged_for_review = 1").fetchall()
+        sql = "SELECT * FROM memories WHERE flagged_for_review = 1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_never_accessed_stale(
@@ -1787,17 +1790,19 @@ class SqliteBackend:
         Notes (is_note=1) are excluded: a note is never auto-archived by staleness
         (design §5e); surfacing it here would mislead the dreaming anomaly report.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE last_accessed_at IS NULL "
             "AND staleness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0",
-            (min_staleness,),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_high_staleness_useful(
@@ -1812,17 +1817,19 @@ class SqliteBackend:
         review (design §5d/§5e); it never increments staleness_score, so it cannot
         appear here by construction — but the guard makes the invariant explicit.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE staleness_score >= ? "
             "AND usefulness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0",
-            (min_staleness, min_usefulness),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1844,17 +1851,19 @@ class SqliteBackend:
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE staleness_score >= ? AND usefulness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0 "
-            "ORDER BY id",
-            (min_staleness, min_usefulness),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
     def get_anomaly_never_accessed_ids(
@@ -1864,17 +1873,19 @@ class SqliteBackend:
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE retrieval_count = 0 AND created_at < ? "
             "AND is_active = 1 AND is_archived = 0 "
-            "AND is_note = 0 "
-            "ORDER BY id",
-            (cutoff_iso,),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
     def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
@@ -1882,12 +1893,14 @@ class SqliteBackend:
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
-            "SELECT id FROM memories WHERE flagged_for_review = 1 ORDER BY id"
-        ).fetchall()
+        sql = "SELECT id FROM memories WHERE flagged_for_review = 1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
     def list_active_memory_ids(
@@ -1899,13 +1912,15 @@ class SqliteBackend:
         _select_summary_concepts(), and _active_count_for_concept().
         ``ordered=True`` appends ``ORDER BY id`` for deterministic iteration.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
         sql = "SELECT id FROM memories WHERE is_active = 1 AND is_archived = 0"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
         if ordered:
             sql += " ORDER BY id"
-        rows = conn.execute(sql).fetchall()
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
     def get_stale_archivable_ids(
@@ -1915,17 +1930,19 @@ class SqliteBackend:
 
         Verbatim SQL relocated from dreaming.archive_stale().
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE is_stale = 1 AND staleness_score >= ? AND is_archived = 0 "
             "AND is_note = 0 "
-            "AND (last_accessed_at IS NULL OR last_accessed_at < ?) "
-            "ORDER BY id",
-            (min_staleness, cutoff_iso),
-        ).fetchall()
+            "AND (last_accessed_at IS NULL OR last_accessed_at < ?)"
+        )
+        params: list[Any] = [min_staleness, cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
     def get_rehabilitable_rows(
@@ -1935,17 +1952,19 @@ class SqliteBackend:
 
         Verbatim SQL relocated from dreaming.rehabilitate().
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id, staleness_score FROM memories "
             "WHERE is_stale = 1 AND usefulness_score > staleness_score "
             "AND is_archived = 0 "
-            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ? "
-            "ORDER BY id",
-            (cutoff_iso,),
-        ).fetchall()
+            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ?"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [(row["id"], float(row["staleness_score"])) for row in rows]
 
     # ------------------------------------------------------------------
@@ -2066,15 +2085,15 @@ class SqliteBackend:
             SELECT source_memory_id, target_memory_id
             FROM concept_links WHERE link_type = ?
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         from mintmory.core.types import ConceptLinkType
 
         conn = self.connect()
-        rows = conn.execute(
-            "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?",
-            (ConceptLinkType.RELATES_TO.value,),
-        ).fetchall()
+        sql = "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?"
+        params: list[Any] = [ConceptLinkType.RELATES_TO.value]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return {frozenset({r["source_memory_id"], r["target_memory_id"]}) for r in rows}
 
     @staticmethod
