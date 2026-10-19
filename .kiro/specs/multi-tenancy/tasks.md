@@ -62,7 +62,7 @@ needed by any test here.
     `SqliteBackend`s on one file leaves one row.
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 6. Protocol and Postgres interim (`ports.py`, `storage_postgres.py`)
+- [x] 6. Protocol and Postgres interim (`ports.py`, `storage_postgres.py`)
   - Protocol entries of R6.1; `_require_global_tenant` and the stubs of R6.2.
   - Tests (no database) in `packages/core/tests/test_pg_tenancy.py`, one
     `test_pg_<method>_tenancy` function per stubbed method: on

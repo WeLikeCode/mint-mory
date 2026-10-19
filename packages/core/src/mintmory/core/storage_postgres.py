@@ -53,6 +53,7 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
     SearchResponse,
+    TenancyNotSupportedError,
     Tenant,
 )
 
@@ -425,6 +426,7 @@ class PostgresBackend:
     ) -> MemoryRecord:
         if record is None:
             record = MemoryRecord(**fields)
+        self._require_global_tenant(record.tenant_id, "add_memory")
         if not record.entity_ids:
             record.entity_ids = extract_entities(record.content)
 
@@ -604,7 +606,8 @@ class PostgresBackend:
     # Index manifest
     # ------------------------------------------------------------------
 
-    def manifest_get(self, path: str) -> ManifestEntry | None:
+    def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
+        self._require_global_tenant(tenant_id, "manifest_get")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -640,7 +643,9 @@ class PostgresBackend:
         index_mode: str,
         memory_ids: list[str],
         content_hash: str | None = None,
+        tenant_id: str = "global",
     ) -> None:
+        self._require_global_tenant(tenant_id, "manifest_upsert")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -673,7 +678,8 @@ class PostgresBackend:
             )
             conn.commit()
 
-    def manifest_paths(self, collection: str) -> set[str]:
+    def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
+        self._require_global_tenant(tenant_id, "manifest_paths")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -681,7 +687,8 @@ class PostgresBackend:
             ).fetchall()
         return {row[0] for row in rows}
 
-    def manifest_delete(self, path: str) -> None:
+    def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
+        self._require_global_tenant(tenant_id, "manifest_delete")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute("DELETE FROM index_manifest WHERE path = %s", (path,))
@@ -1175,6 +1182,7 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def add_link(self, link: ConceptLink) -> ConceptLink:
+        self._require_global_tenant(link.tenant_id, "add_link")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -1243,6 +1251,7 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def create_session(self, session: QuerySession) -> QuerySession:
+        self._require_global_tenant(session.tenant_id, "create_session")
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -1292,6 +1301,8 @@ class PostgresBackend:
     def record_query_results(self, results: list[QueryResult]) -> None:
         if not results:
             return
+        for result in results:
+            self._require_global_tenant(result.tenant_id, "record_query_results")
         assert self._pool is not None
         sql = """
             INSERT INTO query_results
@@ -1376,6 +1387,7 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def upsert_summary(self, summary: MemorySummary) -> MemorySummary:
+        self._require_global_tenant(summary.tenant_id, "upsert_summary")
         existing = self.get_summary(summary.concept)
         summary_id = existing.id if existing is not None else summary.id
         assert self._pool is not None
@@ -1405,7 +1417,8 @@ class PostgresBackend:
         assert result is not None
         return result
 
-    def get_summary(self, concept: str) -> MemorySummary | None:
+    def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
+        self._require_global_tenant(tenant_id, "get_summary")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -1617,16 +1630,30 @@ class PostgresBackend:
 
     @staticmethod
     def _require_global_tenant(tenant_id: str | None, operation: str) -> None:
-        raise NotImplementedError
+        if tenant_id is not None and tenant_id != "global":
+            raise TenancyNotSupportedError(operation)
+
+    @staticmethod
+    def _interim_global_tenant() -> Tenant:
+        sentinel = datetime(1970, 1, 1)
+        return Tenant(
+            id="global",
+            name="Global (default) tenant",
+            is_active=True,
+            created_at=sentinel,
+            updated_at=sentinel,
+        )
 
     def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
-        raise NotImplementedError
+        raise TenancyNotSupportedError("create_tenant")
 
     def get_tenant(self, tenant_id: str) -> Tenant | None:
-        raise NotImplementedError
+        if tenant_id == "global":
+            return self._interim_global_tenant()
+        return None
 
     def list_tenants(self) -> list[Tenant]:
-        raise NotImplementedError
+        return [self._interim_global_tenant()]
 
     def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
-        raise NotImplementedError
+        raise TenancyNotSupportedError("set_tenant_active")
