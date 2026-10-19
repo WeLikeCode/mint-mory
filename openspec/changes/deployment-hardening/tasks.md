@@ -203,7 +203,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   README documents the tag scheme and the upgrade step") to
   `tests/integration/test_deploy_hardening.py`; it fails by assertion today (the README has no
   `vX.Y.Z`).
-- [ ] 5.8 Gates (the L4 gates only): `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
+- [x] 5.8 Gates (the L4 gates only): `.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`,
   `.venv/bin/mypy packages`, `.venv/bin/pytest -q` (coverage gate). Do NOT run `npx`/`openspec`
   here: it needs Node and network, which the runner and `ci.yml` do not provide; the spec files
   are validated with `openspec validate deployment-hardening --strict` by the author before the
