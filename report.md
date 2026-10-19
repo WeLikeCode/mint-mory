@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at 465af8a4fa3e1771f3ca6bd576cdff5e2e972c82
+- Target: staging at a99c23243e43a4a49ebe9a34722b08361c72ddcb
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-19T07:10:24Z
-- Stopped: unit_halted (openspec:deployment-hardening): task 5.1: max_task_attempts (3) reached in red on deepseek (2), glm (2), deepseek-free (2), glm-free (3); last failure: the agent step reached its time limit (30m)
+- Written: 2026-10-19T09:59:31Z
+- Stopped: inputs_changed (openspec:deployment-hardening): the spec of openspec:deployment-hardening changed after the activation
 
 ## Units
 
