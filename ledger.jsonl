@@ -387,3 +387,4 @@
 {"at":"2026-10-19T10:43:48Z","attempt":1,"cost_usd":0.128464,"runs":3,"type":"plan.charged","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T10:43:48Z","run":"r-20261019T1043Z-a8f9","type":"unit.dispatched","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T11:35:23Z","head":"f2a65d1d574afffe22eda45cb0ccb1fd82129b16","pr":35,"target_before":"a83c6bf80ecb58c14d7e39ad2cf381f011b9fd18","type":"unit.merge_requested","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T11:35:28Z","head":"f2a65d1d574afffe22eda45cb0ccb1fd82129b16","merge_commit":"a48df4750ad91c40ff5567dae7940875d6c01a75","method":"squash","pr":35,"raced":false,"type":"unit.merged","unit":"openspec:deployment-hardening"}
