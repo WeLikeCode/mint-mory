@@ -49,7 +49,7 @@ oauth2-proxy pods are selected by the application selectors, and CI never render
   (`README.md:159-201`, `templates/NOTES.txt:22-28`.)
 
 ## 4. Validation
-- [ ] 4.1 CI renders and validates `auth.mode` none, basic and oauth2proxy (helm lint,
+- [x] 4.1 CI renders and validates `auth.mode` none, basic and oauth2proxy (helm lint,
   helm template, kubeconform in the `deploy-validate` job). Done by hand in 317e0bf;
   CI never rendered oauth2proxy. Closed by 5.5: tick it with 5.5, with no local helm,
   docker or kubeconform run.
