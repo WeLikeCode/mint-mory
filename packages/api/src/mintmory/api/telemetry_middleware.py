@@ -125,11 +125,15 @@ class TelemetryMiddleware:
             error = exc
         finally:
             route = scope.get("route")
-            route_path = None if route is None else route.path
+            route_path = _safe(getattr, route, "path", None) if route is not None else None
+            if not isinstance(route_path, str):
+                route_path = None
             if route_path is not None:
                 _safe(span.update_name, f"{method} {route_path}")
 
             status = sent[0] if sent else None
+            if not isinstance(status, int):
+                status = None
             if status is None and error is not None:
                 status = _INTERNAL_ERROR_STATUS
 

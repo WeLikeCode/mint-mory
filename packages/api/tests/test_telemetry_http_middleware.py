@@ -625,3 +625,95 @@ def test_safe_steps_record_the_request_duration(
     }
     assert point.count == 2
     assert tuple(point.explicit_bounds) == _BUCKETS
+
+
+# ---------------------------------------------------------------------------
+# The finally block never replaces the app's outcome (FB-001)
+# ---------------------------------------------------------------------------
+
+
+def _capture_outcome(
+    inner: Any, sent: list[dict[str, Any]], scope: dict[str, Any] | None = None
+) -> Any:
+    """Run the middleware, returning the exception it raised instead of propagating it."""
+
+    async def runner() -> Any:
+        try:
+            await _run_middleware(inner, sent, scope)
+        except BaseException as error:
+            return error
+        return None
+
+    return asyncio.run(runner())
+
+
+@pytest.mark.l4("C-76dc3cd2")
+def test_a_route_without_a_path_does_not_replace_the_app_outcome(
+    telemetry_env: tuple[Any, Any],
+) -> None:
+    exporter, _reader = telemetry_env
+    sent: list[dict[str, Any]] = []
+    start = {"type": "http.response.start", "status": 200, "headers": []}
+    body = {"type": "http.response.body", "body": b"ok"}
+
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        await send(start)
+        await send(body)
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/x",
+        "headers": [],
+        "route": object(),
+    }
+    outcome = _capture_outcome(inner, sent, scope)
+
+    assert outcome is None, f"the middleware replaced the app's outcome with {outcome!r}"
+    assert sent == [start, body]
+    assert len(exporter.get_finished_spans()) == 1, _names(exporter)
+
+
+@pytest.mark.l4("C-76dc3cd2")
+def test_a_route_without_a_path_keeps_the_apps_exception(
+    telemetry_env: tuple[Any, Any],
+) -> None:
+    exporter, _reader = telemetry_env
+    sent: list[dict[str, Any]] = []
+    error = RuntimeError("SENTINEL-ROUTE")
+
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        raise error
+
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/x",
+        "headers": [],
+        "route": object(),
+    }
+    outcome = _capture_outcome(inner, sent, scope)
+
+    assert outcome is error, f"the middleware replaced the app's exception with {outcome!r}"
+    assert sent == []
+    assert len(exporter.get_finished_spans()) == 1, _names(exporter)
+
+
+@pytest.mark.l4("C-76dc3cd2")
+def test_a_non_int_response_status_does_not_replace_the_app_outcome(
+    telemetry_env: tuple[Any, Any],
+) -> None:
+    exporter, _reader = telemetry_env
+    sent: list[dict[str, Any]] = []
+    start = {"type": "http.response.start", "status": "oops", "headers": []}
+    body = {"type": "http.response.body", "body": b"ok"}
+
+    async def inner(scope: Any, receive: Any, send: Any) -> None:
+        await send(start)
+        await send(body)
+
+    outcome = _capture_outcome(inner, sent)
+
+    assert outcome is None, f"the middleware replaced the app's outcome with {outcome!r}"
+    assert sent == [start, body]
+    assert len(exporter.get_finished_spans()) == 1, _names(exporter)

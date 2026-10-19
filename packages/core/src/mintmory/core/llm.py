@@ -105,7 +105,12 @@ def post_chat_completion(
         method="POST",
     )
     parsed = urllib.parse.urlsplit(base_url)
-    port = parsed.port
+    try:
+        port = parsed.port
+    except ValueError:
+        # A malformed port must not be reported as a telemetry failure: the
+        # request itself decides what the caller sees (FB-002).
+        port = None
     if port is None:
         port = 443 if parsed.scheme == "https" else 80
     attrs: dict[str, Any] = {
