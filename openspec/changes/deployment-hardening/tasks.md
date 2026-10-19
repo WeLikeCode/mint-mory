@@ -149,7 +149,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   (Without the three OIDC values `templates/oauth2proxy-secret.yaml` calls `fail`;
   without `ingress.enabled=true` the auth-url/auth-signin annotations are not
   rendered.) Then tick 4.1. Done by the owner in 465af8a.
-- [ ] 5.6 `scripts/bump_version.py` (today: `PYPROJECTS`, `bump_text(text, new_version)`,
+- [x] 5.6 `scripts/bump_version.py` (today: `PYPROJECTS`, `bump_text(text, new_version)`,
   `main()` reading `sys.argv`, root `Path(__file__).parents[1]`). Add
   `bump_chart_text(text: str, new_version: str) -> str` that rewrites only the first line
   matching `^appVersion: "[^"]+"` (re.M, count=1) to `appVersion: "<new_version>"` and raises
