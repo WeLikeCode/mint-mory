@@ -373,3 +373,4 @@
 {"at":"2026-10-19T04:40:59Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T04:40:59Z","run":"r-20261019T0440Z-a1ca","type":"unit.dispatched","unit":"openspec:deployment-hardening"}
 {"at":"2026-10-19T04:50:56Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"openspec:deployment-hardening"}
+{"at":"2026-10-19T04:55:55Z","by":"harness","reason":"the cause is gone: openspec:deployment-hardening is awaiting_human","type":"plan.resumed"}
