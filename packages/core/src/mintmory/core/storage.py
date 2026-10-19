@@ -2021,6 +2021,9 @@ class SqliteBackend:
             updated_at=datetime.fromisoformat(row["updated_at"]),
         )
 
+    def _assert_tenant_writable(self, conn: sqlite3.Connection, tenant_id: str) -> None:
+        raise NotImplementedError
+
 
 # ---------------------------------------------------------------------------
 # Back-compat alias — keep for one release so code pinned to the old name
