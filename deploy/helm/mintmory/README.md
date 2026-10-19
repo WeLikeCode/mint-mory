@@ -7,9 +7,10 @@ override it to build/mirror your own from the repo-root `Dockerfile`.
 ## Pulling the image (GHCR)
 
 CI publishes the light image on pushes to the default branch (tags `main`,
-`sha-<sha>`, and `latest`) and on release tags (the version, e.g.
-`v0.1.0-beta.2`). It uses the built-in `GITHUB_TOKEN` with `packages: write` — no
-extra registry secret.
+`sha-<sha>`, and `latest`) and on release tags `vX.Y.Z` as the image tag `X.Y.Z`
+(e.g. `0.1.0`, the chart's default `appVersion`). `latest` tracks only the default
+branch. It uses the built-in `GITHUB_TOKEN` with `packages: write` — no extra
+registry secret.
 
 ```sh
 docker pull ghcr.io/welikecode/mint-mory:latest
@@ -199,6 +200,18 @@ provider**: set the issuer URL, client id, and client secret. The cookie secret
 is chart-generated (`randAlphaNum 32 | b64enc`) unless you set
 `auth.oauth2proxy.cookieSecret`. MintMory is single-tenant — SSO gates *access*,
 it is not per-user tenancy.
+
+The oauth2-proxy pods carry their own selector label
+`app.kubernetes.io/name: <chart name>-oauth2-proxy`, so the application Service
+and PodDisruptionBudget never select them. A release installed earlier in
+`oauth2proxy` mode must delete its `<release>-mintmory-oauth2-proxy` Deployment
+before `helm upgrade`: a Deployment selector is immutable, so the changed labels
+of the oauth2-proxy Deployment cannot be applied in place:
+
+```sh
+kubectl delete deployment mm-mintmory-oauth2-proxy
+helm upgrade mm deploy/helm/mintmory -f your-values.yaml
+```
 
 ## Backups
 

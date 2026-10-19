@@ -191,7 +191,7 @@ through `fastmcp`). Every test function is annotated `-> None` (ruff `ANN`).
   `test_bump_main_rejects_bad_version`. Each test asserts on the outcome (the returned text,
   the files, the `SystemExit` message), so a function that answers its zero value fails it by
   assertion.
-- [ ] 5.7 Docs. In `deploy/helm/mintmory/README.md`, section "Pulling the image (GHCR)": say CI
+- [x] 5.7 Docs. In `deploy/helm/mintmory/README.md`, section "Pulling the image (GHCR)": say CI
   publishes on pushes to
   the default branch (`main`, `sha-<sha>`, `latest`) and on release tags `vX.Y.Z` as
   the image tag `X.Y.Z` (e.g. `0.1.0`, the chart's default `appVersion`); `latest`
