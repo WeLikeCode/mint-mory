@@ -302,3 +302,47 @@ def test_pg_transaction_tenancy() -> None:
     assert isinstance(excinfo.value, TenancyNotSupportedError)
     assert getattr(excinfo.value, "operation", None) == "transaction"
     assert backend._pool is None
+
+
+# ---------------------------------------------------------------------------
+# Task 4 — the Postgres interim id-only writes reject a non-global tenant
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-3810642f")
+def test_pg_archive_memory_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.archive_memory, keyword_only=False, default=None)
+    archive_memory = cast(Callable[..., object], backend.archive_memory)
+    with pytest.raises(TenancyNotSupportedError):
+        archive_memory("m1", tenant_id="t1")
+    assert backend._pool is None
+
+
+@pytest.mark.l4("C-3810642f")
+def test_pg_supersede_memory_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.supersede_memory, keyword_only=False, default=None)
+    supersede_memory = cast(Callable[..., object], backend.supersede_memory)
+    with pytest.raises(TenancyNotSupportedError):
+        supersede_memory("m1", "m2", tenant_id="t1")
+    assert backend._pool is None
+
+
+@pytest.mark.l4("C-3810642f")
+def test_pg_apply_feedback_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.apply_feedback, keyword_only=False, default=None)
+    apply_feedback = cast(Callable[..., object], backend.apply_feedback)
+    with pytest.raises(TenancyNotSupportedError):
+        apply_feedback("m1", True, False, tenant_id="t1")
+    assert backend._pool is None
+
+
+@pytest.mark.l4("C-44a91f81")
+def test_pg_update_memory_tenancy() -> None:
+    backend = _backend()
+    update_memory = cast(Callable[..., object], backend.update_memory)
+    with pytest.raises(TenancyNotSupportedError):
+        update_memory("m1", tenant_id="t1")
+    assert backend._pool is None

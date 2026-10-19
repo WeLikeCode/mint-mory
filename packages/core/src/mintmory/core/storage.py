@@ -825,8 +825,10 @@ class SqliteBackend:
         assert result is not None  # just updated
         return result
 
-    def archive_memory(self, memory_id: str) -> None:
+    def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
         """Soft delete: set is_archived=1, is_active=0, refresh updated_at."""
+        if tenant_id is not None:
+            raise NotImplementedError
         with self.transaction() as conn:
             stored_tenant = self._stored_tenant(conn, memory_id)
             if stored_tenant is not None:
@@ -926,7 +928,9 @@ class SqliteBackend:
                 (tenant_id, path),
             )
 
-    def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
+    def apply_feedback(
+        self, memory_id: str, useful: bool, stale: bool, tenant_id: str | None = None
+    ) -> None:
         """Per-memory feedback primitive (PLAN.md §1b).
 
         useful -> usefulness_score += USEFUL_INCREMENT (cap 10), reinforcement_count += 1.
@@ -939,6 +943,8 @@ class SqliteBackend:
         Sets is_stale=1 when staleness_score >= STALENESS_THRESHOLD (7.0).
         Always refreshes updated_at. Clamping via scoring.increment_*.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         with self.transaction() as txn:
             row = txn.execute(
                 "SELECT usefulness_score, staleness_score, reinforcement_count, is_note, "
@@ -1304,7 +1310,7 @@ class SqliteBackend:
 
         return records
 
-    def supersede_memory(self, memory_id: str, by_id: str) -> None:
+    def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
         """Mark ``memory_id`` superseded by ``by_id``.
 
         Sets superseded_by=by_id, is_active=0, is_archived=1 and refreshes
@@ -1313,6 +1319,8 @@ class SqliteBackend:
         semantics. Does NOT add a SUPERSEDES concept_link — that is the caller's
         responsibility when needed.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         with self.transaction() as conn:
             stored_tenant = self._stored_tenant(conn, memory_id)
             if stored_tenant is not None:

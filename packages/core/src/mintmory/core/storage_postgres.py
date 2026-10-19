@@ -595,7 +595,9 @@ class PostgresBackend:
         assert result is not None
         return result
 
-    def archive_memory(self, memory_id: str) -> None:
+    def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
+        if tenant_id is not None:
+            raise NotImplementedError
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -605,7 +607,9 @@ class PostgresBackend:
             )
             conn.commit()
 
-    def supersede_memory(self, memory_id: str, by_id: str) -> None:
+    def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
+        if tenant_id is not None:
+            raise NotImplementedError
         assert self._pool is not None
         with self._pool.connection() as conn:
             conn.execute(
@@ -711,7 +715,9 @@ class PostgresBackend:
     # Feedback — ATOMIC server-side (design §6.3)
     # ------------------------------------------------------------------
 
-    def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
+    def apply_feedback(
+        self, memory_id: str, useful: bool, stale: bool, tenant_id: str | None = None
+    ) -> None:
         """
         Atomic server-side feedback (single UPDATE, no read-modify-write).
 
@@ -719,6 +725,8 @@ class PostgresBackend:
         Non-notes: stale vote increments staleness_score; exceeding
         STALENESS_THRESHOLD triggers is_stale.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         assert self._pool is not None
         with self._pool.connection() as conn:
             result = conn.execute(
