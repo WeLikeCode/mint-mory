@@ -153,6 +153,8 @@ def fuse_and_search(
     note_bonus: float,
     auto_include_cap: int,
     now: datetime,
+    tenant_id: str | None = None,
+    record_session: bool = True,
 ) -> SearchResponse:
     """
     Backend-independent fusion + scoring pipeline.
@@ -162,6 +164,8 @@ def fuse_and_search(
     session-recording / retrieval-bumping logic lives here so it is identical
     across all backends.
     """
+    if tenant_id is not None or record_session is not True:
+        raise NotImplementedError
     with telemetry.search_phase("fusion") as handle:
         base_scores = _merge_and_normalise(
             fts_scores, trigram_scores, vector_scores, vector_rrf_weight

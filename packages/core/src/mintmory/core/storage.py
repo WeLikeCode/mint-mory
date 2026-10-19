@@ -1009,8 +1009,10 @@ class SqliteBackend:
             self._vector_rrf_weight = SearchSettings().vector_rrf_weight
         return self._vector_rrf_weight
 
-    def _fts_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _fts_scores(self, query: str, limit: int, tenant_id: str | None = None) -> dict[str, float]:
         """Run FTS5 MATCH and return {memory_id: bm25-derived score (higher=better)}."""
+        if tenant_id is not None:
+            raise NotImplementedError
         match_expr = _sanitise_fts_query(query)
         if not match_expr:
             return {}
@@ -1030,8 +1032,12 @@ class SqliteBackend:
         # bm25 returns lower = more relevant; negate so higher = better.
         return {row["id"]: -float(row["rank"]) for row in rows}
 
-    def _trigram_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _trigram_scores(
+        self, query: str, limit: int, tenant_id: str | None = None
+    ) -> dict[str, float]:
         """Run the trigram FTS5 MATCH and return {memory_id: score (higher=better)}."""
+        if tenant_id is not None:
+            raise NotImplementedError
         if not self._trigram_loaded:
             return {}
         match_expr = _trigram_match_expr(query)
@@ -1054,7 +1060,11 @@ class SqliteBackend:
         return {row["id"]: -float(row["rank"]) for row in rows}
 
     def _vector_scores(
-        self, query: str, query_embedding: np.ndarray | None, limit: int
+        self,
+        query: str,
+        query_embedding: np.ndarray | None,
+        limit: int,
+        tenant_id: str | None = None,
     ) -> dict[str, float]:
         """Vector phase of hybrid search: brute-force cosine over stored embeddings.
 
@@ -1063,6 +1073,8 @@ class SqliteBackend:
         embeddings) are skipped. Isolated behind this method so an ANN backend can
         replace the scan later without touching search()/fusion (see ADR-0006).
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         if not self.vector_search_available():
             return {}
         blob: bytes | None
@@ -1094,6 +1106,8 @@ class SqliteBackend:
         self,
         request: SearchRequest,
         query_embedding: np.ndarray | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> SearchResponse:
         """
         Hybrid search pipeline (PLAN.md §3): FTS5 + optional vector phase merged
@@ -1103,6 +1117,8 @@ class SqliteBackend:
         Fusion/scoring/session logic lives in ``hybrid_search.fuse_and_search``
         so it is shared identically with PostgresBackend.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         # Wider candidate pool than the final limit so filtering + scoring have
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
@@ -1141,7 +1157,9 @@ class SqliteBackend:
             now=_utcnow(),
         )
 
-    def _load_memories(self, ids: list[str]) -> list[MemoryRecord]:
+    def _load_memories(self, ids: list[str], tenant_id: str | None = None) -> list[MemoryRecord]:
+        if tenant_id is not None:
+            raise NotImplementedError
         if not ids:
             return []
         conn = self.connect()
@@ -1245,7 +1263,9 @@ class SqliteBackend:
             return None
         return self._row_to_memory(row)
 
-    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(
+        self, about: str, limit: int = 5, tenant_id: str | None = None
+    ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.
 
         Reuses the hybrid score sources (FTS5 + trigram + vector) and min-max
@@ -1253,6 +1273,8 @@ class SqliteBackend:
         record query_results, and does NOT bump retrieval counters. Returns
         ``(normalised_score, record)`` pairs sorted best-first.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         from mintmory.core.hybrid_search import fuse_and_rank  # noqa: PLC0415
 
         pool = max(limit * 5, 50)
@@ -1392,6 +1414,7 @@ class SqliteBackend:
         self,
         anchor_ids: list[str],
         spec: SearchAroundSpec,
+        tenant_id: str | None = None,
     ) -> list[str]:
         """
         Graph traversal from anchor_ids via concept_links (PLAN.md §3).
@@ -1400,6 +1423,8 @@ class SqliteBackend:
         spec.min_strength. Follows source->target always, and for symmetric link
         types also target->source. Anchors are excluded from the result; dedup'd.
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         if not anchor_ids:
             return []
 
