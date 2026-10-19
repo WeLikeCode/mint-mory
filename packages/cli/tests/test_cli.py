@@ -461,6 +461,122 @@ def test_doctor_healthy_offline(cli_db: Path) -> None:
     assert "disabled" in result.output  # default LLM provider=none
 
 
+def _doctor_output(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Run ``doctor`` against the isolated DB with a wide terminal; return stdout."""
+    monkeypatch.setenv("COLUMNS", "200")
+    _add("a doctor telemetry probe", "--category", "fact")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
+@pytest.mark.l4("C-2b1a1bac")
+def test_doctor_telemetry_without_a_collector(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mintmory.core import telemetry
+
+    monkeypatch.delenv("MINTMORY_OTEL_ENABLED", raising=False)
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", lambda url, timeout=0.1: False)
+    output = _doctor_output(monkeypatch)
+    assert "telemetry" in output
+    assert (
+        "mode=auto, state=no collector, endpoint=http://localhost:4318/v1/traces, "
+        "reachable=no, service=mintmory-cli"
+    ) in output
+
+
+@pytest.mark.l4("C-93f4f5b3")
+def test_doctor_telemetry_endpoint_it_cannot_parse(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret_i = "SECRET" + "-I-33"
+    for endpoint in (
+        "not a url",
+        "http://localhost:99999",
+        f"http://user:{secret_i}@localhost:99999",
+    ):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+        output = _doctor_output(monkeypatch)
+        assert "endpoint=<invalid>, reachable=invalid" in output
+        assert secret_i not in output
+
+
+@pytest.mark.l4("C-8b3b5845")
+def test_doctor_telemetry_hides_credentials(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mintmory.core import telemetry
+
+    secret_u = "SECRET" + "-U-55"
+    secret_q = "SECRET" + "-Q-77"
+    seen: list[str] = []
+
+    def _record(url: str, timeout: float = 0.1) -> bool:
+        seen.append(url)
+        return False
+
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", _record)
+    cases = [
+        (
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            f"http://user:{secret_u}@collector:4318",
+            "http://collector:4318/v1/traces",
+        ),
+        (
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            f"https://collector.example:4318/v1/traces?api_key={secret_q}#frag",
+            "https://collector.example:4318/v1/traces",
+        ),
+    ]
+    for variable, value, printed in cases:
+        seen.clear()
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+        monkeypatch.setenv(variable, value)
+        output = _doctor_output(monkeypatch)
+        assert f"endpoint={printed}, reachable=no" in output
+        assert printed in seen
+        assert secret_u not in output
+        assert secret_q not in output
+        assert "api_key" not in output
+
+
+@pytest.mark.l4("C-db0580b1")
+def test_doctor_telemetry_survives_a_failing_status(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mintmory.core import telemetry
+
+    def _boom(settings: object, default_service_name: str = "mintmory-cli") -> dict[str, str]:
+        raise RuntimeError
+
+    monkeypatch.setattr(telemetry, "status", _boom)
+    output = _doctor_output(monkeypatch)
+    assert "status unavailable (RuntimeError)" in output
+
+
+@pytest.mark.l4("C-92d621b6")
+def test_doctor_telemetry_sdk_missing_and_hides_headers(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mintmory.core import telemetry
+
+    secret_h = "SECRET" + "-1234"
+    monkeypatch.setenv("MINTMORY_OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", f"authorization=Bearer {secret_h}")
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", lambda url, timeout=0.1: True)
+
+    first = _doctor_output(monkeypatch)
+    assert "state=exporting" in first
+    assert "reachable=yes" in first
+    assert secret_h not in first
+
+    monkeypatch.setattr(telemetry, "_sdk_available", lambda: False)
+    second = _doctor_output(monkeypatch)
+    assert "state=SDK missing" in second
+    assert secret_h not in second
+
+
 # ---------------------------------------------------------------------------
 # ingest — conversion
 # ---------------------------------------------------------------------------

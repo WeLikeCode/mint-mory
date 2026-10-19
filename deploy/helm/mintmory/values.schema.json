@@ -142,7 +142,10 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "endpoint": { "type": "string" },
-        "serviceName": { "type": "string" }
+        "serviceName": { "type": "string" },
+        "sampler": { "type": "string" },
+        "samplerArg": { "type": "string" },
+        "resourceAttributes": { "type": "string" }
       },
       "additionalProperties": false
     },
