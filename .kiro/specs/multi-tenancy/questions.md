@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 5 | technical | packages/core/tests/test_tenant_directory.py:191 |
-| Q-002 | open | 7 | technical | packages/core/tests/test_tenant_schema_gate.py:29 |
+| Q-002 | accepted | 7 | technical | packages/core/tests/test_tenant_schema_gate.py:29 |
 <!-- l4:index:end -->
 
 ---
@@ -43,7 +43,7 @@ Edit `packages/core/tests/test_tenant_directory.py`: at line 191 change `_insert
 
 ## Q-002: packages/core/tests/test_tenant_schema_gate.py:29
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 7
 - **Kind:** technical
 - **Asked:** 2026-10-19T17:16Z by deepseek, run r-20261019T1645Z-97d7, task 7
