@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 5 | technical | packages/core/tests/test_tenant_directory.py:191 |
+| Q-001 | accepted | 5 | technical | packages/core/tests/test_tenant_directory.py:191 |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/core/tests/test_tenant_directory.py:191
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 5
 - **Kind:** technical
 - **Asked:** 2026-10-19T16:22Z by deepseek, run r-20261019T1437Z-76f9, task 5
