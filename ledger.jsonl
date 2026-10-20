@@ -114,3 +114,5 @@
 {"at":"2026-10-20T20:40:56Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"multi-tenancy-cli retried: fix-3 task 1.1 halted on its own over-specified regression test (it set FORCE_TERMINAL itself); the retry reason tells the implementer to keep only the conftest fixture and a test that checks colour is off; resumed on the owner's instruction to finish the plan","type":"plan.resumed"}
 {"at":"2026-10-20T20:41:42Z","attempt":1,"cost_usd":5.779882,"runs":9,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T20:41:42Z","run":"r-20261020T2041Z-32d2","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T21:20:34Z","attempt":1,"cost_usd":7.418346,"runs":10,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T21:20:34Z","run":"r-20261020T2120Z-fa5a","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
