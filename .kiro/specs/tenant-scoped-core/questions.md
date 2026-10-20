@@ -18,7 +18,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-005 | answered | none | verdict | Criterion C-7881686c (Req 3.1): accept as satisfied? |
 | Q-006 | answered | none | verdict | Criterion C-d9c39ea3 (Req 3.2): accept as satisfied? |
 | Q-007 | answered | none | verdict | Criterion C-63860dbc (Req 3.3): accept as satisfied? |
-| Q-008 | open | none | verdict | Criterion C-a0213e6c (Req 4.1): accept as satisfied? |
+| Q-008 | answered | none | verdict | Criterion C-a0213e6c (Req 4.1): accept as satisfied? |
 <!-- l4:index:end -->
 
 ---
@@ -212,7 +212,7 @@ accept: verified on the unit branch: run_dream raises DreamFailedError when any 
 
 ## Q-008: Criterion C-a0213e6c (Req 4.1): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -238,3 +238,4 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: verified on the unit branch: MCP summary_jobs/summary_put, CLI summary-jobs/summary-put and HTTP GET /summaries/jobs and PUT /summaries/{concept} all build their engine with tenant_id=TENANT_GLOBAL, so on a multi-tenant database they see global memories only and on a one-tenant database (everything global) the output is unchanged; the three transport tests that trace it pass.
