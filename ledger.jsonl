@@ -107,3 +107,5 @@
 {"at":"2026-10-20T20:06:07Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-cli is in_review","type":"plan.resumed"}
 {"at":"2026-10-20T20:06:09Z","attempt":1,"cost_usd":5.684055,"runs":7,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T20:06:09Z","run":"r-20261020T2006Z-327a","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T20:25:16Z","attempt":1,"cost_usd":5.752479,"runs":8,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T20:25:16Z","run":"r-20261020T2025Z-c4a7","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
