@@ -62,3 +62,4 @@
 {"at":"2026-10-20T05:14:51Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T05:14:51Z","run":"r-20261020T0514Z-8813","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T05:20:33Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:tenant-scoped-core"}
+{"at":"2026-10-20T05:22:52Z","by":"harness","reason":"the cause is gone: kiro:tenant-scoped-core is awaiting_human","type":"plan.resumed"}
