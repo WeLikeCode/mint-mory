@@ -105,3 +105,5 @@
 {"at":"2026-10-20T19:24:52Z","run":"r-20261020T1924Z-7211","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T20:00:57Z","detail":"the repository CI is still running on the hand-off commit 726d453e8a (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"726d453e8a9cd47db7d5e2f5fc653844cbb73980","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T20:06:07Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-cli is in_review","type":"plan.resumed"}
+{"at":"2026-10-20T20:06:09Z","attempt":1,"cost_usd":5.684055,"runs":7,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T20:06:09Z","run":"r-20261020T2006Z-327a","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
