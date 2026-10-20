@@ -10,14 +10,14 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | submitted | tests | packages/cli/tests/test_cli_tenancy_root.py:87 | CLI help tests must not depend on terminal colour (repository CI fails) |
+| FB-001 | taken | tests | packages/cli/tests/test_cli_tenancy_root.py:87 | CLI help tests must not depend on terminal colour (repository CI fails) |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: CLI help tests must not depend on terminal colour (repository CI fails)
 
-- **Status:** submitted
+- **Status:** taken
 - **Kind:** tests
 - **Where:** `packages/cli/tests/test_cli_tenancy_root.py:87-96`
 - **Lesson:** no
@@ -40,3 +40,4 @@ test_help_documents_the_tenant_option passes in the L4 gates but fails in the re
 
 ### Outcome
 <!-- written by the harness -->
+Taken in round 6 into multi-tenancy-cli-fix-3
