@@ -110,7 +110,11 @@ class DreamingEngine:
         conflict_resolver: ConflictResolver | None = None,
         link_settings: LinkSettings | None = None,
         summary_settings: SummarySettings | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> None:
+        if tenant_id is not None:
+            raise NotImplementedError
         self.adapter = adapter
         self.summarizer = summarizer
         self.conflict_resolver = conflict_resolver

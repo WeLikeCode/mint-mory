@@ -254,6 +254,8 @@ def build_summarizer(settings: LLMSettings) -> Summarizer | None:
 def build_conflict_resolver(
     settings: LLMSettings,
     adapter: StorageBackend,
+    *,
+    tenant_id: str | None = None,
 ) -> ConflictResolver | None:
     """Build a conflict-resolver callable, or ``None`` when ``provider=none``.
 
@@ -261,6 +263,8 @@ def build_conflict_resolver(
     outdated and should be archived (DELETE). Falls back to ``NONE`` on any
     failure so the dreaming step stays safe.
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     if settings.provider is LLMProvider.NONE:
         return None
     client = LLMClient(settings)
@@ -363,6 +367,8 @@ def build_dreaming_engine(
     llm_settings: LLMSettings | None = None,
     link_settings: LinkSettings | None = None,
     summary_settings: SummarySettings | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> DreamingEngine:
     """Wire a ``DreamingEngine`` from settings.
 
@@ -370,6 +376,8 @@ def build_dreaming_engine(
     ``generate_summaries()`` and ``resolve_contradictions()`` return 0 — exactly
     today's offline behaviour. Link/summary settings are passed through.
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     llm = llm_settings if llm_settings is not None else LLMSettings()
     return DreamingEngine(
         adapter,
