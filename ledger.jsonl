@@ -97,3 +97,5 @@
 {"at":"2026-10-20T13:13:59Z","run":"r-20261020T1313Z-2c93","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T13:15:19Z","detail":"round 2 does not fit in one job: raise timeout-minutes and L4_JOB_TIMEOUT_MINUTES or split the task, then l4 retry --unit kiro:multi-tenancy-cli --reason TEXT (stopped twice: 21 s left for an estimate of 600 s, then 30 s for 600 s)","reason":"unit_halted","type":"plan.stopped","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T18:55:07Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"resumed on the owner's instruction: ci.time_budget is auto since staging b0d1aca (21m left one usable minute), harness pin v0.4.20 (7ae2320), multi-tenancy-cli retried","type":"plan.resumed"}
+{"at":"2026-10-20T18:56:52Z","attempt":1,"cost_usd":1.595313,"runs":5,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T18:56:52Z","run":"r-20261020T1856Z-351e","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
