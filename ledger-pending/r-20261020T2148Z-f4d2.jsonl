@@ -1,3 +1,4 @@
 {"ts": "2026-10-20T21:48:18.500995Z", "run_id": "r-20261020T2148Z-f4d2", "unit": "kiro:multi-tenancy-cli", "seq": 1, "type": "run.started", "harness_version": "0.4.20", "harness_commit": "2b295e477f1087e34d8b1ce62b930a872621c234", "command": "plan --sweep", "branch": "l4/kiro/multi-tenancy-cli"}
 {"ts": "2026-10-20T21:48:18.501485Z", "run_id": "r-20261020T2148Z-f4d2", "unit": "kiro:multi-tenancy-cli", "seq": 2, "type": "phase.changed", "from": "in_review", "to": "merged", "trigger": "pr_merged", "exit_code": 0, "pr": 44, "merge_commit": "14bde5a778bc68a9a0d08404c16e119a3215417d"}
 {"ts": "2026-10-20T21:48:20.144934Z", "run_id": "r-20261020T2148Z-f4d2", "unit": "kiro:multi-tenancy-cli", "seq": 3, "type": "archive.done", "via": "done_gate", "base": "14bde5a778bc68a9a0d08404c16e119a3215417d"}
+{"ts": "2026-10-20T21:48:21.471303Z", "run_id": "r-20261020T2148Z-f4d2", "unit": "kiro:multi-tenancy-cli", "seq": 4, "type": "run.finished", "exit_code": 0}
