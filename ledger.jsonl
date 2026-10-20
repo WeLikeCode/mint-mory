@@ -76,3 +76,4 @@
 {"at":"2026-10-20T11:03:30Z","attempt":1,"cost_usd":2.012636,"runs":5,"type":"plan.charged","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T11:03:30Z","run":"r-20261020T1103Z-1817","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T11:04:42Z","detail":"the repository CI is still running on the hand-off commit 713cb4fede (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"713cb4fede6143f7df170452962d1d9832d3c387","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:tenant-scoped-core"}
+{"at":"2026-10-20T11:18:24Z","by":"harness","reason":"the cause is gone: the merge of kiro:tenant-scoped-core can go on","type":"plan.resumed"}
