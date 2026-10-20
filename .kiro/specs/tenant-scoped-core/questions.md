@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | answered | 1 | ambiguous | R1.7 assumes LinkSettings() default min_shared_entities=1, but the code default is 2 |
 | Q-002 | accepted | 3 | technical | packages/mcp/tests/test_tenancy_dreaming_mcp_transport.py:114 |
 | Q-003 | accepted | 3 | technical | packages/cli/tests/test_tenancy_dreaming_cli_transport.py:112 |
-| Q-004 | open | 3 | technical | packages/api/tests/test_tenancy_dreaming_api_transport.py:111 |
+| Q-004 | accepted | 3 | technical | packages/api/tests/test_tenancy_dreaming_api_transport.py:111 |
 <!-- l4:index:end -->
 
 ---
@@ -90,7 +90,7 @@ Edit `packages/cli/tests/test_tenancy_dreaming_cli_transport.py`: in `_seed_two_
 
 ## Q-004: packages/api/tests/test_tenancy_dreaming_api_transport.py:111
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 3
 - **Kind:** technical
 - **Asked:** 2026-10-20T07:25Z by deepseek, run r-20261020T0522Z-d787, task 3
