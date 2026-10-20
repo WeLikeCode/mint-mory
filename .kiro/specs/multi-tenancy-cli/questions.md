@@ -22,7 +22,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-009 | answered | none | verdict | Criterion C-fbe84147 (Req 6.8): accept as satisfied? |
 | Q-010 | answered | none | verdict | Criterion C-0459af16 (Req 6.9): accept as satisfied? |
 | Q-011 | open | none | verdict | Criterion C-5cf1ac32 (Req 6.10): accept as satisfied? |
-| Q-012 | open | none | verdict | Criterion C-a9f24733 (Req 6.11): accept as satisfied? |
+| Q-012 | answered | none | verdict | Criterion C-a9f24733 (Req 6.11): accept as satisfied? |
 | Q-013 | open | none | verdict | Finding F-2192b892: Global image-caption-put exits 2, not 1 |
 <!-- l4:index:end -->
 
@@ -363,7 +363,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ## Q-012: Criterion C-a9f24733 (Req 6.11): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -389,6 +389,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: test 522-555 asserts the recorded tenant_id == acme and that --tenant nope vision-run and image-caption-put both exit 1 with 'not found'
 ---
 
 ## Q-013: Finding F-2192b892: Global image-caption-put exits 2, not 1
