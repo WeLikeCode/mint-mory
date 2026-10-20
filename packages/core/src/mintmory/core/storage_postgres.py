@@ -971,8 +971,7 @@ class PostgresBackend:
         tenant_id: str | None = None,
     ) -> SearchResponse:
         """Hybrid search: FTS + trigram + vector via shared fuse_and_search."""
-        if tenant_id is not None:
-            raise NotImplementedError
+        self._require_global_tenant(tenant_id, "search")
         pool_size = max(request.limit * 5, 50)
         fts_scores, trigram_scores, vec_scores = collect_scores(
             fts_fn=lambda: self._fts_scores(request.query, pool_size),
@@ -1005,8 +1004,7 @@ class PostgresBackend:
         tenant_id: str | None = None,
     ) -> list[str]:
         """BFS over concept_links up to spec.depth (mirrors SqliteBackend logic)."""
-        if tenant_id is not None:
-            raise NotImplementedError
+        self._require_global_tenant(tenant_id, "search_around")
         if not anchor_ids:
             return []
         assert self._pool is not None
@@ -1141,8 +1139,7 @@ class PostgresBackend:
         self, about: str, limit: int = 5, tenant_id: str | None = None
     ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring."""
-        if tenant_id is not None:
-            raise NotImplementedError
+        self._require_global_tenant(tenant_id, "anchor_candidates")
         pool_size = max(limit * 5, 50)
         return fuse_and_rank(
             fts_scores=self._fts_scores(about, pool_size),

@@ -37,7 +37,7 @@
   - The R2.2 test over every read of R1.1 except `search`.
   - _Requirements: 2.1, 2.2_
 
-- [ ] 6. Postgres interim (`storage_postgres.py`)
+- [x] 6. Postgres interim (`storage_postgres.py`)
   - Same parameters on every Postgres read, `_require_global_tenant` first;
     `list_memories` stub.
   - Tests: R5.3; `uv run mypy packages` passes.

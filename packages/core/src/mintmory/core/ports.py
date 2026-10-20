@@ -191,6 +191,8 @@ class StorageBackend(Protocol):
         self,
         request: SearchRequest,
         query_embedding: np.ndarray | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> SearchResponse:
         """Hybrid search pipeline: FTS5 + vector + RRF."""
         ...
@@ -199,6 +201,7 @@ class StorageBackend(Protocol):
         self,
         anchor_ids: list[str],
         spec: SearchAroundSpec,
+        tenant_id: str | None = None,
     ) -> list[str]:
         """Graph traversal from anchor_ids via concept_links."""
         ...
@@ -221,7 +224,9 @@ class StorageBackend(Protocol):
         """Find the most recent ACTIVE file-record matching path_or_rel."""
         ...
 
-    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(
+        self, about: str, limit: int = 5, tenant_id: str | None = None
+    ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.
 
         Returns (normalised_score, record) pairs sorted best-first.
