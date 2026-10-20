@@ -25,7 +25,7 @@
     list` equals `tenant list`.
   - _Requirements: 3.2, 4.1, 4.2, 6.1_
 
-- [ ] 4. Integration test (`tests/integration/test_tenancy_cli.py`)
+- [x] 4. Integration test (`tests/integration/test_tenancy_cli.py`)
   - R6.13 against one SQLite file, at the paths of R6.14.
   - _Requirements: 6.13, 6.14_
 
