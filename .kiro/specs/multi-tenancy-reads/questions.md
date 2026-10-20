@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 3 | technical | packages/core/tests/test_tenancy_search_reads.py:175 — trace callback expands bound parameters |
-| Q-002 | open | 3 | technical | packages/core/tests/test_tenancy_search_reads.py:256-261 — internal FTS statements false-positive |
+| Q-002 | accepted | 3 | technical | packages/core/tests/test_tenancy_search_reads.py:256-261 — internal FTS statements false-positive |
 | Q-003 | open | 3 | technical | packages/core/tests/test_tenancy_search_reads.py:396-400 — observed callables are never passed to fuse_and_search |
 <!-- l4:index:end -->
 
@@ -42,7 +42,7 @@ Edit `packages/core/tests/test_tenancy_search_reads.py`: line 175 to `assert "te
 
 ## Q-002: packages/core/tests/test_tenancy_search_reads.py:256-261 — internal FTS statements false-positive
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 3
 - **Kind:** technical
 - **Asked:** 2026-10-20T02:12Z by deepseek, run r-20261020T0204Z-bf5f, task 3
