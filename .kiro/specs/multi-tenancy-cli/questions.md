@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 2 | technical | packages/cli/tests/test_cli_tenancy_root.py:41 — `--tenant acme add` success contradicts R2.4/R6.4 |
-| Q-002 | open | none | verdict | Criterion C-8610aa4b (Req 2.2): accept as satisfied? |
+| Q-002 | answered | none | verdict | Criterion C-8610aa4b (Req 2.2): accept as satisfied? |
 | Q-003 | open | none | verdict | Criterion C-92f6541b (Req 2.3): accept as satisfied? |
 | Q-004 | open | none | verdict | Criterion C-b86d1447 (Req 2.4): accept as satisfied? |
 | Q-005 | open | none | verdict | Criterion C-5dc41637 (Req 5.2): accept as satisfied? |
@@ -54,7 +54,7 @@ Edit `packages/cli/tests/test_cli_tenancy_root.py`: insert `created = runner.inv
 
 ## Q-002: Criterion C-8610aa4b (Req 2.2): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -80,6 +80,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: main.py:335 passes _read_tenant() to run_dream; dreaming.py:1066-1083 dreams each active tenant separately and prints total(); --tenant T runs only T (a CliRunner probe: --tenant acme dream made only acme links)
 ---
 
 ## Q-003: Criterion C-92f6541b (Req 2.3): accept as satisfied?
