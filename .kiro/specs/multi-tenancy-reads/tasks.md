@@ -33,7 +33,7 @@
   - Tests: the R4.2 examples; negative limit → `ValueError`; R4.3.
   - _Requirements: 4.1, 4.2, 4.3_
 
-- [ ] 5. SQL parity trace test
+- [x] 5. SQL parity trace test
   - The R2.2 test over every read of R1.1 except `search`.
   - _Requirements: 2.1, 2.2_
 
