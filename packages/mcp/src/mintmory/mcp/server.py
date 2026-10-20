@@ -30,6 +30,7 @@ Every tool returns a JSON-safe dict (or list of dicts) produced via
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
@@ -45,7 +46,7 @@ from mintmory.core.cochange import (
     changed_with,
     documents_timeline,
 )
-from mintmory.core.config import LLMProvider, load_settings
+from mintmory.core.config import LLMProvider, McpSettings, load_settings
 from mintmory.core.dreaming import run_dream
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
@@ -63,6 +64,9 @@ from mintmory.core.types import (
     MemorySource,
     SearchAroundSpec,
     SearchRequest,
+    TenantError,
+    TenantNotFoundError,
+    validate_tenant_id,
 )
 from mintmory.mcp._schema import build_schema
 from mintmory.mcp.concise import concise_memory_get, concise_search_response
@@ -96,6 +100,7 @@ mcp: FastMCP[Any] = FastMCP(
 )
 
 _store: StorageBackend | None = None
+_scope_tenant: str = TENANT_GLOBAL
 
 
 def _get_store() -> StorageBackend:
@@ -105,6 +110,28 @@ def _get_store() -> StorageBackend:
         _store = build_storage()
         _store.initialise()
     return _store
+
+
+def _effective_tenant() -> str | None:
+    """Read scope: ``None`` for the global scope, the tenant id otherwise."""
+    return None if _scope_tenant == TENANT_GLOBAL else _scope_tenant
+
+
+def _bootstrap_scope(scope: str) -> None:
+    """Validate and resolve the process-wide tenant scope once at startup."""
+    global _scope_tenant
+    validate_tenant_id(scope)
+    store = _get_store()
+    if scope != TENANT_GLOBAL:
+        tenant = store.get_tenant(scope)
+        if tenant is None:
+            raise TenantNotFoundError(scope)
+        if not tenant.is_active:
+            print(
+                f"mintmory-mcp: warning: tenant {scope!r} is inactive; this server is read-only",
+                file=sys.stderr,
+            )
+    _scope_tenant = scope
 
 
 # ---------------------------------------------------------------------------
@@ -875,10 +902,22 @@ def main() -> None:
     )
     parser.add_argument("--port", type=int, default=8081, help="Port for SSE transport")
     parser.add_argument("--db", default=None, help="Path to SQLite database file")
+    parser.add_argument(
+        "--tenant",
+        default=None,
+        help="Tenant scope for this process (default: MINTMORY_MCP_TENANT or global)",
+    )
     args = parser.parse_args()
 
     if args.db:
         os.environ["MINTMORY_DB"] = args.db
+
+    scope = args.tenant or McpSettings().tenant or TENANT_GLOBAL
+    try:
+        _bootstrap_scope(scope)
+    except TenantError as exc:
+        print(f"mintmory-mcp: error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
 
     # Initialise OTel exactly once, before the server starts handling requests.
     # Mirrors packages/api/src/mintmory/api/app.py's lifespan: no-op (returns
@@ -896,11 +935,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-def _effective_tenant() -> str | None:
-    raise NotImplementedError
-
-
-def _bootstrap_scope(scope: str) -> None:
-    raise NotImplementedError

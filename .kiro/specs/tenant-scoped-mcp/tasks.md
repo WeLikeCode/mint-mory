@@ -6,7 +6,7 @@
 > packages/mcp/`); full `.l4/config.yaml` gates before the PR. No test needs
 > Postgres, Docker or a network service.
 
-- [ ] 1. Scope settings and startup (`config.py`, `server.py`)
+- [x] 1. Scope settings and startup (`config.py`, `server.py`)
   - `McpSettings`; `--tenant`; resolution of R1.2; `_scope_tenant`,
     `_effective_tenant`, `_bootstrap_scope`; `main()` order and exit 1.
   - Tests: every case of R1.6.
