@@ -53,3 +53,6 @@
 {"ts": "2026-10-20T20:17:46.556026Z", "run_id": "r-20261020T2006Z-327a", "unit": "kiro:multi-tenancy-cli", "seq": 53, "type": "budget.cost", "usd": 0.023339076000000007, "profile": "deepseek", "task": "1.1", "fix_unit": "multi-tenancy-cli-fix-3"}
 {"ts": "2026-10-20T20:17:46.583157Z", "run_id": "r-20261020T2006Z-327a", "unit": "kiro:multi-tenancy-cli", "seq": 54, "type": "step.timed", "phase": "single", "task": "1.1", "attempt": 2, "seconds": 193.7, "fix_unit": "multi-tenancy-cli-fix-3"}
 {"ts": "2026-10-20T20:17:46.585058Z", "run_id": "r-20261020T2006Z-327a", "unit": "kiro:multi-tenancy-cli", "seq": 55, "type": "question.raised", "id": "Q-001", "task": "1.1", "kind": "technical", "title": "Unfreeze packages/cli/tests/conftest.py so CLI help tests are colour-independent", "fix_unit": "multi-tenancy-cli-fix-3"}
+{"ts": "2026-10-20T20:17:51.507163Z", "run_id": "r-20261020T2006Z-327a", "unit": "kiro:multi-tenancy-cli", "seq": 56, "type": "pr.labels", "number": 44, "labels": ["l4:fixing", "l4:needs-answers"]}
+{"ts": "2026-10-20T20:17:53.117437Z", "run_id": "r-20261020T2006Z-327a", "unit": "kiro:multi-tenancy-cli", "seq": 57, "type": "lock.released"}
+{"ts": "2026-10-20T20:17:53.118038Z", "run_id": "r-20261020T2006Z-327a", "unit": "kiro:multi-tenancy-cli", "seq": 58, "type": "run.finished", "exit_code": 11}
