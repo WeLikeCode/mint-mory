@@ -29,7 +29,7 @@
   - R6.13 against one SQLite file, at the paths of R6.14.
   - _Requirements: 6.13, 6.14_
 
-- [ ] 5. Full gate
+- [x] 5. Full gate
   - `.l4/config.yaml` gates exit 0 with coverage ≥ 80%; existing CLI tests
     unchanged.
   - _Requirements: 7.1_
