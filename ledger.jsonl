@@ -53,3 +53,4 @@
 {"at":"2026-10-20T04:59:57Z","detail":"the repository CI is still running on the hand-off commit 84ccb5e4ba (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:multi-tenancy-reads"}
 {"at":"2026-10-20T05:11:08Z","by":"harness","reason":"the cause is gone: the merge of kiro:multi-tenancy-reads can go on","type":"plan.resumed"}
 {"at":"2026-10-20T05:11:14Z","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","pr":42,"target_before":"628f23ef05819993917978e8b768171a94ab2674","type":"unit.merge_requested","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T05:11:19Z","ci":"green","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","merge_commit":"47bb91111d99442cc9d5ab63a9396eae5c569a5d","method":"squash","pr":42,"raced":false,"type":"unit.merged","unit":"kiro:multi-tenancy-reads"}
