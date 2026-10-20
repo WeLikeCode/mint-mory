@@ -1,0 +1,195 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 6,
+  "verdict": "FAIL",
+  "base_sha": "7ae2320de153d99a3aef4d11ef87be3d8b8e4aac",
+  "head_sha": "695f4afbe2c79f073acda897093d05c259410f98",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "failed",
+      "seconds": 0.2,
+      "note": "base staging@7ae2320de1 contained; Feedback FB-001 (tests): CLI help tests must not depend on terminal colour (repository CI fails)"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "major",
+      "title": "Feedback FB-001 (tests): CLI help tests must not depend on terminal colour (repository CI fails)",
+      "detail": "test_help_documents_the_tenant_option passes in the L4 gates but fails in the repository CI (GitHub Actions run 39482344837, job 'lint · types · tests', step 'Pytest (coverage gate ≥ 80%)': 1 failed, 2277 passed). In GitHub Actions the variable GITHUB_ACTIONS is set, and Typer then forces a colour terminal: typer/rich_utils.py sets FORCE_TERMINAL = True when GITHUB_ACTIONS, FORCE_COLOR or PY_COLORS is set, and _get_rich_console() reads FORCE_TERMINAL on every call. The --help output then carries ANSI escape codes, so the plain sentence 'Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant.' is not found in the normalized output. The L4 gates do not pass GITHUB_ACTIONS, which is why they cannot see it. To reproduce in the gates, set typer.rich_utils.FORCE_TERMINAL to True (monkeypatch.setattr) and invoke --help. Fix without changing production code or this test: add packages/cli/tests/conftest.py (new file) with an autouse fixture that sets typer.rich_utils.FORCE_TERMINAL to None for every CLI test (monkeypatch.setattr(typer.rich_utils, 'FORCE_TERMINAL', None)), so help output is rendered as in the gates (no colour on a non-terminal) whatever...",
+      "source": "feedback",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-250a0697",
+      "feedback": {
+        "id": "FB-001",
+        "kind": "tests",
+        "title": "CLI help tests must not depend on terminal colour (repository CI fails)",
+        "text": "test_help_documents_the_tenant_option passes in the L4 gates but fails in the repository CI (GitHub Actions run 39482344837, job 'lint · types · tests', step 'Pytest (coverage gate ≥ 80%)': 1 failed, 2277 passed). In GitHub Actions the variable GITHUB_ACTIONS is set, and Typer then forces a colour terminal: typer/rich_utils.py sets FORCE_TERMINAL = True when GITHUB_ACTIONS, FORCE_COLOR or PY_COLORS is set, and _get_rich_console() reads FORCE_TERMINAL on every call. The --help output then carries ANSI escape codes, so the plain sentence 'Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant.' is not found in the normalized output. The L4 gates do not pass GITHUB_ACTIONS, which is why they cannot see it. To reproduce in the gates, set typer.rich_utils.FORCE_TERMINAL to True (monkeypatch.setattr) and invoke --help. Fix without changing production code or this test: add packages/cli/tests/conftest.py (new file) with an autouse fixture that sets typer.rich_utils.FORCE_TERMINAL to None for every CLI test (monkeypatch.setattr(typer.rich_utils, 'FORCE_TERMINAL', None)), so help output is rendered as in the gates (no colour on a non-terminal) whatever the environment; and add one test in a new file that sets FORCE_TERMINAL to True, applies the same reset, and asserts the --help output contains no ANSI escape (\\x1b[) and does contain the sentence above. Every CLI test, including test_help_documents_the_tenant_option, must pass both with and without GITHUB_ACTIONS=true in the environment.",
+        "by": "CiprianSpot, 2026-10-20T20:04:43Z",
+        "places": [
+          "packages/cli/tests/test_cli_tenancy_root.py:87-96"
+        ],
+        "env": null,
+        "when": null,
+        "then": null,
+        "code": "@pytest.mark.l4(\"C-bfe27132\")\ndef test_help_documents_the_tenant_option(cli_db: Path) -> None:\n    result = runner.invoke(app, [\"--help\"])\n    assert result.exit_code == 0, result.output\n    normalized = \" \".join(result.output.split())\n    assert (\n        \"Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant.\"\n        in normalized",
+        "sha256": "cc7c479b7eaba4904831f92a6317e5fa70be3ed3a0f6edd0452af819e42bb8cc",
+        "retake": false
+      }
+    }
+  ],
+  "holds": [],
+  "subject_sha": "695f4afbe2c79f073acda897093d05c259410f98",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": null,
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": null,
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 3,
+    "tasks": [
+      "F-250a0697 Feedback FB-001 (tests): CLI help tests must not depend on terminal colour (repository CI fails)"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "cx_runs": {},
+  "tests": {},
+  "red_green": {
+    "packages.cli.tests.test_cli_tenancy_root::test_doctor_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_help_documents_the_tenant_option": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_history_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_index_tree_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_invalid_tenant_is_rejected_before_any_command": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_mcp_serve_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_migrate_storage_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_refusals_and_validation_happen_before_the_command": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_serve_refuses_a_named_tenant_but_runs_unscoped": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_migration_error_is_reported": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_not_found_from_a_write_is_reported": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_option_goes_before_the_command": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_scope_maps_absent_empty_global_and_named": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_valid_tenant_does_not_change_the_tenant_directory": "1",
+    "packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped": "2",
+    "packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_ingest_dedups_within_the_write_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled": "2",
+    "packages.cli.tests.test_cli_tenancy::test_note_and_notes_are_tenant_scoped": "2",
+    "packages.cli.tests.test_cli_tenancy::test_summary_commands_use_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_vision_run_and_caption_put_use_the_write_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_tenant_create_reports_created_again_and_invalid_ids": "3",
+    "packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants": "3",
+    "packages.cli.tests.test_cli_tenancy::test_valid_tenant_option_does_not_change_the_tenant_directory": "3",
+    "tests.integration.test_tenancy_cli::test_cli_tenancy_sequence_on_one_sqlite_file": "4",
+    "packages.cli.tests.test_cli_tenancy_gate::test_gate_full_cli_tenancy_flow_and_coverage_floor": "5",
+    "packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_refuses_a_global_image_with_exit_one": "1.1",
+    "packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_without_an_active_record_exits_one[/tmp/no-such-image.png]": "1.1",
+    "packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_without_an_active_record_exits_one[no-such-image-id]": "1.1"
+  },
+  "guards": [],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "2b295e477f1087e34d8b1ce62b930a872621c234",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "judge_parts": [],
+  "judge_files": [],
+  "hold_views": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek",
+      "glm"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}
