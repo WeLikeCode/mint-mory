@@ -254,6 +254,8 @@ def build_summarizer(settings: LLMSettings) -> Summarizer | None:
 def build_conflict_resolver(
     settings: LLMSettings,
     adapter: StorageBackend,
+    *,
+    tenant_id: str | None = None,
 ) -> ConflictResolver | None:
     """Build a conflict-resolver callable, or ``None`` when ``provider=none``.
 
@@ -268,7 +270,7 @@ def build_conflict_resolver(
     def resolve(record: MemoryRecord) -> list[BatchResolutionAction]:
         others: list[tuple[str, str]] = []
         for cid in record.contradicts_ids:
-            other = adapter.get_memory(cid)
+            other = adapter.get_memory(cid, tenant_id=tenant_id)
             if other is not None:
                 others.append((other.id, other.content))
         if not others:
@@ -363,6 +365,8 @@ def build_dreaming_engine(
     llm_settings: LLMSettings | None = None,
     link_settings: LinkSettings | None = None,
     summary_settings: SummarySettings | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> DreamingEngine:
     """Wire a ``DreamingEngine`` from settings.
 
@@ -374,7 +378,8 @@ def build_dreaming_engine(
     return DreamingEngine(
         adapter,
         summarizer=build_summarizer(llm),
-        conflict_resolver=build_conflict_resolver(llm, adapter),
+        conflict_resolver=build_conflict_resolver(llm, adapter, tenant_id=tenant_id),
         link_settings=link_settings,
         summary_settings=summary_settings,
+        tenant_id=tenant_id,
     )

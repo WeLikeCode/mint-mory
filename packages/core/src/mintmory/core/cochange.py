@@ -765,20 +765,26 @@ def apply_changesets(
 # ---------------------------------------------------------------------------
 
 
-def changed_with(store: SqliteBackend, path: str) -> list[dict[str, Any]]:
+def changed_with(
+    store: SqliteBackend,
+    path: str,
+    *,
+    tenant_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Return peer documents that co-changed with the document at ``path``.
 
     Each result has: {path, strength, observed_at, kind}.
     MM-34: kind is taken from peer metadata.changeset_kind.
     """
     conn = store.connect()
+    tenant_clause = " AND tenant_id = ?" if tenant_id is not None else ""
+    tenant_params: tuple[Any, ...] = (tenant_id,) if tenant_id is not None else ()
 
     rows = conn.execute(
         "SELECT id, metadata FROM memories "
         "WHERE source = 'document' AND is_archived = 0 "
-        "AND json_extract(metadata, '$.path') = ? "
-        "ORDER BY rowid DESC",
-        (path,),
+        "AND json_extract(metadata, '$.path') = ?" + tenant_clause + " ORDER BY rowid DESC",
+        (path, *tenant_params),
     ).fetchall()
 
     if not rows:
@@ -798,8 +804,8 @@ def changed_with(store: SqliteBackend, path: str) -> list[dict[str, Any]]:
         "SELECT id, metadata FROM memories "
         "WHERE source = 'document' AND is_archived = 0 "
         "AND json_extract(metadata, '$.changeset_id') = ? "
-        "AND id != ?",
-        (changeset_id, target_id),
+        "AND id != ?" + tenant_clause,
+        (changeset_id, target_id, *tenant_params),
     ).fetchall()
 
     results: list[dict[str, Any]] = []
@@ -814,8 +820,8 @@ def changed_with(store: SqliteBackend, path: str) -> list[dict[str, Any]]:
             "SELECT strength FROM concept_links "
             "WHERE link_type = 'relates_to' AND entity = ? "
             "AND ((source_memory_id = ? AND target_memory_id = ?) "
-            "     OR (source_memory_id = ? AND target_memory_id = ?))",
-            (entity_tag, target_id, peer_id, peer_id, target_id),
+            "     OR (source_memory_id = ? AND target_memory_id = ?))" + tenant_clause,
+            (entity_tag, target_id, peer_id, peer_id, target_id, *tenant_params),
         ).fetchone()
         strength = float(link_row["strength"]) if link_row else 0.0
 
@@ -839,6 +845,7 @@ def documents_timeline(
     to_iso: str | None = None,
     collection: str | None = None,
     limit: int = 50,
+    tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return document memories newest-first (by valid_from) in the given window.
 
@@ -872,6 +879,10 @@ def documents_timeline(
         "OR json_extract(metadata, '$.record_role') != 'chunk')",
     ]
     params: list[Any] = [start.isoformat(), end.isoformat()]
+
+    if tenant_id is not None:
+        where.append("tenant_id = ?")
+        params.append(tenant_id)
 
     if collection is not None:
         where.append("json_extract(metadata, '$.collection') = ?")
