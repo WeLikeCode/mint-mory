@@ -47,6 +47,7 @@ from mintmory.core.types import (
     ConceptLink,
     ConceptLinkType,
     CrossTenantLinkError,
+    MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -2344,6 +2345,15 @@ class SqliteBackend:
             raise TenantNotFoundError(tenant_id)
         if not row["is_active"]:
             raise TenantInactiveError(tenant_id)
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        raise NotImplementedError
 
 
 # ---------------------------------------------------------------------------
