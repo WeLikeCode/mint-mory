@@ -71,3 +71,4 @@
 {"at":"2026-10-20T07:29:06Z","run":"r-20261020T0729Z-c0e2","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T10:32:15Z","attempt":1,"cost_usd":0.632247,"runs":4,"type":"plan.charged","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T10:32:15Z","run":"r-20261020T1032Z-59e4","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
+{"at":"2026-10-20T10:59:05Z","detail":"awaiting_human: no new answers (verdicts open: Q-005, Q-006, Q-007, Q-008)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:tenant-scoped-core"}
