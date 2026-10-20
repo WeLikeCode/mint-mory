@@ -44,3 +44,5 @@
 {"at":"2026-10-19T20:03:42Z","attempt":1,"cost_usd":1.59863,"runs":2,"type":"plan.charged","unit":"kiro:multi-tenancy-writes"}
 {"at":"2026-10-19T20:04:20Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:multi-tenancy-reads"}
 {"at":"2026-10-19T20:04:20Z","run":"r-20261019T2004Z-0e3d","type":"unit.dispatched","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T02:04:47Z","attempt":1,"cost_usd":0.243201,"runs":2,"type":"plan.charged","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T02:04:47Z","run":"r-20261020T0204Z-bf5f","type":"unit.dispatched","unit":"kiro:multi-tenancy-reads"}
