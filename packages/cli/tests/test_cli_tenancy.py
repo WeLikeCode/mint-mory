@@ -598,3 +598,125 @@ def test_docs_commands_are_read_tenant_scoped(cli_db: Path) -> None:
     assert changed.exit_code == 0, changed.output
     assert "no co-change peers" in changed.output
     assert acme_path not in changed.output
+
+
+# ---------------------------------------------------------------------------
+# R6.1 / R4.1 / R4.2 — tenant create and tenant list
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-c35d15c6", "C-a79e558d")
+def test_tenant_create_reports_created_again_and_invalid_ids(cli_db: Path) -> None:
+    created = runner.invoke(app, ["tenant", "create", "acme", "--name", "Acme Corp"])
+    assert created.exit_code == 0, created.output
+    assert "created tenant 'acme'" in created.output
+
+    store = _open(cli_db)
+    try:
+        tenant = store.get_tenant("acme")
+        assert tenant is not None
+        assert tenant.name == "Acme Corp"
+    finally:
+        store.close()
+
+    again = runner.invoke(app, ["tenant", "create", "acme", "--name", "Renamed"])
+    assert again.exit_code == 0, again.output
+    assert "tenant 'acme' already exists" in again.output
+    assert "created tenant" not in again.output
+
+    store = _open(cli_db)
+    try:
+        tenant = store.get_tenant("acme")
+        assert tenant is not None
+        assert tenant.name == "Acme Corp"
+    finally:
+        store.close()
+
+    invalid = runner.invoke(app, ["tenant", "create", "Bad"])
+    assert invalid.exit_code == 1, invalid.output
+    assert "error: invalid tenant id 'Bad'" in invalid.stderr
+
+    store = _open(cli_db)
+    try:
+        assert store.get_tenant("Bad") is None
+    finally:
+        store.close()
+
+
+@pytest.mark.l4("C-c35d15c6", "C-58023183", "C-a79e558d")
+def test_tenant_list_reports_fresh_global_and_created_tenants(cli_db: Path) -> None:
+    fresh = runner.invoke(app, ["tenant", "list", "--json"])
+    assert fresh.exit_code == 0, fresh.output
+
+    store = _open(cli_db)
+    try:
+        tenants = store.list_tenants()
+    finally:
+        store.close()
+    assert [t.id for t in tenants] == ["global"]
+    assert tenants[0].name == "Global (default) tenant"
+    assert fresh.stdout.strip() == json.dumps([t.model_dump(mode="json") for t in tenants])
+
+    created = runner.invoke(app, ["tenant", "create", "acme", "--name", "Acme Corp"])
+    assert created.exit_code == 0, created.output
+
+    listing = runner.invoke(app, ["tenant", "list", "--json"])
+    assert listing.exit_code == 0, listing.output
+
+    store = _open(cli_db)
+    try:
+        tenants = store.list_tenants()
+    finally:
+        store.close()
+    assert [t.id for t in tenants] == ["acme", "global"]
+    assert next(t for t in tenants if t.id == "acme").name == "Acme Corp"
+    assert listing.stdout.strip() == json.dumps([t.model_dump(mode="json") for t in tenants])
+
+    table = runner.invoke(app, ["tenant", "list"])
+    assert table.exit_code == 0, table.output
+    for header in ("id", "name", "is_active", "created_at"):
+        assert header in table.output
+    for tenant in tenants:
+        assert tenant.id in table.output
+        assert tenant.name in table.output
+        assert tenant.created_at.isoformat() in table.output
+    assert "true" in table.output
+    assert "false" not in table.output
+    assert table.output.find("Acme Corp") < table.output.find("Global (default) tenant")
+
+
+# ---------------------------------------------------------------------------
+# R3.2 — a valid tenant does not change the tenant directory
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-7760785e")
+def test_valid_tenant_option_does_not_change_the_tenant_directory(cli_db: Path) -> None:
+    scoped_create = runner.invoke(app, ["--tenant", "acme", "tenant", "create", "t1"])
+    assert scoped_create.exit_code == 0, scoped_create.output
+    assert "created tenant 't1'" in scoped_create.output
+
+    plain_create = runner.invoke(app, ["tenant", "create", "t2", "--name", "Second tenant"])
+    assert plain_create.exit_code == 0, plain_create.output
+    assert "created tenant 't2'" in plain_create.output
+
+    unscoped = runner.invoke(app, ["tenant", "list", "--json"])
+    assert unscoped.exit_code == 0, unscoped.output
+    scoped = runner.invoke(app, ["--tenant", "acme", "tenant", "list", "--json"])
+    assert scoped.exit_code == 0, scoped.output
+    assert scoped.stdout == unscoped.stdout
+
+    store = _open(cli_db)
+    try:
+        tenants = store.list_tenants()
+    finally:
+        store.close()
+    assert [t.id for t in tenants] == ["global", "t1", "t2"]
+    assert next(t for t in tenants if t.id == "t2").name == "Second tenant"
+
+    unscoped_table = runner.invoke(app, ["tenant", "list"])
+    scoped_table = runner.invoke(app, ["--tenant", "acme", "tenant", "list"])
+    assert scoped_table.exit_code == 0, scoped_table.output
+    assert scoped_table.output == unscoped_table.output
+    assert "t1" in scoped_table.output
+    assert "t2" in scoped_table.output

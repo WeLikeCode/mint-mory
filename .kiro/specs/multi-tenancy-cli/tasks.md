@@ -19,7 +19,7 @@
     starts as R6.2 says).
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 5.1, 5.2, 6.2, 6.3, 6.4, 6.6, 6.7, 6.8, 6.9, 6.10, 6.11, 6.12_
 
-- [ ] 3. `tenant create` / `tenant list` (`main.py`)
+- [x] 3. `tenant create` / `tenant list` (`main.py`)
   - The `tenant` group per R4.
   - Tests: R6.1; a fresh database lists only `global`; `--tenant acme tenant
     list` equals `tenant list`.
