@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1 | ambiguous | R1.7 assumes LinkSettings() default min_shared_entities=1, but the code default is 2 |
+| Q-001 | answered | 1 | ambiguous | R1.7 assumes LinkSettings() default min_shared_entities=1, but the code default is 2 |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: R1.7 assumes LinkSettings() default min_shared_entities=1, but the code default is 2
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1
 - **Kind:** ambiguous
 - **Asked:** 2026-10-20T05:19Z by deepseek, run r-20261020T0514Z-8813, task 1
@@ -33,3 +33,4 @@ C-1db051ad / requirements.md R1.7 says Scenario A uses the *default* LinkSetting
 
 ### Answer
 <!-- write below this line -->
+Option 1. Write Scenario A with an explicit LinkSettings(min_shared_entities=1) and leave the production default at 2. R1.7's intent is its parenthetical (a pair links when it shares at least one entity); the word 'default' is a slip, since min_shared_entities=2 is the deliberate production tuning (E-L-MID) and the existing tests use the same permissive setting. Do not change config defaults in this unit. Keep the rest of Scenario A as written (SummarySettings() default, the summarizer, the memories and the expected three relates_to links among a1, a2 and a3, none crossing tenants). Where another scenario only compares the legacy engine with the tenant engine, both sides may keep the default LinkSettings(), as long as both use the same settings.
