@@ -15,7 +15,7 @@ The guard rule `frozen support file` was triggered in 3 separate runs. Do not to
 ## L-e7230fe4 · Guard rule repeated: red scope
 - **Source:** 3 runs
 - **Dedupe key:** guard-violation-red-scope
-- **Reinforced:** 2 · 2026-10-19
+- **Reinforced:** 3 · 2026-10-20
 The guard rule `red scope` was triggered in 3 separate runs. Do not touch the files it protects; the harness reverts the change and the run loses time.
 
 ## L-f63ee119 · Guard rule repeated: test path freeze
