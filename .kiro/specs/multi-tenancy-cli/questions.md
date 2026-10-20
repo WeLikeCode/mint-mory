@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | answered | none | verdict | Criterion C-8610aa4b (Req 2.2): accept as satisfied? |
 | Q-003 | answered | none | verdict | Criterion C-92f6541b (Req 2.3): accept as satisfied? |
 | Q-004 | answered | none | verdict | Criterion C-b86d1447 (Req 2.4): accept as satisfied? |
-| Q-005 | open | none | verdict | Criterion C-5dc41637 (Req 5.2): accept as satisfied? |
+| Q-005 | answered | none | verdict | Criterion C-5dc41637 (Req 5.2): accept as satisfied? |
 | Q-006 | open | none | verdict | Criterion C-17c1d2d1 (Req 6.4): accept as satisfied? |
 | Q-007 | open | none | verdict | Criterion C-29450002 (Req 6.6): accept as satisfied? |
 | Q-008 | open | none | verdict | Criterion C-f9c22bd5 (Req 6.7): accept as satisfied? |
@@ -147,7 +147,7 @@ accept: _check_write_tenant (main.py:102) runs before any store work in add, ing
 
 ## Q-005: Criterion C-5dc41637 (Req 5.2): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -173,6 +173,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: the tenant check precedes every write; 14 refused writes left memories, concept links and summaries unchanged (probe); tests 204, 245-249, 311-315, 448-451
 ---
 
 ## Q-006: Criterion C-17c1d2d1 (Req 6.4): accept as satisfied?
