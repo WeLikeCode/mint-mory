@@ -21,7 +21,7 @@
     order; `run_dream` with an unknown / inactive tenant raises before running.
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-- [ ] 3. Transports dream per tenant; summary paths on `global`
+- [x] 3. Transports dream per tenant; summary paths on `global`
   - MCP `memory_dream`, CLI `dream`, HTTP `POST /dream` → `run_dream(…,
     tenant_id=None, …)`; MCP/CLI/API summary jobs and put → engine with
     `tenant_id=TENANT_GLOBAL`. Output shapes unchanged.

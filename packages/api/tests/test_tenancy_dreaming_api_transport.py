@@ -64,11 +64,11 @@ def _add(
 
 def _seed_two_tenants(store: StorageBackend) -> None:
     store.create_tenant("t1")
-    _add(store, "g1", "Alice works at Acme", "global")
-    _add(store, "g2", "Bob works at Acme", "global")
-    _add(store, "a1", "Alice works at Acme", "t1")
-    _add(store, "a2", "Carol works at Acme", "t1")
-    _add(store, "a3", "Dan works at Acme", "t1")
+    _add(store, "g1", "Alice works at Acme in Berlin", "global")
+    _add(store, "g2", "Bob works at Acme in Berlin", "global")
+    _add(store, "a1", "Alice works at Acme in Berlin", "t1")
+    _add(store, "a2", "Carol works at Acme in Berlin", "t1")
+    _add(store, "a3", "Dan works at Acme in Berlin", "t1")
 
 
 def _seed_summary_tenants(store: StorageBackend) -> None:

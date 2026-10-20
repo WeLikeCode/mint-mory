@@ -46,12 +46,14 @@ from mintmory.core.cochange import (
     documents_timeline,
 )
 from mintmory.core.config import LLMProvider, load_settings
+from mintmory.core.dreaming import run_dream
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
 from mintmory.core.storage import SqliteBackend
 from mintmory.core.storage_factory import build_storage
 from mintmory.core.telemetry import init_telemetry
 from mintmory.core.types import (
+    TENANT_GLOBAL,
     CaptionRunReport,
     ConceptLinkType,
     DreamIntensity,
@@ -424,16 +426,18 @@ def memory_dream(intensity: str = "light") -> dict[str, Any]:
     """
     store = _get_store()
     settings = load_settings()
-    engine = build_dreaming_engine(
+    report = run_dream(
         store,
-        settings.llm,
-        link_settings=settings.link,
-        summary_settings=settings.summary,
+        intensity=DreamIntensity(intensity),
+        tenant_id=None,
+        engine_factory=lambda tenant_id: build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+            tenant_id=tenant_id,
+        ),
     )
-    if DreamIntensity(intensity) is DreamIntensity.FULL:
-        report = engine.run_full()
-    else:
-        report = engine.run_light()
     result: dict[str, Any] = report.model_dump(mode="json")
     return result
 
@@ -535,7 +539,11 @@ def summary_jobs(include_all: bool = False, limit: int = 0) -> list[dict[str, An
     store = _get_store()
     settings = load_settings()
     engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+        store,
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+        tenant_id=TENANT_GLOBAL,
     )
     jobs = engine.collect_summary_jobs(include_all=include_all)
     if limit > 0:
@@ -561,7 +569,11 @@ def summary_put(concept: str, summary_text: str) -> dict[str, Any]:
     store = _get_store()
     settings = load_settings()
     engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+        store,
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+        tenant_id=TENANT_GLOBAL,
     )
     result: dict[str, Any] = engine.apply_summary(concept, summary_text).model_dump(mode="json")
     return result

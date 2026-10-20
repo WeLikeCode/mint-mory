@@ -17,8 +17,9 @@ from typing import Annotated
 
 import anyio
 import anyio.to_thread
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from mintmory.api.schemas import (
     CaptionRunRequest,
     ConceptLinkCreate,
@@ -33,17 +34,18 @@ from mintmory.api.schemas import (
 from mintmory.api.telemetry_middleware import TelemetryMiddleware
 from mintmory.core import session as session_module
 from mintmory.core.config import load_settings
-from mintmory.core.dreaming import DreamingEngine
+from mintmory.core.dreaming import DreamFailedError, DreamingEngine
+from mintmory.core.dreaming import run_dream as run_tenant_dreams
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
 from mintmory.core.storage_factory import build_storage
 from mintmory.core.telemetry import init_telemetry, shutdown_telemetry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
+    TENANT_GLOBAL,
     CaptionRunReport,
     ConceptLink,
     ConceptLinkType,
-    DreamIntensity,
     DreamReport,
     ImageDescription,
     ImageJob,
@@ -125,6 +127,11 @@ app.add_middleware(
 )
 
 app.add_middleware(TelemetryMiddleware)
+
+
+@app.exception_handler(DreamFailedError)
+async def _dream_failed_error(_: Request, exc: DreamFailedError) -> JSONResponse:
+    return JSONResponse({"detail": str(exc)}, status_code=500)
 
 
 def get_store() -> StorageBackend:
@@ -338,10 +345,12 @@ async def run_dream(body: DreamRequest) -> DreamReport:
     intensity = body.intensity
 
     def _do_dream() -> DreamReport:
-        engine = DreamingEngine(store)
-        if intensity is DreamIntensity.FULL:
-            return engine.run_full()
-        return engine.run_light()
+        return run_tenant_dreams(
+            store,
+            intensity=intensity,
+            tenant_id=None,
+            engine_factory=lambda tenant_id: DreamingEngine(store, tenant_id=tenant_id),
+        )
 
     return await _db(_do_dream)
 
@@ -421,6 +430,7 @@ async def list_summary_jobs(
             settings.llm,
             link_settings=settings.link,
             summary_settings=settings.summary,
+            tenant_id=TENANT_GLOBAL,
         )
         jobs = engine.collect_summary_jobs(include_all=include_all)
         return jobs[:limit] if limit > 0 else jobs
@@ -449,6 +459,7 @@ async def put_summary(concept: str, body: SummaryPut) -> MemorySummary:
             settings.llm,
             link_settings=settings.link,
             summary_settings=settings.summary,
+            tenant_id=TENANT_GLOBAL,
         )
         return engine.apply_summary(concept, summary_text)
 

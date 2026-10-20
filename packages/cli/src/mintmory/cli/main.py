@@ -30,7 +30,13 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import typer
 from mintmory.core import telemetry
-from mintmory.core.types import ConceptLinkType, MemoryCategory, MemorySource
+from mintmory.core.types import (
+    TENANT_GLOBAL,
+    ConceptLinkType,
+    DreamIntensity,
+    MemoryCategory,
+    MemorySource,
+)
 from numpy.typing import NDArray
 from rich.console import Console
 from rich.table import Table
@@ -180,14 +186,27 @@ def dream(
 ) -> None:
     """Run the dreaming consolidation process (uses the configured LLM tier for L3)."""
     from mintmory.core.config import load_settings
+    from mintmory.core.dreaming import DreamFailedError, run_dream
     from mintmory.core.llm import build_dreaming_engine
 
     settings = load_settings()
     store = _get_store()
-    engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
-    )
-    report = engine.run_full() if full else engine.run_light()
+    try:
+        report = run_dream(
+            store,
+            intensity=DreamIntensity.FULL if full else DreamIntensity.LIGHT,
+            tenant_id=None,
+            engine_factory=lambda tenant_id: build_dreaming_engine(
+                store,
+                settings.llm,
+                link_settings=settings.link,
+                summary_settings=settings.summary,
+                tenant_id=tenant_id,
+            ),
+        )
+    except DreamFailedError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     table = Table(title=f"Dream report ({report.intensity.value})")
     table.add_column("metric", style="cyan")
@@ -1146,7 +1165,11 @@ def summary_jobs(
     settings = load_settings()
     store = _get_store()
     engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+        store,
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+        tenant_id=TENANT_GLOBAL,
     )
     jobs = engine.collect_summary_jobs(include_all=include_all)
     if limit > 0:
@@ -1193,7 +1216,11 @@ def summary_put(
     settings = load_settings()
     store = _get_store()
     engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+        store,
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+        tenant_id=TENANT_GLOBAL,
     )
     summary = engine.apply_summary(concept, summary_text)
     console.print(

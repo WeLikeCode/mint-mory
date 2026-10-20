@@ -61,11 +61,11 @@ def _seed_two_tenants(path: Path) -> None:
     store = _open(path)
     try:
         store.create_tenant("t1")
-        _add(store, "g1", "Alice works at Acme", "global")
-        _add(store, "g2", "Bob works at Acme", "global")
-        _add(store, "a1", "Alice works at Acme", "t1")
-        _add(store, "a2", "Carol works at Acme", "t1")
-        _add(store, "a3", "Dan works at Acme", "t1")
+        _add(store, "g1", "Alice works at Acme in Berlin", "global")
+        _add(store, "g2", "Bob works at Acme in Berlin", "global")
+        _add(store, "a1", "Alice works at Acme in Berlin", "t1")
+        _add(store, "a2", "Carol works at Acme in Berlin", "t1")
+        _add(store, "a3", "Dan works at Acme in Berlin", "t1")
     finally:
         store.close()
 

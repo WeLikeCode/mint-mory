@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from mintmory.core.types import (
+    TENANT_GLOBAL,
     CaptionRunItem,
     CaptionRunReport,
     ConceptLink,
@@ -369,6 +370,7 @@ def image_jobs(
     include_bytes: bool = False,
     limit: int = 0,
     settings: VisionSettings | None = None,
+    tenant_id: str = TENANT_GLOBAL,
 ) -> list[ImageJob]:
     """Return the image file-records the active agent should describe.
 
@@ -402,7 +404,7 @@ def image_jobs(
     # Fetch all active, non-archived memories whose metadata has an 'ext' key
     # that falls in IMAGE_SUFFIXES.  SQL encapsulated in list_image_file_records();
     # Python post-filtering (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays here.
-    all_records: list[MemoryRecord] = adapter.list_image_file_records()
+    all_records: list[MemoryRecord] = adapter.list_image_file_records(tenant_id=tenant_id)
 
     candidates: list[MemoryRecord] = []
     for rec in all_records:
@@ -423,7 +425,7 @@ def image_jobs(
         if include_all:
             selected.append(rec)
         else:
-            has_desc = bool(adapter.get_annotating_descriptions(rec.id, 1))
+            has_desc = bool(adapter.get_annotating_descriptions(rec.id, 1, tenant_id=tenant_id))
             if not has_desc:
                 selected.append(rec)
 
@@ -446,7 +448,7 @@ def image_jobs(
         # Retrieve current_description when include_all surfaces described images.
         current_description: str | None = None
         if include_all:
-            descs = adapter.get_annotating_descriptions(rec.id, 1)
+            descs = adapter.get_annotating_descriptions(rec.id, 1, tenant_id=tenant_id)
             if descs:
                 current_description = descs[0].content
 
@@ -521,6 +523,7 @@ def image_caption_put(
     description: str,
     *,
     settings: VisionSettings | None = None,  # noqa: ARG001 — reserved for future providers
+    tenant_id: str = TENANT_GLOBAL,
 ) -> ImageDescription:
     """Persist an agent-supplied (or SVG-extracted) description for one image.
 
@@ -549,10 +552,10 @@ def image_caption_put(
     # ------------------------------------------------------------------
     # Step 1: resolve file-record.
     # ------------------------------------------------------------------
-    file_record: MemoryRecord | None = adapter.get_memory(file_id_or_path)
+    file_record: MemoryRecord | None = adapter.get_memory(file_id_or_path, tenant_id=tenant_id)
     if file_record is None:
         # Try path/rel resolution.
-        file_record = adapter.find_image_file_record(file_id_or_path)
+        file_record = adapter.find_image_file_record(file_id_or_path, tenant_id=tenant_id)
     if file_record is None:
         raise KeyError(
             f"no active image file-record found for {file_id_or_path!r}; "
@@ -567,12 +570,14 @@ def image_caption_put(
     # ------------------------------------------------------------------
     # Step 2: archive existing active descriptions FIRST (no-drift guarantee).
     # ------------------------------------------------------------------
-    existing_descs: list[MemoryRecord] = adapter.get_annotating_descriptions(file_id, 100)
+    existing_descs: list[MemoryRecord] = adapter.get_annotating_descriptions(
+        file_id, 100, tenant_id=tenant_id
+    )
     replaced_description_id: str | None = None
     for desc in existing_descs:
         if replaced_description_id is None:
             replaced_description_id = desc.id
-        adapter.archive_memory(desc.id)
+        adapter.archive_memory(desc.id, tenant_id=tenant_id)
 
     # ------------------------------------------------------------------
     # Step 3: add the new description memory.
@@ -591,6 +596,7 @@ def image_caption_put(
             source=MemorySource.DOCUMENT,
             is_note=False,
             metadata=desc_metadata,
+            tenant_id=tenant_id,
         )
     )
 
@@ -605,6 +611,7 @@ def image_caption_put(
         source=LinkSource.INFERENCE,
         strength=1.0,
         confidence=1.0,
+        tenant_id=tenant_id,
     )
     adapter.add_link(link)
 
@@ -629,6 +636,7 @@ def caption_pending_images(
     budget: int | None = None,
     include_all: bool = False,
     settings: VisionSettings | None = None,
+    tenant_id: str = TENANT_GLOBAL,
 ) -> CaptionRunReport:
     """Caption pending raster images with a server-side ``captioner`` and persist
     each via image_caption_put.
@@ -663,6 +671,7 @@ def caption_pending_images(
         include_bytes=True,
         limit=limit,
         settings=s,
+        tenant_id=tenant_id,
     )
 
     described = 0
@@ -763,7 +772,13 @@ def caption_pending_images(
         # ------------------------------------------------------------------
         # Persist.
         # ------------------------------------------------------------------
-        put = image_caption_put(adapter, job.file_id, description.record.content, settings=s)
+        put = image_caption_put(
+            adapter,
+            job.file_id,
+            description.record.content,
+            settings=s,
+            tenant_id=tenant_id,
+        )
         described += 1
         note = put.record.id
         if put.replaced_description_id is not None:
