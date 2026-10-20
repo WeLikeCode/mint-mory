@@ -12,7 +12,7 @@
   - Tests: every case of R1.6.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-- [ ] 2. Read tools (`server.py`)
+- [x] 2. Read tools (`server.py`)
   - `memory_get`, `memory_search`, `memory_stats`, `summary_list`,
     `summary_get`, `notes_list`, `docs_changed_with`, `docs_timeline` per the R2.1
     table.
