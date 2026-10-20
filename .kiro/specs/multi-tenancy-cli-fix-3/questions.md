@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | Unfreeze packages/cli/tests/conftest.py so CLI help tests are colour-independent |
+| Q-001 | answered | 1.1 | technical | Unfreeze packages/cli/tests/conftest.py so CLI help tests are colour-independent |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Unfreeze packages/cli/tests/conftest.py so CLI help tests are colour-independent
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-20T20:17Z by deepseek, run r-20261020T2006Z-327a, task 1.1
@@ -32,3 +32,4 @@ FB-001/F-250a0697 says: fix without changing production code or test_cli_tenancy
 
 ### Answer
 <!-- write below this line -->
+Option 1. Unfreeze packages/cli/tests/conftest.py for task 1.1: add it as a new file with an autouse fixture that sets typer.rich_utils.FORCE_TERMINAL to None (monkeypatch.setattr), so every CLI test renders help as on a non-terminal whatever GITHUB_ACTIONS, FORCE_COLOR or PY_COLORS say (the repository CI sets GITHUB_ACTIONS=true). Add the regression test in a new test file: with FORCE_TERMINAL forced to True and then the conftest reset applied, --help has no ANSI escape (\x1b[) and contains the tenant option sentence. Do not change production code or packages/cli/tests/test_cli_tenancy_root.py.
