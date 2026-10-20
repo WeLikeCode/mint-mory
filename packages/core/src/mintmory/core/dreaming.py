@@ -42,6 +42,7 @@ from mintmory.core import scoring, telemetry
 from mintmory.core.config import LinkSettings, SummarySettings
 from mintmory.core.storage import _utcnow
 from mintmory.core.types import (
+    TENANT_GLOBAL,
     AnomalyReport,
     BatchResolutionAction,
     ConceptLink,
@@ -113,8 +114,6 @@ class DreamingEngine:
         *,
         tenant_id: str | None = None,
     ) -> None:
-        if tenant_id is not None:
-            raise NotImplementedError
         self.adapter = adapter
         self.summarizer = summarizer
         self.conflict_resolver = conflict_resolver
@@ -123,6 +122,29 @@ class DreamingEngine:
         self.summary_settings = (
             summary_settings if summary_settings is not None else SummarySettings()
         )
+        self.tenant_id = tenant_id
+
+    # ------------------------------------------------------------------
+    # Tenant helpers
+    # ------------------------------------------------------------------
+
+    def _rt(self) -> str | None:
+        """Read tenant: ``None`` keeps the legacy unscoped reads."""
+        return self.tenant_id
+
+    def _wt(self) -> str:
+        """Write tenant: the legacy engine stamps ``global``."""
+        return self.tenant_id or TENANT_GLOBAL
+
+    def _update(self, memory_id: str, **fields: object) -> MemoryRecord:
+        """Update a memory, confining the write when the engine has a tenant.
+
+        ``update_memory`` treats ``tenant_id`` as an immutability assertion, so
+        the legacy engine (``tenant_id=None``) must not pass it at all.
+        """
+        if self.tenant_id is not None:
+            fields["tenant_id"] = self.tenant_id
+        return self.adapter.update_memory(memory_id, **fields)
 
     # ------------------------------------------------------------------
     # Public entrypoints
@@ -251,13 +273,13 @@ class DreamingEngine:
           (contested notes surface for human review via §5d / §6b).
         """
         high_staleness_useful = self.adapter.get_anomaly_high_staleness_useful_ids(
-            HIGH_STALENESS_MIN, HIGH_USEFULNESS_MIN
+            HIGH_STALENESS_MIN, HIGH_USEFULNESS_MIN, tenant_id=self._rt()
         )
 
         cutoff = (_utcnow() - timedelta(days=NEVER_ACCESSED_DAYS)).isoformat()
-        never_accessed = self.adapter.get_anomaly_never_accessed_ids(cutoff)
+        never_accessed = self.adapter.get_anomaly_never_accessed_ids(cutoff, tenant_id=self._rt())
 
-        contradictions = self.adapter.get_anomaly_flagged_ids()
+        contradictions = self.adapter.get_anomaly_flagged_ids(tenant_id=self._rt())
 
         return AnomalyReport(
             high_staleness_useful=high_staleness_useful,
@@ -296,14 +318,14 @@ class DreamingEngine:
         """
         ls = self.link_settings
         stoplist = ls.stoplist
-        memory_ids = self.adapter.list_active_memory_ids(ordered=False)
+        memory_ids = self.adapter.list_active_memory_ids(ordered=False, tenant_id=self._rt())
 
         # Per-memory surviving entity sets (after the stoplist drop), and the
         # DF (document frequency) of each entity over active memories.
         mem_entities: dict[str, set[str]] = {}
         entity_df: dict[str, int] = defaultdict(int)
         for mid in memory_ids:
-            mem_record = self.adapter.get_memory(mid)
+            mem_record = self.adapter.get_memory(mid, tenant_id=self._rt())
             if mem_record is None:
                 continue
             kept = {e for e in mem_record.entity_ids if e not in stoplist}
@@ -348,7 +370,9 @@ class DreamingEngine:
 
         # Existing relates_to pairs (order-insensitive) — pre-check so the count
         # reflects only genuinely-new links even though add_link is INSERT OR IGNORE.
-        existing_pairs: set[frozenset[str]] = self.adapter.get_existing_relates_to_pairs()
+        existing_pairs: set[frozenset[str]] = self.adapter.get_existing_relates_to_pairs(
+            tenant_id=self._rt()
+        )
 
         # Build the candidate list applying the min-shared and Jaccard gates,
         # computing each candidate's strength and a representative entity.
@@ -407,6 +431,7 @@ class DreamingEngine:
                     entity=cand.entity,
                     strength=cand.strength,
                     source=LinkSource.EXTRACTION,
+                    tenant_id=self._wt(),
                 )
             )
             existing_pairs.add(pair)
@@ -500,12 +525,12 @@ class DreamingEngine:
         """
         ss = self.summary_settings
         stoplist = self.link_settings.stoplist
-        memory_ids = self.adapter.list_active_memory_ids(ordered=True)
+        memory_ids = self.adapter.list_active_memory_ids(ordered=True, tenant_id=self._rt())
 
         entity_to_contents: dict[str, list[str]] = defaultdict(list)
         entity_to_ids: dict[str, list[str]] = defaultdict(list)
         for mid in memory_ids:
-            mem_record = self.adapter.get_memory(mid)
+            mem_record = self.adapter.get_memory(mid, tenant_id=self._rt())
             if mem_record is None:
                 continue
             for entity in mem_record.entity_ids:
@@ -605,7 +630,7 @@ class DreamingEngine:
             # Idempotency (AGENTS.md §4.4): an unchanged DB must yield 0 on a
             # re-run. Skip the upsert (and the count) when an identical summary
             # already exists for this concept.
-            existing = self.adapter.get_summary(sel.concept)
+            existing = self.adapter.get_summary(sel.concept, self._wt())
             if (
                 existing is not None
                 and existing.summary_text == summary_text
@@ -617,6 +642,7 @@ class DreamingEngine:
                     concept=sel.concept,
                     summary_text=summary_text,
                     memory_count=sel.memory_count,
+                    tenant_id=self._wt(),
                 )
             )
             count += 1
@@ -642,7 +668,7 @@ class DreamingEngine:
         """
         jobs: list[SummaryJob] = []
         for sel in self._select_summary_concepts():
-            existing = self.adapter.get_summary(sel.concept)
+            existing = self.adapter.get_summary(sel.concept, self._wt())
             if not include_all:
                 needs = existing is None or existing.memory_count != sel.memory_count
                 if not needs:
@@ -666,10 +692,10 @@ class DreamingEngine:
         """
         if concept in self.link_settings.stoplist:
             return 0
-        memory_ids = self.adapter.list_active_memory_ids(ordered=True)
+        memory_ids = self.adapter.list_active_memory_ids(ordered=True, tenant_id=self._rt())
         count = 0
         for mid in memory_ids:
-            mem = self.adapter.get_memory(mid)
+            mem = self.adapter.get_memory(mid, tenant_id=self._rt())
             if mem is None:
                 continue
             count += sum(1 for e in mem.entity_ids if e == concept)
@@ -694,6 +720,7 @@ class DreamingEngine:
                 concept=concept,
                 summary_text=summary_text,
                 memory_count=memory_count,
+                tenant_id=self._wt(),
             )
         )
 
@@ -722,11 +749,11 @@ class DreamingEngine:
         authority pass runs regardless of whether an LLM resolver is configured.
         """
         resolved = 0
-        for flagged in self.adapter.get_flagged_memories():
+        for flagged in self.adapter.get_flagged_memories(tenant_id=self._rt()):
             # Guard: skip memories whose flag was already cleared (defensive —
             # get_flagged_memories already filters, but a resolver action could
             # have touched another flagged record earlier in the loop).
-            current = self.adapter.get_memory(flagged.id)
+            current = self.adapter.get_memory(flagged.id, tenant_id=self._rt())
             if current is None or not current.flagged_for_review:
                 continue
 
@@ -753,9 +780,9 @@ class DreamingEngine:
             # Re-fetch: the flagged memory may have been archived by a DELETE
             # action targeting itself. Only clear the flag if it still exists
             # and is not archived (archive_memory does not touch the flag).
-            after = self.adapter.get_memory(flagged.id)
+            after = self.adapter.get_memory(flagged.id, tenant_id=self._rt())
             if after is not None and after.flagged_for_review:
-                self.adapter.update_memory(flagged.id, flagged_for_review=False)
+                self._update(flagged.id, flagged_for_review=False)
             resolved += 1
 
         return resolved
@@ -791,7 +818,7 @@ class DreamingEngine:
         # the flag and removes the pair from flagged_memories on the next pass).
         other: MemoryRecord | None = None
         for other_id in current.contradicts_ids:
-            candidate = self.adapter.get_memory(other_id)
+            candidate = self.adapter.get_memory(other_id, tenant_id=self._rt())
             if candidate is not None and not candidate.is_archived:
                 other = candidate
                 break
@@ -826,16 +853,16 @@ class DreamingEngine:
         # a later run — get_flagged_memories does not filter archived rows (§9).
         if current_is_note:
             # Case 1: current (note) wins → supersede other.
-            self.adapter.supersede_memory(other.id, by_id=current.id)
-            self.adapter.update_memory(current.id, flagged_for_review=False)
+            self.adapter.supersede_memory(other.id, by_id=current.id, tenant_id=self._rt())
+            self._update(current.id, flagged_for_review=False)
             if other.flagged_for_review:
-                self.adapter.update_memory(other.id, flagged_for_review=False)
+                self._update(other.id, flagged_for_review=False)
         else:
             # Case 2: other (note) wins → supersede current (the flagged non-note).
-            self.adapter.supersede_memory(current.id, by_id=other.id)
-            self.adapter.update_memory(current.id, flagged_for_review=False)
+            self.adapter.supersede_memory(current.id, by_id=other.id, tenant_id=self._rt())
+            self._update(current.id, flagged_for_review=False)
             if other.flagged_for_review:
-                self.adapter.update_memory(other.id, flagged_for_review=False)
+                self._update(other.id, flagged_for_review=False)
 
         return (True, 1)
 
@@ -849,7 +876,7 @@ class DreamingEngine:
         if metadata.get("note_conflict_with") == conflict_with_id:
             return  # already set — idempotent, no write
         metadata["note_conflict_with"] = conflict_with_id
-        self.adapter.update_memory(record.id, metadata=metadata)
+        self._update(record.id, metadata=metadata)
 
     def _apply_resolution(
         self,
@@ -859,11 +886,11 @@ class DreamingEngine:
         """Apply a single ``BatchResolutionAction`` (ADD/UPDATE/DELETE/NONE)."""
         target_id = action.target_id or flagged.id
         if action.action == "DELETE":
-            target = self.adapter.get_memory(target_id)
+            target = self.adapter.get_memory(target_id, tenant_id=self._rt())
             if target is not None and not target.is_archived:
-                self.adapter.archive_memory(target_id)
+                self.adapter.archive_memory(target_id, tenant_id=self._rt())
         elif action.action == "UPDATE":
-            target = self.adapter.get_memory(target_id)
+            target = self.adapter.get_memory(target_id, tenant_id=self._rt())
             if target is not None:
                 # No new content is carried by BatchResolutionAction; record the
                 # resolution reason in metadata so the lineage is auditable, and
@@ -871,7 +898,7 @@ class DreamingEngine:
                 metadata = dict(target.metadata)
                 if action.reason:
                     metadata["resolution_reason"] = action.reason
-                self.adapter.update_memory(
+                self._update(
                     target_id,
                     metadata=metadata,
                     flagged_for_review=False,
@@ -883,6 +910,7 @@ class DreamingEngine:
                     content=content,
                     category=flagged.category,
                     source=flagged.source,
+                    tenant_id=self._wt(),
                 )
         # NONE: no mutation here — the flag is cleared by the caller.
 
@@ -905,11 +933,13 @@ class DreamingEngine:
         Idempotent: already-archived memories are skipped.
         """
         cutoff = (_utcnow() - timedelta(days=ARCHIVE_INACTIVE_DAYS)).isoformat()
-        stale_ids = self.adapter.get_stale_archivable_ids(scoring.ARCHIVE_THRESHOLD, cutoff)
+        stale_ids = self.adapter.get_stale_archivable_ids(
+            scoring.ARCHIVE_THRESHOLD, cutoff, tenant_id=self._rt()
+        )
 
         archived = 0
         for mid in stale_ids:
-            self.adapter.archive_memory(mid)
+            self.adapter.archive_memory(mid, tenant_id=self._rt())
             archived += 1
         return archived
 
@@ -932,12 +962,12 @@ class DreamingEngine:
         Idempotent: already-healthy (``is_stale = 0``) memories are skipped.
         """
         cutoff = (_utcnow() - timedelta(days=REHAB_RECENT_DAYS)).isoformat()
-        rehab_rows = self.adapter.get_rehabilitable_rows(cutoff)
+        rehab_rows = self.adapter.get_rehabilitable_rows(cutoff, tenant_id=self._rt())
 
         rehabilitated = 0
         for mid, staleness_score in rehab_rows:
             new_staleness = max(0.0, staleness_score - scoring.REHAB_DELTA)
-            self.adapter.update_memory(
+            self._update(
                 mid,
                 is_stale=False,
                 staleness_score=new_staleness,

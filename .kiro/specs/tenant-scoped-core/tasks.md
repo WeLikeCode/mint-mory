@@ -6,7 +6,7 @@
 > packages/<pkg>/`); full `.l4/config.yaml` gates before the PR. No test needs
 > Postgres, Docker or a network service.
 
-- [ ] 1. Engine scope (`dreaming.py`, `llm.py`)
+- [x] 1. Engine scope (`dreaming.py`, `llm.py`)
   - `tenant_id` keyword on `DreamingEngine`, every step read and write confined
     per R1.2–R1.4; `build_dreaming_engine(…, tenant_id=None)` and
     `build_conflict_resolver(settings, adapter, *, tenant_id=None)`.

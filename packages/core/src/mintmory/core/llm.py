@@ -263,8 +263,6 @@ def build_conflict_resolver(
     outdated and should be archived (DELETE). Falls back to ``NONE`` on any
     failure so the dreaming step stays safe.
     """
-    if tenant_id is not None:
-        raise NotImplementedError
     if settings.provider is LLMProvider.NONE:
         return None
     client = LLMClient(settings)
@@ -272,7 +270,7 @@ def build_conflict_resolver(
     def resolve(record: MemoryRecord) -> list[BatchResolutionAction]:
         others: list[tuple[str, str]] = []
         for cid in record.contradicts_ids:
-            other = adapter.get_memory(cid)
+            other = adapter.get_memory(cid, tenant_id=tenant_id)
             if other is not None:
                 others.append((other.id, other.content))
         if not others:
@@ -376,13 +374,12 @@ def build_dreaming_engine(
     ``generate_summaries()`` and ``resolve_contradictions()`` return 0 — exactly
     today's offline behaviour. Link/summary settings are passed through.
     """
-    if tenant_id is not None:
-        raise NotImplementedError
     llm = llm_settings if llm_settings is not None else LLMSettings()
     return DreamingEngine(
         adapter,
         summarizer=build_summarizer(llm),
-        conflict_resolver=build_conflict_resolver(llm, adapter),
+        conflict_resolver=build_conflict_resolver(llm, adapter, tenant_id=tenant_id),
         link_settings=link_settings,
         summary_settings=summary_settings,
+        tenant_id=tenant_id,
     )
