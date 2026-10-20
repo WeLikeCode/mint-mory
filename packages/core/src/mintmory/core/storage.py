@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import scoring, telemetry
 from mintmory.core.entities import extract_entities
-from mintmory.core.hybrid_search import collect_scores, fuse_and_search
+from mintmory.core.hybrid_search import _passes_filter, collect_scores, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
@@ -47,6 +47,7 @@ from mintmory.core.types import (
     ConceptLink,
     ConceptLinkType,
     CrossTenantLinkError,
+    MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -714,10 +715,15 @@ class SqliteBackend:
             tenant_id=row["tenant_id"],
         )
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         """Fetch a single memory by ID. Returns None if not found."""
         conn = self.connect()
-        row = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        sql = "SELECT * FROM memories WHERE id = ?"
+        params: list[Any] = [memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
@@ -1004,28 +1010,34 @@ class SqliteBackend:
             self._vector_rrf_weight = SearchSettings().vector_rrf_weight
         return self._vector_rrf_weight
 
-    def _fts_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _fts_scores(self, query: str, limit: int, tenant_id: str | None = None) -> dict[str, float]:
         """Run FTS5 MATCH and return {memory_id: bm25-derived score (higher=better)}."""
         match_expr = _sanitise_fts_query(query)
         if not match_expr:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT m.id AS id, bm25(memories_fts) AS rank "
+            "FROM memories_fts "
+            "JOIN memories m ON m.rowid = memories_fts.rowid "
+            "WHERE memories_fts MATCH ? "
+        )
+        params: list[Any] = [match_expr]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY rank LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT m.id AS id, bm25(memories_fts) AS rank "
-                "FROM memories_fts "
-                "JOIN memories m ON m.rowid = memories_fts.rowid "
-                "WHERE memories_fts MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (match_expr, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
         # bm25 returns lower = more relevant; negate so higher = better.
         return {row["id"]: -float(row["rank"]) for row in rows}
 
-    def _trigram_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _trigram_scores(
+        self, query: str, limit: int, tenant_id: str | None = None
+    ) -> dict[str, float]:
         """Run the trigram FTS5 MATCH and return {memory_id: score (higher=better)}."""
         if not self._trigram_loaded:
             return {}
@@ -1033,23 +1045,31 @@ class SqliteBackend:
         if not match_expr:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT m.id AS id, bm25(memories_trigram) AS rank "
+            "FROM memories_trigram "
+            "JOIN memories m ON m.rowid = memories_trigram.rowid "
+            "WHERE memories_trigram MATCH ? "
+        )
+        params: list[Any] = [match_expr]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY rank LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT m.id AS id, bm25(memories_trigram) AS rank "
-                "FROM memories_trigram "
-                "JOIN memories m ON m.rowid = memories_trigram.rowid "
-                "WHERE memories_trigram MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (match_expr, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
         # bm25 returns lower = more relevant; negate so higher = better.
         return {row["id"]: -float(row["rank"]) for row in rows}
 
     def _vector_scores(
-        self, query: str, query_embedding: np.ndarray | None, limit: int
+        self,
+        query: str,
+        query_embedding: np.ndarray | None,
+        limit: int,
+        tenant_id: str | None = None,
     ) -> dict[str, float]:
         """Vector phase of hybrid search: brute-force cosine over stored embeddings.
 
@@ -1068,13 +1088,18 @@ class SqliteBackend:
         if blob is None:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT id, vec_distance_cosine(embedding, ?) AS dist "
+            "FROM memories WHERE embedding IS NOT NULL "
+        )
+        params: list[Any] = [blob]
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY dist ASC LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT id, vec_distance_cosine(embedding, ?) AS dist "
-                "FROM memories WHERE embedding IS NOT NULL "
-                "ORDER BY dist ASC LIMIT ?",
-                (blob, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
             # dist is NULL when a stored embedding has a different
             # dimension than the query (mixed embedders in one DB) —
             # skip those rows rather than crashing on float(None); they
@@ -1089,6 +1114,8 @@ class SqliteBackend:
         self,
         request: SearchRequest,
         query_embedding: np.ndarray | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> SearchResponse:
         """
         Hybrid search pipeline (PLAN.md §3): FTS5 + optional vector phase merged
@@ -1102,10 +1129,40 @@ class SqliteBackend:
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
 
+        def _fts() -> dict[str, float]:
+            if tenant_id is None:
+                return self._fts_scores(request.query, pool)
+            return self._fts_scores(request.query, pool, tenant_id)
+
+        def _trigram() -> dict[str, float]:
+            if tenant_id is None:
+                return self._trigram_scores(request.query, pool)
+            return self._trigram_scores(request.query, pool, tenant_id)
+
+        def _vector() -> dict[str, float]:
+            if tenant_id is None:
+                return self._vector_scores(request.query, query_embedding, pool)
+            return self._vector_scores(request.query, query_embedding, pool, tenant_id)
+
+        def _load(ids: list[str]) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self._load_memories(ids)
+            return self._load_memories(ids, tenant_id)
+
+        def _around(anchors: list[str], spec: SearchAroundSpec) -> list[str]:
+            if tenant_id is None:
+                return self.search_around(anchors, spec)
+            return self.search_around(anchors, spec, tenant_id)
+
+        def _notes(memory_id: str, cap: int) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self.get_annotating_notes(memory_id, cap)
+            return self.get_annotating_notes(memory_id, cap, tenant_id)
+
         fts_scores, trigram_scores, vec_scores = collect_scores(
-            fts_fn=lambda: self._fts_scores(request.query, pool),
-            trigram_fn=lambda: self._trigram_scores(request.query, pool),
-            vector_fn=lambda: self._vector_scores(request.query, query_embedding, pool),
+            fts_fn=_fts,
+            trigram_fn=_trigram,
+            vector_fn=_vector,
         )
 
         # Lazily resolve note_bonus / auto_include_cap from NoteSettings on first
@@ -1119,32 +1176,43 @@ class SqliteBackend:
 
             self._auto_include_cap = NoteSettings().auto_include_cap
 
+        tenant = self.get_tenant(tenant_id) if tenant_id is not None else None
+
         return fuse_and_search(
             request=request,
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=_load,
             bump_retrieval_fn=self._bump_retrieval,
             create_session_fn=self.create_session,
             record_query_results_fn=self.record_query_results,
-            get_annotating_notes_fn=self.get_annotating_notes,
-            search_around_fn=self.search_around,
+            get_annotating_notes_fn=_notes,
+            search_around_fn=_around,
             note_bonus=self._note_bonus,
             auto_include_cap=self._auto_include_cap,
             now=_utcnow(),
+            tenant_id=tenant_id,
+            record_session=tenant_id is None or (tenant is not None and tenant.is_active),
         )
 
-    def _load_memories(self, ids: list[str]) -> list[MemoryRecord]:
+    def _load_memories(self, ids: list[str], tenant_id: str | None = None) -> list[MemoryRecord]:
         if not ids:
             return []
         conn = self.connect()
         placeholders = ", ".join("?" for _ in ids)
-        rows = conn.execute(f"SELECT * FROM memories WHERE id IN ({placeholders})", ids).fetchall()
+        sql = f"SELECT * FROM memories WHERE id IN ({placeholders})"
+        params: list[Any] = list(ids)
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to ``cap`` notes that ANNOTATE ``memory_id``.
 
         Performs a reverse traversal of the asymmetric ANNOTATES edge: the note is
@@ -1155,18 +1223,24 @@ class SqliteBackend:
         if cap <= 0:
             return []
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT m.* FROM concept_links l "
             "JOIN memories m ON m.id = l.source_memory_id "
             "WHERE l.target_memory_id = ? AND l.link_type = ? "
             "AND m.is_note = 1 AND m.is_archived = 0 "
-            "ORDER BY l.strength DESC, m.created_at DESC "
-            "LIMIT ?",
-            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
-        ).fetchall()
+        )
+        params: list[Any] = [memory_id, ConceptLinkType.ANNOTATES.value]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY l.strength DESC, m.created_at DESC LIMIT ?"
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to ``cap`` ACTIVE image_description memories that ANNOTATE ``memory_id``.
 
         Performs a reverse traversal of the ANNOTATES edge (MM-16 pattern): the
@@ -1182,19 +1256,25 @@ class SqliteBackend:
         if cap <= 0:
             return []
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT m.* FROM concept_links l "
             "JOIN memories m ON m.id = l.source_memory_id "
             "WHERE l.target_memory_id = ? AND l.link_type = ? "
             "AND m.is_note = 0 AND m.is_archived = 0 "
             "AND json_extract(m.metadata, '$.kind') = 'image_description' "
-            "ORDER BY m.created_at DESC "
-            "LIMIT ?",
-            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
-        ).fetchall()
+        )
+        params: list[Any] = [memory_id, ConceptLinkType.ANNOTATES.value]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY m.created_at DESC LIMIT ?"
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
         """Find the most recent ACTIVE file-record matching ``path_or_rel`` (path or rel).
 
         A file-record is distinguished from an image_description by the absence of a
@@ -1206,7 +1286,7 @@ class SqliteBackend:
         it should ANNOTATE (§8c of the design contract).
         """
         conn = self.connect()
-        row = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE is_archived = 0 "
             "AND (json_extract(metadata, '$.path') = ? OR json_extract(metadata, '$.rel') = ?) "
@@ -1215,14 +1295,20 @@ class SqliteBackend:
             # picks the most-recent image rather than any same-path record.
             "AND lower(json_extract(metadata, '$.ext')) IN "
             "('.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg') "
-            "ORDER BY created_at DESC LIMIT 1",
-            (path_or_rel, path_or_rel),
-        ).fetchone()
+        )
+        params: list[Any] = [path_or_rel, path_or_rel]
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY created_at DESC LIMIT 1"
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
 
-    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(
+        self, about: str, limit: int = 5, tenant_id: str | None = None
+    ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.
 
         Reuses the hybrid score sources (FTS5 + trigram + vector) and min-max
@@ -1233,16 +1319,16 @@ class SqliteBackend:
         from mintmory.core.hybrid_search import fuse_and_rank  # noqa: PLC0415
 
         pool = max(limit * 5, 50)
-        fts_scores = self._fts_scores(about, pool)
-        vec_scores = self._vector_scores(about, None, pool)
-        trigram_scores = self._trigram_scores(about, pool)
+        fts_scores = self._fts_scores(about, pool, tenant_id)
+        vec_scores = self._vector_scores(about, None, pool, tenant_id)
+        trigram_scores = self._trigram_scores(about, pool, tenant_id)
 
         return fuse_and_rank(
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=lambda ids: self._load_memories(ids, tenant_id),
             limit=limit,
         )
 
@@ -1256,6 +1342,7 @@ class SqliteBackend:
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """SQL backing for ``notes_list`` (design §5c). Always filters is_note = 1.
 
@@ -1275,6 +1362,10 @@ class SqliteBackend:
         conn = self.connect()
         sql = "SELECT * FROM memories WHERE is_note = 1"
         params: list[Any] = []
+
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
 
         if upcoming:
             sql += " AND valid_from > ?"
@@ -1364,6 +1455,7 @@ class SqliteBackend:
         self,
         anchor_ids: list[str],
         spec: SearchAroundSpec,
+        tenant_id: str | None = None,
     ) -> list[str]:
         """
         Graph traversal from anchor_ids via concept_links (PLAN.md §3).
@@ -1392,7 +1484,6 @@ class SqliteBackend:
             if not frontier:
                 break
             placeholders = ", ".join("?" for _ in frontier)
-            params: list[Any] = list(frontier)
             sql = (
                 f"SELECT source_memory_id, target_memory_id, link_type "
                 f"FROM concept_links "
@@ -1400,7 +1491,10 @@ class SqliteBackend:
                 f"(source_memory_id IN ({placeholders}) "
                 f" OR target_memory_id IN ({placeholders}))"
             )
-            params = [spec.min_strength, *frontier, *frontier]
+            params: list[Any] = [spec.min_strength, *frontier, *frontier]
+            if tenant_id is not None:
+                sql += " AND tenant_id = ?"
+                params.append(tenant_id)
             rows = conn.execute(sql, params).fetchall()
 
             next_frontier: set[str] = set()
@@ -1492,11 +1586,15 @@ class SqliteBackend:
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
         """Return all links where memory_id is source OR target."""
         conn = self.connect()
         sql = "SELECT * FROM concept_links WHERE (source_memory_id = ? OR target_memory_id = ?)"
         params: list[Any] = [memory_id, memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
         if link_type is not None:
             sql += " AND link_type = ?"
             params.append(link_type.value)
@@ -1528,9 +1626,14 @@ class SqliteBackend:
             )
         return session
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
         conn = self.connect()
-        row = conn.execute("SELECT * FROM query_sessions WHERE id = ?", (session_id,)).fetchone()
+        sql = "SELECT * FROM query_sessions WHERE id = ?"
+        params: list[Any] = [session_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return QuerySession(
@@ -1647,33 +1750,62 @@ class SqliteBackend:
             return None
         return self._row_to_summary(row)
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
         conn = self.connect()
-        rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
+        if tenant_id is None:
+            rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM memory_summaries WHERE tenant_id = ? ORDER BY concept",
+                (tenant_id,),
+            ).fetchall()
         return [self._row_to_summary(row) for row in rows]
 
     # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
         conn = self.connect()
-        total = conn.execute("SELECT COUNT(*) AS c FROM memories").fetchone()["c"]
+        tenant_filter = ""
+        tenant_params: list[Any] = []
+        if tenant_id is not None:
+            tenant_filter = " AND tenant_id = ?"
+            tenant_params = [tenant_id]
+
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM memories"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
         active = conn.execute(
             "SELECT COUNT(*) AS c FROM memories WHERE is_active = 1 AND is_archived = 0"
+            + tenant_filter,
+            tenant_params,
         ).fetchone()["c"]
-        stale = conn.execute("SELECT COUNT(*) AS c FROM memories WHERE is_stale = 1").fetchone()[
-            "c"
-        ]
+        stale = conn.execute(
+            "SELECT COUNT(*) AS c FROM memories WHERE is_stale = 1" + tenant_filter,
+            tenant_params,
+        ).fetchone()["c"]
         archived = conn.execute(
-            "SELECT COUNT(*) AS c FROM memories WHERE is_archived = 1"
+            "SELECT COUNT(*) AS c FROM memories WHERE is_archived = 1" + tenant_filter,
+            tenant_params,
         ).fetchone()["c"]
-        links = conn.execute("SELECT COUNT(*) AS c FROM concept_links").fetchone()["c"]
-        summaries = conn.execute("SELECT COUNT(*) AS c FROM memory_summaries").fetchone()["c"]
+        links = conn.execute(
+            "SELECT COUNT(*) AS c FROM concept_links"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
+        summaries = conn.execute(
+            "SELECT COUNT(*) AS c FROM memory_summaries"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
 
         avg_row = conn.execute(
             "SELECT AVG(usefulness_score) AS u, AVG(staleness_score) AS s "
-            "FROM memories WHERE is_active = 1 AND is_archived = 0"
+            "FROM memories WHERE is_active = 1 AND is_archived = 0" + tenant_filter,
+            tenant_params,
         ).fetchone()
         avg_use = float(avg_row["u"]) if avg_row["u"] is not None else 0.0
         avg_stale = float(avg_row["s"]) if avg_row["s"] is not None else 0.0
@@ -1682,6 +1814,8 @@ class SqliteBackend:
         counter: Counter[str] = Counter()
         for row in conn.execute(
             "SELECT entity_ids FROM memories WHERE is_active = 1 AND is_archived = 0"
+            + tenant_filter,
+            tenant_params,
         ).fetchall():
             for entity in json.loads(row["entity_ids"]):
                 counter[entity] += 1
@@ -1703,14 +1837,19 @@ class SqliteBackend:
     # Dreaming helpers
     # ------------------------------------------------------------------
 
-    def get_flagged_memories(self) -> list[MemoryRecord]:
+    def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all memories where flagged_for_review = 1."""
         conn = self.connect()
-        rows = conn.execute("SELECT * FROM memories WHERE flagged_for_review = 1").fetchall()
+        sql = "SELECT * FROM memories WHERE flagged_for_review = 1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_never_accessed_stale(
-        self, days_old: int = 7, min_staleness: float = 3.0
+        self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
         """Anomaly detection: never retrieved + staleness_score >= min_staleness.
 
@@ -1718,18 +1857,25 @@ class SqliteBackend:
         (design §5e); surfacing it here would mislead the dreaming anomaly report.
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE last_accessed_at IS NULL "
             "AND staleness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0",
-            (min_staleness,),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_high_staleness_useful(
-        self, min_staleness: float = 5.0, min_usefulness: float = 3.0
+        self,
+        min_staleness: float = 5.0,
+        min_usefulness: float = 3.0,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """Anomaly detection: stale but still useful = needs human resolution.
 
@@ -1738,14 +1884,18 @@ class SqliteBackend:
         appear here by construction — but the guard makes the invariant explicit.
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE staleness_score >= ? "
             "AND usefulness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0",
-            (min_staleness, min_usefulness),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1761,51 +1911,67 @@ class SqliteBackend:
             return False
 
     def get_anomaly_high_staleness_useful_ids(
-        self, min_staleness: float, min_usefulness: float
+        self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
         """IDs of high-staleness + still-useful memories (anomaly step 1a).
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE staleness_score >= ? AND usefulness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0 "
-            "ORDER BY id",
-            (min_staleness, min_usefulness),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+    def get_anomaly_never_accessed_ids(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of never-retrieved memories created before cutoff (anomaly step 1b).
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE retrieval_count = 0 AND created_at < ? "
             "AND is_active = 1 AND is_archived = 0 "
-            "AND is_note = 0 "
-            "ORDER BY id",
-            (cutoff_iso,),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_anomaly_flagged_ids(self) -> list[str]:
+    def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
         """IDs of flagged_for_review memories (anomaly step 1c).
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
         conn = self.connect()
-        rows = conn.execute(
-            "SELECT id FROM memories WHERE flagged_for_review = 1 ORDER BY id"
-        ).fetchall()
+        sql = "SELECT id FROM memories WHERE flagged_for_review = 1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+    def list_active_memory_ids(
+        self, *, ordered: bool = False, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of all active, non-archived memories.
 
         Verbatim SQL relocated from dreaming.create_concept_links(),
@@ -1814,41 +1980,57 @@ class SqliteBackend:
         """
         conn = self.connect()
         sql = "SELECT id FROM memories WHERE is_active = 1 AND is_archived = 0"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
         if ordered:
             sql += " ORDER BY id"
-        rows = conn.execute(sql).fetchall()
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+    def get_stale_archivable_ids(
+        self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of memories eligible for staleness archival (dreaming step 5).
 
         Verbatim SQL relocated from dreaming.archive_stale().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE is_stale = 1 AND staleness_score >= ? AND is_archived = 0 "
             "AND is_note = 0 "
-            "AND (last_accessed_at IS NULL OR last_accessed_at < ?) "
-            "ORDER BY id",
-            (min_staleness, cutoff_iso),
-        ).fetchall()
+            "AND (last_accessed_at IS NULL OR last_accessed_at < ?)"
+        )
+        params: list[Any] = [min_staleness, cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+    def get_rehabilitable_rows(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[tuple[str, float]]:
         """(id, staleness_score) pairs eligible for rehabilitation (dreaming step 6).
 
         Verbatim SQL relocated from dreaming.rehabilitate().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id, staleness_score FROM memories "
             "WHERE is_stale = 1 AND usefulness_score > staleness_score "
             "AND is_archived = 0 "
-            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ? "
-            "ORDER BY id",
-            (cutoff_iso,),
-        ).fetchall()
+            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ?"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [(row["id"], float(row["staleness_score"])) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1919,39 +2101,47 @@ class SqliteBackend:
     # Port — absorbed vision.py raw-SQL site (verbatim SQL relocation)
     # ------------------------------------------------------------------
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all active, non-archived memories with 'ext' metadata but no 'kind' tag.
 
         Verbatim SQL relocated from vision.image_jobs(). Python post-filtering
         (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays in vision.py.
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE is_archived = 0 "
             "AND json_extract(metadata, '$.kind') IS NULL "
             "AND json_extract(metadata, '$.ext') IS NOT NULL "
-            "ORDER BY json_extract(metadata, '$.rel'), id"
-        ).fetchall()
+        )
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY json_extract(metadata, '$.rel'), id"
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     # ------------------------------------------------------------------
     # Port — absorbed cli/main.py ingest dedup (task 2.1a)
     # ------------------------------------------------------------------
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
         """Return True if any memory with the exact content already exists.
 
         Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
         Used by the ingest command for dedup checks; portable across backends.
         """
         conn = self.connect()
-        return (
-            conn.execute("SELECT 1 FROM memories WHERE content = ? LIMIT 1", (content,)).fetchone()
-            is not None
-        )
+        sql = "SELECT 1 FROM memories WHERE content = ?"
+        params: list[Any] = [content]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " LIMIT 1"
+        return conn.execute(sql, params).fetchone() is not None
 
-    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+    def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
         """Return the set of existing RELATES_TO concept-link pairs (order-insensitive).
 
         Used by create_concept_links() to pre-check which pairs already exist
@@ -1964,10 +2154,12 @@ class SqliteBackend:
         from mintmory.core.types import ConceptLinkType
 
         conn = self.connect()
-        rows = conn.execute(
-            "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?",
-            (ConceptLinkType.RELATES_TO.value,),
-        ).fetchall()
+        sql = "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?"
+        params: list[Any] = [ConceptLinkType.RELATES_TO.value]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return {frozenset({r["source_memory_id"], r["target_memory_id"]}) for r in rows}
 
     @staticmethod
@@ -2153,6 +2345,40 @@ class SqliteBackend:
             raise TenantNotFoundError(tenant_id)
         if not row["is_active"]:
             raise TenantInactiveError(tenant_id)
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        """Query-text-free list of memories for the cross-tenant copy.
+
+        SQL keeps only non-archived rows (plus the tenant predicate when
+        concrete); ``_passes_filter`` (the same helper the search pipeline
+        uses) applies the ``MemoryFilter`` semantics in Python, and ``limit``
+        counts only matching rows because it is applied after the filter.
+        """
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be >= 0")
+        conn = self.connect()
+        sql = "SELECT * FROM memories WHERE is_archived = 0"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY created_at, id"
+        rows = conn.execute(sql, params).fetchall()
+        records = [self._row_to_memory(row) for row in rows]
+        matching = [
+            mem
+            for mem in records
+            if _passes_filter(mem, filter or MemoryFilter(), include_archived=False)
+        ]
+        if limit is None:
+            return matching
+        return matching[:limit]
 
 
 # ---------------------------------------------------------------------------

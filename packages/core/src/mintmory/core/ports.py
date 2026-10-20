@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from mintmory.core.types import (
         ConceptLink,
         ConceptLinkType,
+        MemoryFilter,
         MemoryRecord,
         MemoryStats,
         MemorySummary,
@@ -124,7 +125,7 @@ class StorageBackend(Protocol):
         """Insert a new memory and return the stored record."""
         ...
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         """Fetch a single memory by ID. Returns None if not found."""
         ...
 
@@ -190,6 +191,8 @@ class StorageBackend(Protocol):
         self,
         request: SearchRequest,
         query_embedding: np.ndarray | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> SearchResponse:
         """Hybrid search pipeline: FTS5 + vector + RRF."""
         ...
@@ -198,23 +201,32 @@ class StorageBackend(Protocol):
         self,
         anchor_ids: list[str],
         spec: SearchAroundSpec,
+        tenant_id: str | None = None,
     ) -> list[str]:
         """Graph traversal from anchor_ids via concept_links."""
         ...
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to cap notes that ANNOTATE memory_id."""
         ...
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to cap active image_description memories ANNOTATING memory_id."""
         ...
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
         """Find the most recent ACTIVE file-record matching path_or_rel."""
         ...
 
-    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(
+        self, about: str, limit: int = 5, tenant_id: str | None = None
+    ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.
 
         Returns (normalised_score, record) pairs sorted best-first.
@@ -223,7 +235,7 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all active, non-archived memories with 'ext' metadata but no 'kind' tag.
 
         Verbatim SQL:
@@ -238,7 +250,7 @@ class StorageBackend(Protocol):
         """Return True iff an embedder is configured AND the vec extension loaded."""
         ...
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
         """Return True if any memory with the exact content already exists.
 
         Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
@@ -256,8 +268,24 @@ class StorageBackend(Protocol):
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """SQL backing for notes_list."""
+        ...
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        """Query-text-free list for the cross-tenant copy.
+
+        SQL prefilters on ``is_archived = 0`` (plus ``tenant_id = ?`` when
+        concrete) ordered by ``created_at, id``; ``hybrid_search._passes_filter``
+        applies the filter and ``limit`` counts matching rows only.
+        """
         ...
 
     # ------------------------------------------------------------------
@@ -272,6 +300,7 @@ class StorageBackend(Protocol):
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
         """Return all links where memory_id is source OR target."""
         ...
@@ -284,7 +313,7 @@ class StorageBackend(Protocol):
         """Persist a new QuerySession and return it."""
         ...
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
         """Fetch a session by ID. Returns None if not found."""
         ...
 
@@ -329,7 +358,7 @@ class StorageBackend(Protocol):
         """Fetch a summary by ``(tenant_id, concept)``. Returns None if not found."""
         ...
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
         """Return all summaries ordered by concept."""
         ...
 
@@ -357,7 +386,7 @@ class StorageBackend(Protocol):
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
         """Return aggregate statistics."""
         ...
 
@@ -365,24 +394,27 @@ class StorageBackend(Protocol):
     # Dreaming helpers (absorbed from dreaming.py's raw connect() sites)
     # ------------------------------------------------------------------
 
-    def get_flagged_memories(self) -> list[MemoryRecord]:
+    def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all memories where flagged_for_review = 1."""
         ...
 
     def get_never_accessed_stale(
-        self, days_old: int = 7, min_staleness: float = 3.0
+        self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
         """Anomaly detection: never retrieved + staleness_score >= min_staleness."""
         ...
 
     def get_high_staleness_useful(
-        self, min_staleness: float = 5.0, min_usefulness: float = 3.0
+        self,
+        min_staleness: float = 5.0,
+        min_usefulness: float = 3.0,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """Anomaly detection: stale but still useful."""
         ...
 
     def get_anomaly_high_staleness_useful_ids(
-        self, min_staleness: float, min_usefulness: float
+        self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
         """IDs of high-staleness + still-useful memories (anomaly step 1a).
 
@@ -394,7 +426,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+    def get_anomaly_never_accessed_ids(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of never-retrieved memories created before cutoff (anomaly step 1b).
 
         Verbatim SQL:
@@ -405,7 +439,7 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_anomaly_flagged_ids(self) -> list[str]:
+    def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
         """IDs of flagged_for_review memories (anomaly step 1c).
 
         Verbatim SQL:
@@ -413,7 +447,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+    def list_active_memory_ids(
+        self, *, ordered: bool = False, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of all active, non-archived memories.
 
         Verbatim SQL (ordered=False):
@@ -422,7 +458,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+    def get_stale_archivable_ids(
+        self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of memories eligible for staleness archival (dreaming step 5).
 
         Verbatim SQL:
@@ -434,7 +472,9 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+    def get_rehabilitable_rows(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[tuple[str, float]]:
         """(id, staleness_score) pairs eligible for rehabilitation (dreaming step 6).
 
         Verbatim SQL:
@@ -446,7 +486,7 @@ class StorageBackend(Protocol):
         """
         ...
 
-    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+    def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
         """Return the set of existing RELATES_TO link pairs (order-insensitive).
 
         Used by create_concept_links() to pre-check which pairs exist so the

@@ -47,6 +47,7 @@ from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
     ConceptLink,
     ConceptLinkType,
+    MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -495,7 +496,8 @@ class PostgresBackend:
             conn.commit()
         return record
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
+        self._require_global_tenant(tenant_id, "get_memory")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -965,8 +967,11 @@ class PostgresBackend:
         self,
         request: SearchRequest,
         query_embedding: np.ndarray | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> SearchResponse:
         """Hybrid search: FTS + trigram + vector via shared fuse_and_search."""
+        self._require_global_tenant(tenant_id, "search")
         pool_size = max(request.limit * 5, 50)
         fts_scores, trigram_scores, vec_scores = collect_scores(
             fts_fn=lambda: self._fts_scores(request.query, pool_size),
@@ -996,8 +1001,10 @@ class PostgresBackend:
         self,
         anchor_ids: list[str],
         spec: SearchAroundSpec,
+        tenant_id: str | None = None,
     ) -> list[str]:
         """BFS over concept_links up to spec.depth (mirrors SqliteBackend logic)."""
+        self._require_global_tenant(tenant_id, "search_around")
         if not anchor_ids:
             return []
         assert self._pool is not None
@@ -1046,7 +1053,10 @@ class PostgresBackend:
 
         return list(result)
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_annotating_notes")
         if cap <= 0:
             return []
         assert self._pool is not None
@@ -1071,7 +1081,10 @@ class PostgresBackend:
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_annotating_descriptions")
         if cap <= 0:
             return []
         assert self._pool is not None
@@ -1097,7 +1110,10 @@ class PostgresBackend:
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
+        self._require_global_tenant(tenant_id, "find_image_file_record")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -1119,8 +1135,11 @@ class PostgresBackend:
             return None
         return self._row_to_memory(row)
 
-    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(
+        self, about: str, limit: int = 5, tenant_id: str | None = None
+    ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring."""
+        self._require_global_tenant(tenant_id, "anchor_candidates")
         pool_size = max(limit * 5, 50)
         return fuse_and_rank(
             fts_scores=self._fts_scores(about, pool_size),
@@ -1131,7 +1150,8 @@ class PostgresBackend:
             limit=limit,
         )
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "list_image_file_records")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1146,7 +1166,8 @@ class PostgresBackend:
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
+        self._require_global_tenant(tenant_id, "memory_exists_with_content")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = conn.execute(
@@ -1164,7 +1185,9 @@ class PostgresBackend:
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "list_notes")
         effective_now = now or _utcnow()
         assert self._pool is not None
         params: list[Any] = []
@@ -1201,6 +1224,16 @@ class PostgresBackend:
                 r for r in records if anchor_lower in str(r.metadata.get("anchor", "")).lower()
             ]
         return records
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "list_memories")
+        raise TenancyNotSupportedError("list_memories")
 
     # ------------------------------------------------------------------
     # ConceptLink
@@ -1240,7 +1273,9 @@ class PostgresBackend:
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
+        self._require_global_tenant(tenant_id, "get_links")
         assert self._pool is not None
         sql = (
             "SELECT id, source_memory_id, target_memory_id, link_type, entity, "
@@ -1300,7 +1335,8 @@ class PostgresBackend:
             conn.commit()
         return session
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
+        self._require_global_tenant(tenant_id, "get_session")
         assert self._pool is not None
         with self._pool.connection() as conn:
             row = _execute_dict(
@@ -1463,7 +1499,8 @@ class PostgresBackend:
             generated_at=_from_pg_dt(row["generated_at"]) or _utcnow(),
         )
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
+        self._require_global_tenant(tenant_id, "list_summaries")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1487,7 +1524,8 @@ class PostgresBackend:
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
+        self._require_global_tenant(tenant_id, "get_stats")
         assert self._pool is not None
         with self._pool.connection() as conn:
             total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
@@ -1534,7 +1572,8 @@ class PostgresBackend:
     # Dreaming helpers (absorbed from dreaming.py's raw connect() sites)
     # ------------------------------------------------------------------
 
-    def get_flagged_memories(self) -> list[MemoryRecord]:
+    def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_flagged_memories")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1544,8 +1583,9 @@ class PostgresBackend:
         return [self._row_to_memory(r) for r in rows]
 
     def get_never_accessed_stale(
-        self, days_old: int = 7, min_staleness: float = 3.0
+        self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_never_accessed_stale")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1560,8 +1600,12 @@ class PostgresBackend:
         return [self._row_to_memory(r) for r in rows]
 
     def get_high_staleness_useful(
-        self, min_staleness: float = 5.0, min_usefulness: float = 3.0
+        self,
+        min_staleness: float = 5.0,
+        min_usefulness: float = 3.0,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "get_high_staleness_useful")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = _execute_dict(
@@ -1576,8 +1620,9 @@ class PostgresBackend:
         return [self._row_to_memory(r) for r in rows]
 
     def get_anomaly_high_staleness_useful_ids(
-        self, min_staleness: float, min_usefulness: float
+        self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_anomaly_high_staleness_useful_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1589,7 +1634,10 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+    def get_anomaly_never_accessed_ids(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_anomaly_never_accessed_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1601,7 +1649,8 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def get_anomaly_flagged_ids(self) -> list[str]:
+    def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_anomaly_flagged_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1609,7 +1658,10 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+    def list_active_memory_ids(
+        self, *, ordered: bool = False, tenant_id: str | None = None
+    ) -> list[str]:
+        self._require_global_tenant(tenant_id, "list_active_memory_ids")
         assert self._pool is not None
         sql = "SELECT id FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
         if ordered:
@@ -1618,7 +1670,10 @@ class PostgresBackend:
             rows = conn.execute(sql).fetchall()
         return [r[0] for r in rows]
 
-    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+    def get_stale_archivable_ids(
+        self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
+        self._require_global_tenant(tenant_id, "get_stale_archivable_ids")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1631,7 +1686,10 @@ class PostgresBackend:
             ).fetchall()
         return [r[0] for r in rows]
 
-    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+    def get_rehabilitable_rows(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[tuple[str, float]]:
+        self._require_global_tenant(tenant_id, "get_rehabilitable_rows")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
@@ -1644,7 +1702,8 @@ class PostgresBackend:
             ).fetchall()
         return [(r[0], float(r[1])) for r in rows]
 
-    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+    def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
+        self._require_global_tenant(tenant_id, "get_existing_relates_to_pairs")
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
