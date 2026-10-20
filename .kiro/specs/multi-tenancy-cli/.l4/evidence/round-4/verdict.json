@@ -1,0 +1,179 @@
+{
+  "schema": "l4/verdict@1",
+  "round": 4,
+  "verdict": "FAIL",
+  "base_sha": "7ae2320de153d99a3aef4d11ef87be3d8b8e4aac",
+  "head_sha": "c994c20bc90f376cec59af7fef8680e934f2b61b",
+  "steps": [
+    {
+      "step": "0",
+      "name": "preconditions",
+      "status": "failed",
+      "seconds": 0.1,
+      "note": "base staging@7ae2320de1 contained; repository CI failed: ci.yml / lint · types · tests"
+    },
+    {
+      "step": "1",
+      "name": "integrity",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "2",
+      "name": "build",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "3",
+      "name": "tests",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4",
+      "name": "traceability",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "4a",
+      "name": "audit sampling",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "5",
+      "name": "ui test generation",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "6",
+      "name": "quality",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "8",
+      "name": "s1 judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "9",
+      "name": "judge",
+      "status": "not_run",
+      "seconds": 0.0,
+      "note": "an earlier step failed"
+    },
+    {
+      "step": "10",
+      "name": "aggregation",
+      "status": "ok",
+      "seconds": 0.0,
+      "note": "FAIL"
+    }
+  ],
+  "gates": [],
+  "criteria": [],
+  "findings": [
+    {
+      "severity": "blocker",
+      "title": "repository CI failed: ci.yml / lint · types · tests",
+      "detail": "job `ci.yml / lint · types · tests` failed on the hand-off commit c994c20bc9 (<forge>/WeLikeCode/mint-mory/actions/runs/39482344837/job/118834065447). Log ends: ...0T19:21:18.7389830Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, astral-sh/setup-uv@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/.\n\n33336   1929    94%\n2026-10-20T19:21:17.5276081Z Required test coverage of 80% reached. Total coverage: 94.21%\n2026-10-20T19:21:17.5276812Z =========================== short test summary info ============================\n2026-10-20T19:21:17.5280268Z FAILED packages/cli/tests/test_cli_tenancy_root.py::test_help_documents_the_tenant_option - assert \"Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant.\" in '\\x1b[1m \\x1b[0m \\x1b[1m \\x1b[0m\\x1b[1;33mUsage: \\x1b[0m\\x1b[1mmintmory [OPTIONS] COMMAND [ARGS]...\\x1b[0m\\x1b[1m \\x1b...ommands \\x1b[2m│\\x1b[0m \\x1b[2m╰──────────────────────────────────────────────────────────────────────────────╯\\x1b[0m'\n2026-10-20T19:21:17.5282889Z 1 failed, 2277 passed, 114 skipped, 7150 warnings in 105.39s (0:01:45)\n2026-10-20T19:21:18.4582592Z ##[error]Process completed with exit code 1.\n2026-10-20T19:21:18.4729108Z Post job cleanup.\n2026-10-20T19:21:18.5627931Z [command]/usr/bin/git version\n2026-10-20T19:21:18.5677538Z git version 2.55.0\n2026-10-20T19:21:18.5729695Z Temporarily overriding HOME='/home/runner/work/_temp/6dd95cf3-4884-4229-add7-3100d3e37f91' before making global git config changes\n2026-10-20T19:21:18.5731055Z Adding repository directory to the temporary git global config as a safe directory\n2026-10-20T19:21:18.5736454Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/mint-mory/mint-mory\n2026-10-20T19:21:18.5787032Z [command]/usr/bin/git config --local --name-only --get-regexp core\\.sshCommand\n2026-10-20T19:21:18.5827841Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'core\\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\"\n2026-10-20T19:21:18.6112504Z [command]/usr/bin/git config --local --name-only --get-regexp http\\.https\\:\\/\\/github\\.com\\/\\.extraheader\n2026-10-20T19:21:18.6147873Z http.<forge>/.extraheader\n2026-10-20T19:21:18.6161376Z [command]/usr/bin/git config --local --unset-all http.<forge>/.extraheader\n2026-10-20T19:21:18.6205805Z [command]/usr/bin/git submodule foreach --recursive sh -c \"git config --local --name-only --get-regexp 'http\\.https\\:\\/\\/github\\.com\\/\\.extraheader' && git config --local --unset-all 'http.<forge>/.extraheader' || :\"\n2026-10-20T19:21:18.6503972Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\\.gitdir:\n2026-10-20T19:21:18.6551490Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url\n2026-10-20T19:21:18.7083455Z Cleaning up orphan processes\n2026-10-20T19:21:18.7389830Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, astral-sh/setup-uv@v5. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/",
+      "source": "deterministic",
+      "criterion": null,
+      "log": null,
+      "spec_gap": false,
+      "suggested_fix": "",
+      "id": "F-fda7e586",
+      "feedback": null
+    }
+  ],
+  "holds": [],
+  "subject_sha": "c9d54ee8cd34ea38c9d8995ae84a22c902509b5c",
+  "family_criteria": [],
+  "reused_from": null,
+  "integrity": null,
+  "trace": [],
+  "audit": [],
+  "generated": [],
+  "s1": [],
+  "evidence": null,
+  "human": [],
+  "fix": {
+    "action": "spawn",
+    "ordinal": 2,
+    "tasks": [
+      "F-fda7e586 repository CI failed: ci.yml / lint · types · tests"
+    ],
+    "not_converted": [],
+    "reason": "",
+    "plan": null,
+    "code": ""
+  },
+  "judge_verdict": null,
+  "cx_runs": {},
+  "tests": {},
+  "red_green": {
+    "packages.cli.tests.test_cli_tenancy_root::test_doctor_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_help_documents_the_tenant_option": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_history_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_index_tree_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_invalid_tenant_is_rejected_before_any_command": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_mcp_serve_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_migrate_storage_refuses_a_named_tenant": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_refusals_and_validation_happen_before_the_command": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_serve_refuses_a_named_tenant_but_runs_unscoped": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_migration_error_is_reported": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_not_found_from_a_write_is_reported": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_option_goes_before_the_command": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_tenant_scope_maps_absent_empty_global_and_named": "1",
+    "packages.cli.tests.test_cli_tenancy_root::test_valid_tenant_does_not_change_the_tenant_directory": "1",
+    "packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped": "2",
+    "packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_ingest_dedups_within_the_write_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled": "2",
+    "packages.cli.tests.test_cli_tenancy::test_note_and_notes_are_tenant_scoped": "2",
+    "packages.cli.tests.test_cli_tenancy::test_summary_commands_use_the_selected_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_vision_run_and_caption_put_use_the_write_tenant": "2",
+    "packages.cli.tests.test_cli_tenancy::test_tenant_create_reports_created_again_and_invalid_ids": "3",
+    "packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants": "3",
+    "packages.cli.tests.test_cli_tenancy::test_valid_tenant_option_does_not_change_the_tenant_directory": "3",
+    "tests.integration.test_tenancy_cli::test_cli_tenancy_sequence_on_one_sqlite_file": "4",
+    "packages.cli.tests.test_cli_tenancy_gate::test_gate_full_cli_tenancy_flow_and_coverage_floor": "5",
+    "packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_refuses_a_global_image_with_exit_one": "1.1",
+    "packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_without_an_active_record_exits_one[/tmp/no-such-image.png]": "1.1",
+    "packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_without_an_active_record_exits_one[no-such-image-id]": "1.1"
+  },
+  "guards": [],
+  "prompt_sha256": "",
+  "template": "",
+  "harness_commit": "2b295e477f1087e34d8b1ce62b930a872621c234",
+  "judge_calls": 0,
+  "judge_reply": "",
+  "judge_replies": {},
+  "judge_parts": [],
+  "judge_files": [],
+  "hold_views": {},
+  "profiles": {
+    "judge": "claude-judge",
+    "implementer": [
+      "deepseek"
+    ]
+  },
+  "judge_model": null,
+  "independence": null,
+  "cost_usd": null
+}
