@@ -120,3 +120,4 @@
 {"at":"2026-10-20T21:45:28Z","by":"harness","reason":"the cause is gone: the merge of kiro:multi-tenancy-cli can go on","type":"plan.resumed"}
 {"at":"2026-10-20T21:45:35Z","head":"c8e9540901a0ea7300ba9582ffd255290afcca8e","pr":44,"target_before":"7ae2320de153d99a3aef4d11ef87be3d8b8e4aac","type":"unit.merge_requested","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T21:45:41Z","ci":"green","head":"c8e9540901a0ea7300ba9582ffd255290afcca8e","merge_commit":"14bde5a778bc68a9a0d08404c16e119a3215417d","method":"squash","pr":44,"raced":false,"type":"unit.merged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T21:45:46Z","branch":"l4/kiro/multi-tenancy-cli","head":"c8e9540901a0ea7300ba9582ffd255290afcca8e","type":"unit.branch_deleted","unit":"kiro:multi-tenancy-cli"}
