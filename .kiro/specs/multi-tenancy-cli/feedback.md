@@ -40,4 +40,4 @@ test_help_documents_the_tenant_option passes in the L4 gates but fails in the re
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 6 into multi-tenancy-cli-fix-3
+Taken in round 7 into multi-tenancy-cli-fix-4
