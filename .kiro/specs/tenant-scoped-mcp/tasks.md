@@ -19,7 +19,7 @@
   - Tests: the read parts of R3.2 and R4.2.
   - _Requirements: 2.1, 3.1, 4.1_
 
-- [ ] 3. Create, modify and dream tools (`server.py`)
+- [x] 3. Create, modify and dream tools (`server.py`)
   - `memory_add`, `memory_archive`, `session_feedback`, `summary_jobs`,
     `summary_put`, `memory_note`, `image_jobs`, `image_caption_put`,
     `vision_run`, `memory_dream` per the R2.1 table; `TenantError` → tool error.

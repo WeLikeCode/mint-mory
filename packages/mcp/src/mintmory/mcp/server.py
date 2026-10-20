@@ -344,6 +344,7 @@ def memory_add(
         confidence=confidence,
         verified=verified,
         metadata=metadata or {},
+        tenant_id=_scope_tenant,
     )
     stored = store.add_memory(record=record)
     result: dict[str, Any] = stored.model_dump(mode="json")
@@ -456,7 +457,7 @@ def memory_dream(intensity: str = "light") -> dict[str, Any]:
     report = run_dream(
         store,
         intensity=DreamIntensity(intensity),
-        tenant_id=None,
+        tenant_id=_effective_tenant(),
         engine_factory=lambda tenant_id: build_dreaming_engine(
             store,
             settings.llm,
@@ -511,6 +512,7 @@ def session_feedback(
             stale_ids or [],
             confidence_rating,
             reasoning,
+            tenant_id=_effective_tenant(),
         )
     except ValueError as exc:
         return {"error": "conflict", "message": str(exc)}
@@ -522,7 +524,10 @@ def session_feedback(
 def memory_archive(memory_id: str) -> dict[str, Any]:
     """Soft-delete a memory (sets is_archived=True, is_active=False)."""
     store = _get_store()
-    store.archive_memory(memory_id)
+    try:
+        store.archive_memory(memory_id, tenant_id=_effective_tenant())
+    except KeyError as exc:
+        return {"error": "not_found", "message": str(exc)}
     return {"id": memory_id, "archived": True}
 
 
@@ -573,7 +578,7 @@ def summary_jobs(include_all: bool = False, limit: int = 0) -> list[dict[str, An
         settings.llm,
         link_settings=settings.link,
         summary_settings=settings.summary,
-        tenant_id=TENANT_GLOBAL,
+        tenant_id=_scope_tenant,
     )
     jobs = engine.collect_summary_jobs(include_all=include_all)
     if limit > 0:
@@ -603,7 +608,7 @@ def summary_put(concept: str, summary_text: str) -> dict[str, Any]:
         settings.llm,
         link_settings=settings.link,
         summary_settings=settings.summary,
-        tenant_id=TENANT_GLOBAL,
+        tenant_id=_scope_tenant,
     )
     result: dict[str, Any] = engine.apply_summary(concept, summary_text).model_dump(mode="json")
     return result
@@ -679,6 +684,7 @@ def memory_note(
         when=parsed_when,
         until=parsed_until,
         category=parsed_category,
+        tenant_id=_scope_tenant,
     )
     result: dict[str, Any] = note_result.model_dump(mode="json")
     return result
@@ -818,6 +824,7 @@ def image_jobs(
         include_bytes=include_bytes,
         limit=limit,
         settings=settings.vision,
+        tenant_id=_scope_tenant,
     )
     return [j.model_dump(mode="json") for j in jobs]
 
@@ -847,7 +854,11 @@ def image_caption_put(file_id_or_path: str, description: str) -> dict[str, Any]:
 
     try:
         result = vision_mod.image_caption_put(
-            store, file_id_or_path, description, settings=settings.vision
+            store,
+            file_id_or_path,
+            description,
+            settings=settings.vision,
+            tenant_id=_scope_tenant,
         )
     except KeyError as exc:
         return {"error": "not_found", "message": str(exc)}
@@ -886,6 +897,7 @@ def vision_run(limit: int = 0, budget_mb: float = 0.0, include_all: bool = False
         budget=budget,
         include_all=include_all,
         settings=settings.vision,
+        tenant_id=_scope_tenant,
     )
     return report.model_dump(mode="json")
 
