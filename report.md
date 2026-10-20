@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at 47df17902a323fcb923ad2f3003568c226893b90
+- Target: staging at 7ae2320de153d99a3aef4d11ef87be3d8b8e4aac
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-20T13:15:19Z
-- Stopped: unit_halted (kiro:multi-tenancy-cli): round 2 does not fit in one job: raise timeout-minutes and L4_JOB_TIMEOUT_MINUTES or split the task, then l4 retry --unit kiro:multi-tenancy-cli --reason TEXT (stopped twice: 21 s left for an estimate of 600 s, then 30 s for 600 s)
+- Written: 2026-10-20T20:38:37Z
+- Stopped: unit_halted (kiro:multi-tenancy-cli): task 1.1: max_task_attempts (3) reached in single; last failure: new failing tests added in green: packages.cli.tests.test_cli_help_no_colour::test_help_resets_forced_colour_and_documents_tenant_option
 
 ## Units
 
@@ -43,7 +43,7 @@
 - Pull request: <forge>/WeLikeCode/mint-mory/pull/44
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $1.60, 4 run(s), 1 attempt(s)
+- Usage: $5.78, 8 run(s), 1 attempt(s)
 
 ### kiro:tenant-scoped-mcp
 - Result: not integrated
@@ -88,6 +88,6 @@
 
 ## Usage
 
-- Cost: $12.58
+- Cost: $16.76
 - Of which the readiness review: $3.64
-- Runs that dispatched a unit: 19
+- Runs that dispatched a unit: 23
