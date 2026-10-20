@@ -111,3 +111,4 @@
 {"at":"2026-10-20T20:25:16Z","run":"r-20261020T2025Z-c4a7","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T20:38:36Z","attempt":1,"cost_usd":5.779882,"runs":8,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T20:38:36Z","detail":"task 1.1: max_task_attempts (3) reached in single; last failure: new failing tests added in green: packages.cli.tests.test_cli_help_no_colour::test_help_resets_forced_colour_and_documents_tenant_option","reason":"unit_halted","type":"plan.stopped","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T20:40:56Z","by":"the+github@ciprianiacobescu.com","extend":{},"reason":"multi-tenancy-cli retried: fix-3 task 1.1 halted on its own over-specified regression test (it set FORCE_TERMINAL itself); the retry reason tells the implementer to keep only the conftest fixture and a test that checks colour is off; resumed on the owner's instruction to finish the plan","type":"plan.resumed"}
