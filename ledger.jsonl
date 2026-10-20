@@ -55,3 +55,6 @@
 {"at":"2026-10-20T05:11:14Z","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","pr":42,"target_before":"628f23ef05819993917978e8b768171a94ab2674","type":"unit.merge_requested","unit":"kiro:multi-tenancy-reads"}
 {"at":"2026-10-20T05:11:19Z","ci":"green","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","merge_commit":"47bb91111d99442cc9d5ab63a9396eae5c569a5d","method":"squash","pr":42,"raced":false,"type":"unit.merged","unit":"kiro:multi-tenancy-reads"}
 {"at":"2026-10-20T05:11:22Z","branch":"l4/kiro/multi-tenancy-reads","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","type":"unit.branch_deleted","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T05:13:18Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"47bb91111d99442cc9d5ab63a9396eae5c569a5d","status":"pass","type":"unit.postcheck","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T05:13:18Z","revision":"47bb91111d99442cc9d5ab63a9396eae5c569a5d","type":"unit.integrated","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T05:13:18Z","attempt":1,"cost_usd":2.463699,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-reads"}
