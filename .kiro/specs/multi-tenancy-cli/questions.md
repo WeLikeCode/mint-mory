@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 2 | technical | packages/cli/tests/test_cli_tenancy_root.py:41 — `--tenant acme add` success contradicts R2.4/R6.4 |
+| Q-001 | accepted | 2 | technical | packages/cli/tests/test_cli_tenancy_root.py:41 — `--tenant acme add` success contradicts R2.4/R6.4 |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/cli/tests/test_cli_tenancy_root.py:41 — `--tenant acme add` success contradicts R2.4/R6.4
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 2
 - **Kind:** technical
 - **Asked:** 2026-10-20T11:52Z by deepseek, run r-20261020T1121Z-d7e0, task 2
