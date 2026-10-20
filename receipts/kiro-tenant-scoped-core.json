@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-20T11:20:24Z",
+  "integrated_revision": "50be8282b07d9be15bd7d36f911627f716caf6e6",
+  "merge_commit": "50be8282b07d9be15bd7d36f911627f716caf6e6",
+  "plan_digest": "b5fa7ee7b594dc91",
+  "plan_id": "multitenancy",
+  "postcheck": "pass",
+  "pr": 43,
+  "receipt_id": "multitenancy/kiro:tenant-scoped-core/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "713cb4fede6143f7df170452962d1d9832d3c387",
+  "spec_digest": "6e8932b1c1b9ab30",
+  "target": "staging",
+  "unit_id": "kiro:tenant-scoped-core"
+}
