@@ -17,7 +17,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-004 | accepted | 3 | technical | packages/api/tests/test_tenancy_dreaming_api_transport.py:111 |
 | Q-005 | answered | none | verdict | Criterion C-7881686c (Req 3.1): accept as satisfied? |
 | Q-006 | answered | none | verdict | Criterion C-d9c39ea3 (Req 3.2): accept as satisfied? |
-| Q-007 | open | none | verdict | Criterion C-63860dbc (Req 3.3): accept as satisfied? |
+| Q-007 | answered | none | verdict | Criterion C-63860dbc (Req 3.3): accept as satisfied? |
 | Q-008 | open | none | verdict | Criterion C-a0213e6c (Req 4.1): accept as satisfied? |
 <!-- l4:index:end -->
 
@@ -181,7 +181,7 @@ accept: verified on the unit branch: run_dream returns a DreamReport (one tenant
 
 ## Q-007: Criterion C-63860dbc (Req 3.3): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -207,6 +207,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: verified on the unit branch: run_dream raises DreamFailedError when any tenant's pass fails; the CLI catches it and prints 'error: <message>' on stderr with exit code 1, the API's exception handler returns 500 {'detail': str(exc)}, and the MCP tool lets it propagate so the fastmcp client gets a ToolError (test_memory_dream_failure_surfaces_as_a_tool_error passes).
 ---
 
 ## Q-008: Criterion C-a0213e6c (Req 4.1): accept as satisfied?
