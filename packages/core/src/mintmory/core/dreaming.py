@@ -36,7 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 from itertools import combinations
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from mintmory.core import scoring, telemetry
 from mintmory.core.config import LinkSettings, SummarySettings
@@ -53,7 +53,10 @@ from mintmory.core.types import (
     MemoryRecord,
     MemorySummary,
     SummaryJob,
+    TenantInactiveError,
+    TenantNotFoundError,
 )
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from mintmory.core.ports import StorageBackend
@@ -976,13 +979,88 @@ class DreamingEngine:
         return rehabilitated
 
 
+EngineFactory = Callable[[str], DreamingEngine]
+
+
+class DreamAllReport(BaseModel):
+    """The per-tenant outcome of a dreaming pass over every active tenant."""
+
+    intensity: DreamIntensity
+    per_tenant: dict[str, DreamReport] = Field(default_factory=dict)
+    skipped_inactive: list[str] = Field(default_factory=list)
+    failed: dict[str, str] = Field(default_factory=dict)
+
+    def total(self) -> DreamReport:
+        """Aggregate the per-tenant reports into one ``DreamReport``."""
+        reports = [self.per_tenant[tenant_id] for tenant_id in sorted(self.per_tenant)]
+        anomalies = AnomalyReport(
+            high_staleness_useful=[
+                memory_id
+                for report in reports
+                for memory_id in (
+                    report.anomalies.high_staleness_useful if report.anomalies else []
+                )
+            ],
+            never_accessed=[
+                memory_id
+                for report in reports
+                for memory_id in (report.anomalies.never_accessed if report.anomalies else [])
+            ],
+            contradictions=[
+                memory_id
+                for report in reports
+                for memory_id in (report.anomalies.contradictions if report.anomalies else [])
+            ],
+        )
+        return DreamReport(
+            intensity=self.intensity,
+            duration_ms=sum(report.duration_ms for report in reports),
+            new_links=sum(report.new_links for report in reports),
+            new_summaries=sum(report.new_summaries for report in reports),
+            contradictions_resolved=sum(report.contradictions_resolved for report in reports),
+            memories_archived=sum(report.memories_archived for report in reports),
+            memories_rehabilitated=sum(report.memories_rehabilitated for report in reports),
+            anomalies=anomalies,
+        )
+
+
+class DreamFailedError(RuntimeError):
+    """Raised when one or more tenants failed during a dreaming pass."""
+
+    def __init__(self, failed: dict[str, str]) -> None:
+        self.failed = failed
+        message = "dreaming failed for tenant(s): " + ", ".join(
+            f"{tenant_id} ({failed[tenant_id]})" for tenant_id in sorted(failed)
+        )
+        super().__init__(message)
+
+
+def _run_engine(engine: DreamingEngine, intensity: DreamIntensity) -> DreamReport:
+    if intensity is DreamIntensity.FULL:
+        return engine.run_full()
+    return engine.run_light()
+
+
 def dream_all_tenants(
     adapter: StorageBackend,
     *,
     intensity: DreamIntensity,
-    engine_factory: Callable[[str], DreamingEngine],
-) -> Any:
-    raise NotImplementedError
+    engine_factory: EngineFactory,
+) -> DreamAllReport:
+    """Dream every active tenant, recording per-tenant failures and skipping inactive."""
+    report = DreamAllReport(intensity=intensity)
+    for tenant in adapter.list_tenants():
+        if not tenant.is_active:
+            report.skipped_inactive.append(tenant.id)
+            continue
+        try:
+            engine = engine_factory(tenant.id)
+            result = _run_engine(engine, intensity)
+        except Exception as exc:
+            report.failed[tenant.id] = f"{type(exc).__name__}: {exc}"
+            continue
+        report.per_tenant[tenant.id] = result
+    return report
 
 
 def run_dream(
@@ -990,10 +1068,18 @@ def run_dream(
     *,
     intensity: DreamIntensity,
     tenant_id: str | None,
-    engine_factory: Callable[[str], DreamingEngine],
-) -> Any:
-    raise NotImplementedError
+    engine_factory: EngineFactory,
+) -> DreamReport:
+    """Run one tenant's dream, or every tenant's (returning the total) for ``None``."""
+    if tenant_id is not None:
+        tenant = adapter.get_tenant(tenant_id)
+        if tenant is None:
+            raise TenantNotFoundError(tenant_id)
+        if not tenant.is_active:
+            raise TenantInactiveError(tenant_id)
+        return _run_engine(engine_factory(tenant_id), intensity)
 
-
-class DreamFailedError(RuntimeError):
-    pass
+    report = dream_all_tenants(adapter, intensity=intensity, engine_factory=engine_factory)
+    if report.failed:
+        raise DreamFailedError(report.failed)
+    return report.total()

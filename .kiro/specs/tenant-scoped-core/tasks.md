@@ -14,7 +14,7 @@
     tests pass unchanged.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8_
 
-- [ ] 2. Per-tenant entry points (`dreaming.py`)
+- [x] 2. Per-tenant entry points (`dreaming.py`)
   - `EngineFactory`, `DreamAllReport` (+ `total()`), `DreamFailedError`,
     `dream_all_tenants`, `run_dream` per R2.1–R2.5.
   - Tests: R2.6 parity on two files; R2.7 cases; `total()` sums and anomaly
