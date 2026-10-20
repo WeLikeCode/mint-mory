@@ -46,18 +46,28 @@ from mintmory.core.types import (
     CaptionRunReport,
     ConceptLink,
     ConceptLinkType,
+    CrossTenantLinkError,
     DreamReport,
     ImageDescription,
     ImageJob,
+    InvalidTenantIdError,
     LinkSource,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
     NoteResult,
+    ProtectedTenantError,
     QuerySession,
+    ScopeRequiredError,
     SearchRequest,
     SearchResponse,
     SummaryJob,
+    TenancyNotSupportedError,
+    TenantError,
+    TenantImmutableError,
+    TenantInactiveError,
+    TenantMigrationError,
+    TenantNotFoundError,
 )
 
 # ---------------------------------------------------------------------------
@@ -132,6 +142,24 @@ app.add_middleware(TelemetryMiddleware)
 @app.exception_handler(DreamFailedError)
 async def _dream_failed_error(_: Request, exc: DreamFailedError) -> JSONResponse:
     return JSONResponse({"detail": str(exc)}, status_code=500)
+
+
+_TENANT_HTTP: dict[type[TenantError], int] = {
+    TenantNotFoundError: 404,
+    TenantInactiveError: 409,
+    CrossTenantLinkError: 409,
+    TenantImmutableError: 409,
+    ProtectedTenantError: 403,
+    ScopeRequiredError: 403,
+    InvalidTenantIdError: 422,
+    TenancyNotSupportedError: 501,
+    TenantMigrationError: 503,
+}
+
+
+@app.exception_handler(TenantError)
+async def _tenant_error(_: Request, exc: TenantError) -> JSONResponse:
+    return JSONResponse({"detail": str(exc)}, status_code=_TENANT_HTTP.get(type(exc), 400))
 
 
 def get_store() -> StorageBackend:

@@ -41,7 +41,7 @@
     `tenant_id="t1"` return only `t1` documents.
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8_
 
-- [ ] 5. HTTP API error mapping (`api/app.py`)
+- [x] 5. HTTP API error mapping (`api/app.py`)
   - The `TenantError` handler with the R6.2 codes; `DreamFailedError` → 500.
   - Tests: the R6.3 examples; unscoped search over two tenants (R6.1).
   - _Requirements: 6.1, 6.2, 6.3_
