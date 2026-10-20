@@ -38,6 +38,8 @@ def cli_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 @pytest.mark.l4("C-59ce4fbd")
 def test_tenant_option_goes_before_the_command(cli_db: Path) -> None:
+    created = runner.invoke(app, ["tenant", "create", "acme"])
+    assert created.exit_code == 0, created.output
     before = runner.invoke(app, ["--tenant", "acme", "add", "x"])
     assert before.exit_code == 0, before.output
     assert "Added memory" in before.output

@@ -13,7 +13,7 @@
   - Tests: R6.5; option after the command → exit 2.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 3.1, 3.2, 5.1, 6.5_
 
-- [ ] 2. Tenant-aware commands (`main.py`)
+- [x] 2. Tenant-aware commands (`main.py`)
   - Every row of the R2.1 table, including `dream` through `run_dream`.
   - Tests: R6.3, R6.4, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12 (each test
     starts as R6.2 says).

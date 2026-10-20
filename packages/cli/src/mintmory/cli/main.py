@@ -38,6 +38,8 @@ from mintmory.core.types import (
     InvalidTenantIdError,
     MemoryCategory,
     MemorySource,
+    TenantInactiveError,
+    TenantNotFoundError,
     validate_tenant_id,
 )
 from numpy.typing import NDArray
@@ -95,6 +97,18 @@ def _read_tenant() -> str | None:
 
 def _write_tenant() -> str:
     return _TENANT or TENANT_GLOBAL
+
+
+def _check_write_tenant(store: StorageBackend) -> None:
+    """Raise when the selected write tenant is missing or inactive."""
+    tenant_id = _TENANT
+    if tenant_id is None:
+        return
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
+        raise TenantNotFoundError(tenant_id)
+    if not tenant.is_active:
+        raise TenantInactiveError(tenant_id)
 
 
 @app.callback()
@@ -246,11 +260,13 @@ def add(
     src = _parse_source(source)
     with _tenant_errors():
         store = _get_store()
+        _check_write_tenant(store)
         record = store.add_memory(
             content=content,
             category=cat,
             source=src,
             verified=verified,
+            tenant_id=_write_tenant(),
         )
     console.print(f"[green]Added memory[/green] [bold]{record.id}[/bold]")
 
@@ -278,15 +294,17 @@ def search(
     if around is not None:
         search_around = SearchAroundSpec(link_types=[_parse_link_type(around)])
 
-    store = _get_store()
-    response = store.search(
-        SearchRequest(
-            query=query,
-            limit=limit,
-            filter=mem_filter,
-            search_around=search_around,
+    with _tenant_errors():
+        store = _get_store()
+        response = store.search(
+            SearchRequest(
+                query=query,
+                limit=limit,
+                filter=mem_filter,
+                search_around=search_around,
+            ),
+            tenant_id=_read_tenant(),
         )
-    )
 
     table = Table(title=f"Search results for {query!r}")
     table.add_column("id", style="cyan", no_wrap=True)
@@ -305,16 +323,16 @@ def dream(
 ) -> None:
     """Run the dreaming consolidation process (uses the configured LLM tier for L3)."""
     from mintmory.core.config import load_settings
-    from mintmory.core.dreaming import DreamFailedError, run_dream
+    from mintmory.core.dreaming import run_dream
     from mintmory.core.llm import build_dreaming_engine
 
     settings = load_settings()
-    store = _get_store()
-    try:
+    with _tenant_errors():
+        store = _get_store()
         report = run_dream(
             store,
             intensity=DreamIntensity.FULL if full else DreamIntensity.LIGHT,
-            tenant_id=None,
+            tenant_id=_read_tenant(),
             engine_factory=lambda tenant_id: build_dreaming_engine(
                 store,
                 settings.llm,
@@ -323,9 +341,6 @@ def dream(
                 tenant_id=tenant_id,
             ),
         )
-    except DreamFailedError as exc:
-        typer.echo(f"error: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
 
     table = Table(title=f"Dream report ({report.intensity.value})")
     table.add_column("metric", style="cyan")
@@ -344,7 +359,7 @@ def stats() -> None:
     """Show memory health statistics."""
     with _tenant_errors():
         store = _get_store()
-        s = store.get_stats()
+        s = store.get_stats(tenant_id=_read_tenant())
 
     table = Table(title="Memory statistics")
     table.add_column("metric", style="cyan")
@@ -465,80 +480,89 @@ def ingest(
 
     cat = _parse_category(category)
     src = _parse_source(source)
-    globs = [g.strip() for g in glob.split(",") if g.strip()]
-    files = _resolve_files(paths, globs)
-    if not files:
-        console.print("[yellow]No matching files to ingest.[/yellow]")
-        raise typer.Exit(code=1)
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        globs = [g.strip() for g in glob.split(",") if g.strip()]
+        files = _resolve_files(paths, globs)
+        if not files:
+            console.print("[yellow]No matching files to ingest.[/yellow]")
+            raise typer.Exit(code=1)
 
-    settings = load_settings()
-    conv = settings.convert
-    store = _get_store()
-    added = skipped = converted = failed = 0
-    for f in files:
-        try:
-            with telemetry.file_span(
-                "mintmory.convert",
-                suffix=f.suffix,
-                size_bytes=_file_size_bytes(f),
-            ):
-                result = extract_markdown(
-                    f,
-                    convert=convert and conv.enabled,
-                    max_bytes=conv.max_bytes,
-                    extra_text_suffixes=conv.extra_text_suffixes,
-                    enable_plugins=conv.enable_plugins,
-                    timeout_s=conv.timeout_s,
-                    max_output_bytes=conv.max_output_bytes,
-                )
-        except ConversionError as exc:
-            console.print(f"[red]skip[/red] {f}: {exc}")
-            failed += 1
-            continue
-        chunks = _chunk_text(result.text, chunk_chars)
-        if not chunks:
-            console.print(f"[yellow]+0[/yellow] {f}: produced no extractable text")
-            failed += 1
-            continue
-        if result.method == "markitdown":
-            converted += 1
-        n_added = 0
-        for i, chunk in enumerate(chunks):
-            if skip_duplicates and store.memory_exists_with_content(chunk):
-                skipped += 1
+        settings = load_settings()
+        conv = settings.convert
+        added = skipped = converted = failed = 0
+        for f in files:
+            try:
+                with telemetry.file_span(
+                    "mintmory.convert",
+                    suffix=f.suffix,
+                    size_bytes=_file_size_bytes(f),
+                ):
+                    result = extract_markdown(
+                        f,
+                        convert=convert and conv.enabled,
+                        max_bytes=conv.max_bytes,
+                        extra_text_suffixes=conv.extra_text_suffixes,
+                        enable_plugins=conv.enable_plugins,
+                        timeout_s=conv.timeout_s,
+                        max_output_bytes=conv.max_output_bytes,
+                    )
+            except ConversionError as exc:
+                console.print(f"[red]skip[/red] {f}: {exc}")
+                failed += 1
                 continue
-            store.add_memory(
-                content=chunk,
-                category=cat,
-                source=src,
-                metadata={
-                    "source_file": str(f),
-                    "chunk": i,
-                    "chunks": len(chunks),
-                    "converter": result.method,
-                },
-            )
-            added += 1
-            n_added += 1
-        dup_note = " [dim](dups skipped)[/dim]" if n_added < len(chunks) else ""
-        console.print(f"[green]+{n_added}[/green] {f}{dup_note}")
-    console.print(
-        f"[bold green]Ingested {added} memory-chunk(s)[/bold green] from "
-        f"{len(files)} file(s) as [magenta]{cat.value}[/magenta]"
-        + (f"; skipped {skipped} duplicate(s)" if skipped else "")
-        + (f"; skipped {failed} file(s)" if failed else "")
-        + (f" ({converted} via markitdown)" if converted else "")
-        + "."
-    )
-    if dream:
-        from mintmory.core.llm import build_dreaming_engine
-
-        report = build_dreaming_engine(
-            store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
-        ).run_light()
+            chunks = _chunk_text(result.text, chunk_chars)
+            if not chunks:
+                console.print(f"[yellow]+0[/yellow] {f}: produced no extractable text")
+                failed += 1
+                continue
+            if result.method == "markitdown":
+                converted += 1
+            n_added = 0
+            for i, chunk in enumerate(chunks):
+                if skip_duplicates and store.memory_exists_with_content(
+                    chunk, tenant_id=_write_tenant()
+                ):
+                    skipped += 1
+                    continue
+                store.add_memory(
+                    content=chunk,
+                    category=cat,
+                    source=src,
+                    metadata={
+                        "source_file": str(f),
+                        "chunk": i,
+                        "chunks": len(chunks),
+                        "converter": result.method,
+                    },
+                    tenant_id=_write_tenant(),
+                )
+                added += 1
+                n_added += 1
+            dup_note = " [dim](dups skipped)[/dim]" if n_added < len(chunks) else ""
+            console.print(f"[green]+{n_added}[/green] {f}{dup_note}")
         console.print(
-            f"[dim]dream: +{report.new_links} links, +{report.new_summaries} summaries[/dim]"
+            f"[bold green]Ingested {added} memory-chunk(s)[/bold green] from "
+            f"{len(files)} file(s) as [magenta]{cat.value}[/magenta]"
+            + (f"; skipped {skipped} duplicate(s)" if skipped else "")
+            + (f"; skipped {failed} file(s)" if failed else "")
+            + (f" ({converted} via markitdown)" if converted else "")
+            + "."
         )
+        if dream:
+            from mintmory.core.llm import build_dreaming_engine
+
+            report = build_dreaming_engine(
+                store,
+                settings.llm,
+                link_settings=settings.link,
+                summary_settings=settings.summary,
+                tenant_id=_write_tenant(),
+            ).run_light()
+            console.print(
+                f"[dim]dream: +{report.new_links} links, +{report.new_summaries} summaries[/dim]"
+            )
 
 
 @app.command()
@@ -1219,15 +1243,18 @@ def note(
     when_dt = _parse_iso(when)
     until_dt = _parse_iso(until)
     cat = _parse_category(category) if category is not None else None
-    store = _get_store()
-    result = notes_mod.create_note(
-        store,
-        content=content,
-        about=about,
-        when=when_dt,
-        until=until_dt,
-        category=cat,
-    )
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        result = notes_mod.create_note(
+            store,
+            content=content,
+            about=about,
+            when=when_dt,
+            until=until_dt,
+            category=cat,
+            tenant_id=_write_tenant(),
+        )
     console.print(f"[green]Added note[/green] [bold]{result.note.id}[/bold]")
     if result.anchor_kind == "memory":
         console.print(f"  [dim]-> annotates [cyan]{result.anchor_memory_id}[/cyan][/dim]")
@@ -1246,17 +1273,19 @@ def notes(
     """List user-authored notes. Use --upcoming / --overdue for time views."""
     from mintmory.core import notes as notes_mod
 
-    store = _get_store()
-    try:
-        records = notes_mod.notes_list(
-            store,
-            about=about,
-            upcoming=upcoming,
-            overdue=overdue,
-            limit=limit,
-        )
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tenant_errors():
+        store = _get_store()
+        try:
+            records = notes_mod.notes_list(
+                store,
+                about=about,
+                upcoming=upcoming,
+                overdue=overdue,
+                limit=limit,
+                tenant_id=_read_tenant(),
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     table = Table(title="Notes")
     table.add_column("id", style="cyan", no_wrap=True)
@@ -1283,15 +1312,16 @@ def summary_jobs(
     from mintmory.core.llm import build_dreaming_engine
 
     settings = load_settings()
-    store = _get_store()
-    engine = build_dreaming_engine(
-        store,
-        settings.llm,
-        link_settings=settings.link,
-        summary_settings=settings.summary,
-        tenant_id=TENANT_GLOBAL,
-    )
-    jobs = engine.collect_summary_jobs(include_all=include_all)
+    with _tenant_errors():
+        store = _get_store()
+        engine = build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+            tenant_id=_write_tenant(),
+        )
+        jobs = engine.collect_summary_jobs(include_all=include_all)
     if limit > 0:
         jobs = jobs[:limit]
 
@@ -1334,15 +1364,17 @@ def summary_put(
         raise typer.BadParameter("empty summary text (provide TEXT, --file, or stdin)")
 
     settings = load_settings()
-    store = _get_store()
-    engine = build_dreaming_engine(
-        store,
-        settings.llm,
-        link_settings=settings.link,
-        summary_settings=settings.summary,
-        tenant_id=TENANT_GLOBAL,
-    )
-    summary = engine.apply_summary(concept, summary_text)
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        engine = build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+            tenant_id=_write_tenant(),
+        )
+        summary = engine.apply_summary(concept, summary_text)
     console.print(
         f"[green]Stored summary[/green] for [cyan]{summary.concept}[/cyan] "
         f"[dim]({summary.memory_count} memories)[/dim]"
@@ -1380,14 +1412,16 @@ def image_jobs(
     from mintmory.core.config import load_settings
 
     settings = load_settings()
-    store = _get_store()
-    jobs = vision_mod.image_jobs(
-        store,
-        include_all=include_all,
-        include_bytes=include_bytes,
-        limit=limit,
-        settings=settings.vision,
-    )
+    with _tenant_errors():
+        store = _get_store()
+        jobs = vision_mod.image_jobs(
+            store,
+            include_all=include_all,
+            include_bytes=include_bytes,
+            limit=limit,
+            settings=settings.vision,
+            tenant_id=_write_tenant(),
+        )
 
     if json_out:
         console.print_json(_json.dumps([j.model_dump(mode="json") for j in jobs]))
@@ -1449,13 +1483,19 @@ def image_caption_put(
         )
 
     settings = load_settings()
-    store = _get_store()
-    try:
-        result = vision_mod.image_caption_put(
-            store, file_id_or_path, description, settings=settings.vision
-        )
-    except KeyError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        try:
+            result = vision_mod.image_caption_put(
+                store,
+                file_id_or_path,
+                description,
+                settings=settings.vision,
+                tenant_id=_write_tenant(),
+            )
+        except KeyError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     console.print(
         f"[green]Stored description[/green] [bold]{result.record.id}[/bold] "
@@ -1489,28 +1529,32 @@ def vision_run(
     from mintmory.core.config import load_settings
 
     settings = load_settings()
-    try:
-        captioner = vision_mod.captioner_from_settings(settings.vision)
-    except NotImplementedError as exc:
-        console.print(f"[red]error[/red]: {exc}")
-        raise typer.Exit(code=1) from exc
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
 
-    if captioner is None:
-        console.print(
-            "[dim]provider=agent: nothing to run (use image-jobs/image-caption-put)[/dim]"
+        try:
+            captioner = vision_mod.captioner_from_settings(settings.vision)
+        except NotImplementedError as exc:
+            console.print(f"[red]error[/red]: {exc}")
+            raise typer.Exit(code=1) from exc
+
+        if captioner is None:
+            console.print(
+                "[dim]provider=agent: nothing to run (use image-jobs/image-caption-put)[/dim]"
+            )
+            return
+
+        budget: int | None = int(budget_mb * 1024 * 1024) if budget_mb > 0 else None
+        report = vision_mod.caption_pending_images(
+            store,
+            captioner=captioner,
+            limit=limit,
+            budget=budget,
+            include_all=include_all,
+            settings=settings.vision,
+            tenant_id=_write_tenant(),
         )
-        return
-
-    store = _get_store()
-    budget: int | None = int(budget_mb * 1024 * 1024) if budget_mb > 0 else None
-    report = vision_mod.caption_pending_images(
-        store,
-        captioner=captioner,
-        limit=limit,
-        budget=budget,
-        include_all=include_all,
-        settings=settings.vision,
-    )
 
     table = Table(title="vision-run")
     table.add_column("metric", style="cyan")
@@ -1932,21 +1976,23 @@ def docs_timeline(
     if db:
         os.environ["MINTMORY_DB"] = db
 
-    store = _get_store()
-    if not isinstance(store, _SqliteBackend):
-        console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
-        raise typer.Exit(code=1)
-    try:
-        rows = documents_timeline(
-            store,
-            since=since,
-            from_iso=from_iso,
-            to_iso=to_iso,
-            collection=collection,
-            limit=limit,
-        )
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tenant_errors():
+        store = _get_store()
+        if not isinstance(store, _SqliteBackend):
+            console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
+            raise typer.Exit(code=1)
+        try:
+            rows = documents_timeline(
+                store,
+                since=since,
+                from_iso=from_iso,
+                to_iso=to_iso,
+                collection=collection,
+                limit=limit,
+                tenant_id=_read_tenant(),
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     table = Table(title="Documents timeline (newest first)")
     table.add_column("date", style="cyan", no_wrap=True)
@@ -1976,11 +2022,12 @@ def docs_changed_with(
     if db:
         os.environ["MINTMORY_DB"] = db
 
-    store = _get_store()
-    if not isinstance(store, _SqliteBackend):
-        console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
-        raise typer.Exit(code=1)
-    peers = changed_with(store, path)
+    with _tenant_errors():
+        store = _get_store()
+        if not isinstance(store, _SqliteBackend):
+            console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
+            raise typer.Exit(code=1)
+        peers = changed_with(store, path, tenant_id=_read_tenant())
 
     console.print(
         "[dim]observed co-change (time+folder+content) — not a version-controlled commit[/dim]"
