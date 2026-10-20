@@ -22,10 +22,13 @@ from mintmory.core.types import (
     ConceptLink,
     ConceptLinkType,
     MemoryCategory,
+    MemoryFilter,
     MemoryRecord,
     MemorySummary,
     QueryResult,
     QuerySession,
+    SearchAroundSpec,
+    SearchRequest,
     TenancyNotSupportedError,
     Tenant,
 )
@@ -346,3 +349,362 @@ def test_pg_update_memory_tenancy() -> None:
     with pytest.raises(TenancyNotSupportedError):
         update_memory("m1", tenant_id="t1")
     assert backend._pool is None
+
+
+# ---------------------------------------------------------------------------
+# Task 6 — tenant-scoped reads and the Postgres interim
+# ---------------------------------------------------------------------------
+
+
+def _assert_read_surface_complete() -> None:
+    """R5.1/R5.2: every read of R1.1 plus ``list_memories`` takes a tenant.
+
+    Rechecked by every per-method test so the whole read surface is declared on
+    both the Protocol and the Postgres interim, not just the method under test.
+    """
+    expected = {
+        "get_memory": False,
+        "search": True,
+        "search_around": False,
+        "get_links": False,
+        "get_annotating_notes": False,
+        "get_annotating_descriptions": False,
+        "find_image_file_record": False,
+        "anchor_candidates": False,
+        "list_image_file_records": False,
+        "list_notes": True,
+        "list_summaries": False,
+        "get_session": False,
+        "get_stats": False,
+        "memory_exists_with_content": False,
+        "get_flagged_memories": False,
+        "get_never_accessed_stale": False,
+        "get_high_staleness_useful": False,
+        "get_anomaly_high_staleness_useful_ids": False,
+        "get_anomaly_never_accessed_ids": False,
+        "get_anomaly_flagged_ids": False,
+        "list_active_memory_ids": True,
+        "get_stale_archivable_ids": False,
+        "get_rehabilitable_rows": False,
+        "get_existing_relates_to_pairs": False,
+        "list_memories": True,
+    }
+    missing: list[str] = []
+    wrong_default: list[str] = []
+    for owner in (StorageBackend, PostgresBackend):
+        for name in expected:
+            params = inspect.signature(getattr(owner, name)).parameters
+            if "tenant_id" not in params:
+                missing.append(f"{owner.__name__}.{name}")
+            elif params["tenant_id"].default is not None:
+                wrong_default.append(f"{owner.__name__}.{name}")
+    assert missing == [], f"reads missing tenant_id: {missing}"
+    assert wrong_default == [], f"reads with a non-None tenant default: {wrong_default}"
+
+
+def _assert_read_rejects_tenant(
+    backend: PostgresBackend,
+    operation: str,
+    invoke: Callable[[], object],
+) -> None:
+    _assert_read_surface_complete()
+    with pytest.raises(TenancyNotSupportedError) as excinfo:
+        invoke()
+    assert excinfo.value.operation == operation
+    assert backend._pool is None
+
+
+@pytest.mark.l4("C-588818fc")
+def test_protocol_declares_tenant_read_signatures() -> None:
+    _assert_read_surface_complete()
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_memory_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_memory, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_memory",
+        lambda: backend.get_memory("m1", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_search_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.search, keyword_only=True, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "search",
+        lambda: backend.search(SearchRequest(query="Alice"), tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_search_around_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.search_around, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "search_around",
+        lambda: backend.search_around(["m1"], SearchAroundSpec(), tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_links_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_links, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_links",
+        lambda: backend.get_links("m1", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_annotating_notes_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_annotating_notes, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_annotating_notes",
+        lambda: backend.get_annotating_notes("m1", 3, tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_annotating_descriptions_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_annotating_descriptions, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_annotating_descriptions",
+        lambda: backend.get_annotating_descriptions("m1", 3, tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_find_image_file_record_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.find_image_file_record, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "find_image_file_record",
+        lambda: backend.find_image_file_record("/x.png", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_anchor_candidates_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.anchor_candidates, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "anchor_candidates",
+        lambda: backend.anchor_candidates("Alice", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_list_image_file_records_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.list_image_file_records, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "list_image_file_records",
+        lambda: backend.list_image_file_records(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_list_notes_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.list_notes, keyword_only=True, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "list_notes",
+        lambda: backend.list_notes(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_list_summaries_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.list_summaries, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "list_summaries",
+        lambda: backend.list_summaries(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_session_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_session, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_session",
+        lambda: backend.get_session("s1", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_stats_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_stats, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_stats",
+        lambda: backend.get_stats(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_memory_exists_with_content_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.memory_exists_with_content, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "memory_exists_with_content",
+        lambda: backend.memory_exists_with_content("Alice", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_flagged_memories_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_flagged_memories, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_flagged_memories",
+        lambda: backend.get_flagged_memories(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_never_accessed_stale_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_never_accessed_stale, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_never_accessed_stale",
+        lambda: backend.get_never_accessed_stale(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_high_staleness_useful_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_high_staleness_useful, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_high_staleness_useful",
+        lambda: backend.get_high_staleness_useful(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_anomaly_high_staleness_useful_ids_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(
+        backend.get_anomaly_high_staleness_useful_ids, keyword_only=False, default=None
+    )
+    _assert_read_rejects_tenant(
+        backend,
+        "get_anomaly_high_staleness_useful_ids",
+        lambda: backend.get_anomaly_high_staleness_useful_ids(5.0, 3.0, tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_anomaly_never_accessed_ids_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(
+        backend.get_anomaly_never_accessed_ids, keyword_only=False, default=None
+    )
+    _assert_read_rejects_tenant(
+        backend,
+        "get_anomaly_never_accessed_ids",
+        lambda: backend.get_anomaly_never_accessed_ids("2020-01-01T00:00:00+00:00", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_anomaly_flagged_ids_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_anomaly_flagged_ids, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_anomaly_flagged_ids",
+        lambda: backend.get_anomaly_flagged_ids(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_list_active_memory_ids_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.list_active_memory_ids, keyword_only=True, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "list_active_memory_ids",
+        lambda: backend.list_active_memory_ids(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_stale_archivable_ids_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_stale_archivable_ids, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_stale_archivable_ids",
+        lambda: backend.get_stale_archivable_ids(5.0, "2020-01-01T00:00:00+00:00", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_rehabilitable_rows_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.get_rehabilitable_rows, keyword_only=False, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "get_rehabilitable_rows",
+        lambda: backend.get_rehabilitable_rows("2020-01-01T00:00:00+00:00", tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_get_existing_relates_to_pairs_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(
+        backend.get_existing_relates_to_pairs, keyword_only=False, default=None
+    )
+    _assert_read_rejects_tenant(
+        backend,
+        "get_existing_relates_to_pairs",
+        lambda: backend.get_existing_relates_to_pairs(tenant_id="t1"),
+    )
+
+
+@pytest.mark.l4("C-c6d483c5", "C-da381c66")
+def test_pg_list_memories_tenancy() -> None:
+    backend = _backend()
+    _assert_tenant_parameter(backend.list_memories, keyword_only=True, default=None)
+    _assert_read_rejects_tenant(
+        backend,
+        "list_memories",
+        lambda: backend.list_memories(),
+    )
+    _assert_read_rejects_tenant(
+        backend,
+        "list_memories",
+        lambda: backend.list_memories(tenant_id="t1"),
+    )
+    _assert_read_rejects_tenant(
+        backend,
+        "list_memories",
+        lambda: backend.list_memories(MemoryFilter(), tenant_id="t1", limit=0),
+    )
