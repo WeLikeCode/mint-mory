@@ -67,3 +67,5 @@
 {"at":"2026-10-20T05:22:54Z","run":"r-20261020T0522Z-d787","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T07:25:45Z","detail":"awaiting_human: no new answers (open: Q-002, Q-003, Q-004)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T07:29:04Z","by":"harness","reason":"the cause is gone: kiro:tenant-scoped-core is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-20T07:29:06Z","attempt":1,"cost_usd":0.389407,"runs":3,"type":"plan.charged","unit":"kiro:tenant-scoped-core"}
+{"at":"2026-10-20T07:29:06Z","run":"r-20261020T0729Z-c0e2","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
