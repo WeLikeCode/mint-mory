@@ -11,15 +11,28 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+from fastmcp import Client
 from mintmory.core import config as config_mod
+from mintmory.core import notes as core_notes
+from mintmory.core.cochange import changed_with as core_changed_with
+from mintmory.core.cochange import documents_timeline as core_documents_timeline
 from mintmory.core.ports import StorageBackend
-from mintmory.core.types import InvalidTenantIdError, TenantNotFoundError
+from mintmory.core.types import (
+    InvalidTenantIdError,
+    MemoryCategory,
+    MemoryRecord,
+    MemorySource,
+    MemorySummary,
+    TenantNotFoundError,
+)
 from mintmory.mcp import server
+from mintmory.mcp.server import mcp
 
 
 @pytest.fixture
@@ -284,3 +297,267 @@ def test_main_sse_bootstraps_then_runs_on_the_requested_port(
     assert code is None
     assert calls == [{"transport": "sse", "port": 8081}]
     assert getattr(server, "_scope_tenant", None) == "acme"
+
+
+# ---------------------------------------------------------------------------
+# Task 2 — read tools carry the process scope and honour both scopes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def tenancy_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[Client[Any]]:
+    """In-memory MCP client on an isolated DB, with the scope reset on teardown."""
+    monkeypatch.setenv("MINTMORY_DB", str(tmp_path / "tenancy-reads.db"))
+    monkeypatch.delenv("MINTMORY_MCP_TENANT", raising=False)
+    server._store = None
+    try:
+        async with Client(mcp) as client:
+            yield client
+    finally:
+        if server._store is not None:
+            server._store.close()
+        server._store = None
+
+
+def _record_call(seen: dict[str, dict[str, Any]], name: str, original: Any) -> Any:
+    """Wrap ``original`` so the call's args/kwargs land in ``seen[name]``."""
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen[name] = {"args": args, "kwargs": kwargs}
+        return original(*args, **kwargs)
+
+    return spy
+
+
+def _tenant_argument(call: dict[str, Any], position: int) -> Any:
+    """The effective tenant of a recorded call (keyword or positional)."""
+    if "tenant_id" in call["kwargs"]:
+        return call["kwargs"]["tenant_id"]
+    if len(call["args"]) > position:
+        return call["args"][position]
+    return "<missing>"
+
+
+def _seed_core_memories(store: StorageBackend) -> dict[str, str]:
+    """Minimal R3.2/R4.2 corpus: two global and two acme memories."""
+    store.create_tenant("acme")
+    rows = {
+        "g1": ("Alice uses Postgres", "global"),
+        "g2": ("Carol uses Postgres", "global"),
+        "a1": ("Alice uses SQLite", "acme"),
+        "a2": ("Bob uses SQLite", "acme"),
+    }
+    ids: dict[str, str] = {}
+    for key, (content, tenant_id) in rows.items():
+        record = store.add_memory(
+            record=MemoryRecord(
+                content=content,
+                category=MemoryCategory.FACT,
+                source=MemorySource.AGENT,
+                tenant_id=tenant_id,
+            )
+        )
+        ids[key] = record.id
+    return ids
+
+
+def _seed_doc(store: StorageBackend, *, tenant_id: str, path: str, changeset_id: str) -> None:
+    store.add_memory(
+        record=MemoryRecord(
+            content=f"[doc] {path}",
+            category=MemoryCategory.CONTEXT,
+            source=MemorySource.DOCUMENT,
+            valid_from=datetime(2024, 1, 1),
+            metadata={
+                "path": path,
+                "rel": path.lstrip("/"),
+                "collection": "tenancy",
+                "changeset_id": changeset_id,
+                "changeset_kind": "cold_full_index",
+                "changeset_observed_at": "2024-01-01T00:00:00",
+            },
+            tenant_id=tenant_id,
+        )
+    )
+
+
+def _seed_extras(store: StorageBackend) -> None:
+    """Notes, summaries and co-change documents for both tenants."""
+    for content, tenant_id in (
+        ("global note about the index", "global"),
+        ("acme note about the index", "acme"),
+    ):
+        store.add_memory(
+            record=MemoryRecord(
+                content=content,
+                category=MemoryCategory.EPISODIC,
+                source=MemorySource.USER,
+                is_note=True,
+                tenant_id=tenant_id,
+            )
+        )
+    for concept, text, tenant_id in (
+        ("alice", "global alice", "global"),
+        ("alice", "acme alice", "acme"),
+        ("bob", "acme bob", "acme"),
+    ):
+        store.upsert_summary(
+            MemorySummary(
+                concept=concept,
+                summary_text=text,
+                memory_count=1,
+                tenant_id=tenant_id,
+            )
+        )
+    _seed_doc(store, tenant_id="global", path="/repo/g_a.py", changeset_id="cs-g")
+    _seed_doc(store, tenant_id="global", path="/repo/g_b.py", changeset_id="cs-g")
+    _seed_doc(store, tenant_id="acme", path="/repo/a_a.py", changeset_id="cs-a")
+    _seed_doc(store, tenant_id="acme", path="/repo/a_b.py", changeset_id="cs-a")
+
+
+@pytest.mark.l4("C-3a9634d3")
+@pytest.mark.parametrize(
+    ("scope", "expected_effective"),
+    [("global", None), ("acme", "acme")],
+)
+async def test_read_tools_pass_the_resolved_tenant(
+    tenancy_client: Client[Any],
+    monkeypatch: pytest.MonkeyPatch,
+    scope: str,
+    expected_effective: str | None,
+) -> None:
+    store = server._get_store()
+    store.create_tenant("acme")
+    seen: dict[str, dict[str, Any]] = {}
+    for name in ("get_memory", "search", "get_stats", "list_summaries", "get_summary"):
+        monkeypatch.setattr(store, name, _record_call(seen, name, getattr(store, name)))
+    monkeypatch.setattr(
+        core_notes,
+        "notes_list",
+        _record_call(seen, "notes_list", core_notes.notes_list),
+    )
+    monkeypatch.setattr(
+        server, "changed_with", _record_call(seen, "changed_with", core_changed_with)
+    )
+    monkeypatch.setattr(
+        server,
+        "documents_timeline",
+        _record_call(seen, "documents_timeline", core_documents_timeline),
+    )
+
+    server._bootstrap_scope(scope)
+
+    await tenancy_client.call_tool("memory_get", {"memory_id": "missing"})
+    await tenancy_client.call_tool("memory_search", {"query": "missing"})
+    await tenancy_client.call_tool("memory_stats", {})
+    await tenancy_client.call_tool("summary_list", {})
+    await tenancy_client.call_tool("summary_get", {"concept": "missing"})
+    await tenancy_client.call_tool("notes_list", {})
+    await tenancy_client.call_tool("docs_changed_with", {"path": "/repo/none.py"})
+    await tenancy_client.call_tool("docs_timeline", {})
+
+    assert _tenant_argument(seen["get_memory"], 1) == expected_effective
+    assert _tenant_argument(seen["search"], 1) == expected_effective
+    assert _tenant_argument(seen["get_stats"], 0) == expected_effective
+    assert _tenant_argument(seen["list_summaries"], 0) == expected_effective
+    assert _tenant_argument(seen["get_summary"], 1) == scope
+    assert _tenant_argument(seen["notes_list"], 5) == expected_effective
+    assert _tenant_argument(seen["changed_with"], 2) == expected_effective
+    assert _tenant_argument(seen["documents_timeline"], 1) == expected_effective
+
+
+@pytest.mark.l4("C-8b67e092")
+async def test_named_scope_reads_are_confined_to_the_tenant(
+    tenancy_client: Client[Any],
+) -> None:
+    store = server._get_store()
+    ids = _seed_core_memories(store)
+    server._bootstrap_scope("acme")
+
+    got = await tenancy_client.call_tool("memory_get", {"memory_id": ids["g1"]})
+    assert got.data is None
+    own = await tenancy_client.call_tool("memory_get", {"memory_id": ids["a1"]})
+    assert own.data["id"] == ids["a1"]
+
+    search = await tenancy_client.call_tool("memory_search", {"query": "Alice"})
+    assert {memory["id"] for memory in search.data["memories"]} == {ids["a1"]}
+    query_session = store.get_session(search.data["session_id"])
+    assert query_session is not None
+    assert query_session.tenant_id == "acme"
+
+    stats = await tenancy_client.call_tool("memory_stats", {})
+    assert stats.data["total_memories"] == 2
+
+    _seed_extras(store)
+
+    summaries = await tenancy_client.call_tool("summary_list", {})
+    assert {summary["tenant_id"] for summary in summaries.data} == {"acme"}
+    assert {summary["concept"] for summary in summaries.data} == {"alice", "bob"}
+
+    summary = await tenancy_client.call_tool("summary_get", {"concept": "alice"})
+    assert summary.data["summary_text"] == "acme alice"
+
+    notes = await tenancy_client.call_tool("notes_list", {})
+    assert {note["tenant_id"] for note in notes.data} == {"acme"}
+    assert len(notes.data) == 1
+
+    foreign_peers = await tenancy_client.call_tool("docs_changed_with", {"path": "/repo/g_a.py"})
+    assert foreign_peers.data == []
+    peers = await tenancy_client.call_tool("docs_changed_with", {"path": "/repo/a_a.py"})
+    assert [peer["path"] for peer in peers.data] == ["/repo/a_b.py"]
+
+    timeline = await tenancy_client.call_tool("docs_timeline", {})
+    assert {row["path"] for row in timeline.data} == {"/repo/a_a.py", "/repo/a_b.py"}
+
+
+@pytest.mark.l4("C-38da7fdc")
+async def test_global_scope_reads_span_every_tenant(
+    tenancy_client: Client[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = server._get_store()
+    ids = _seed_core_memories(store)
+    _seed_extras(store)
+
+    seen: dict[str, dict[str, Any]] = {}
+    monkeypatch.setattr(store, "search", _record_call(seen, "search", store.search))
+    server._bootstrap_scope("global")
+
+    search = await tenancy_client.call_tool("memory_search", {"query": "Alice"})
+    assert {memory["id"] for memory in search.data["memories"]} == {ids["g1"], ids["a1"]}
+    assert _tenant_argument(seen["search"], 1) is None
+
+    got = await tenancy_client.call_tool("memory_get", {"memory_id": ids["a1"]})
+    assert got.data["id"] == ids["a1"]
+    assert got.data["tenant_id"] == "acme"
+
+    stats = await tenancy_client.call_tool("memory_stats", {})
+    assert stats.data["total_memories"] == 10
+
+    summaries = await tenancy_client.call_tool("summary_list", {})
+    assert {summary["tenant_id"] for summary in summaries.data} == {"global", "acme"}
+    assert {(summary["tenant_id"], summary["concept"]) for summary in summaries.data} == {
+        ("global", "alice"),
+        ("acme", "alice"),
+        ("acme", "bob"),
+    }
+
+    summary = await tenancy_client.call_tool("summary_get", {"concept": "alice"})
+    assert summary.data["summary_text"] == "global alice"
+
+    notes = await tenancy_client.call_tool("notes_list", {})
+    assert {note["tenant_id"] for note in notes.data} == {"global", "acme"}
+
+    global_peers = await tenancy_client.call_tool("docs_changed_with", {"path": "/repo/g_a.py"})
+    assert [peer["path"] for peer in global_peers.data] == ["/repo/g_b.py"]
+    acme_peers = await tenancy_client.call_tool("docs_changed_with", {"path": "/repo/a_a.py"})
+    assert [peer["path"] for peer in acme_peers.data] == ["/repo/a_b.py"]
+
+    timeline = await tenancy_client.call_tool("docs_timeline", {})
+    assert {row["path"] for row in timeline.data} == {
+        "/repo/g_a.py",
+        "/repo/g_b.py",
+        "/repo/a_a.py",
+        "/repo/a_b.py",
+    }
