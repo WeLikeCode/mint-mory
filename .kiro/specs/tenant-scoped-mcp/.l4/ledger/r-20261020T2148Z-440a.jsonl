@@ -263,3 +263,8 @@
 {"ts": "2026-10-20T23:49:18.234595Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 263, "type": "budget.cost", "usd": 0.014402364, "profile": "deepseek", "task": "4"}
 {"ts": "2026-10-20T23:49:18.256055Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 264, "type": "step.timed", "phase": "green", "task": "4", "attempt": 2, "seconds": 123.4}
 {"ts": "2026-10-20T23:49:18.259502Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 265, "type": "question.raised", "id": "Q-001", "task": "4", "kind": "technical", "title": "packages/mcp/tests/test_tools.py:51 test_all_tools_registered does not include the required tenant tools"}
+{"ts": "2026-10-20T23:49:21.537478Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 266, "type": "pr.labels", "number": 45, "labels": ["l4:implementing", "l4:needs-answers"]}
+{"ts": "2026-10-20T23:49:21.542435Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 267, "type": "phase.changed", "from": "implementing", "to": "awaiting_human", "trigger": "questions_blocking", "exit_code": 11, "questions": ["Q-001"], "task": "4"}
+{"ts": "2026-10-20T23:49:24.614818Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 268, "type": "pr.labels", "number": 45, "labels": ["l4:awaiting_human", "l4:needs-answers"]}
+{"ts": "2026-10-20T23:49:25.967017Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 269, "type": "lock.released"}
+{"ts": "2026-10-20T23:49:25.968377Z", "run_id": "r-20261020T2148Z-440a", "unit": "kiro:tenant-scoped-mcp", "seq": 270, "type": "run.finished", "exit_code": 11}
