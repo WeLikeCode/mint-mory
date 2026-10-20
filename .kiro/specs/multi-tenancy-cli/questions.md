@@ -23,7 +23,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-010 | answered | none | verdict | Criterion C-0459af16 (Req 6.9): accept as satisfied? |
 | Q-011 | answered | none | verdict | Criterion C-5cf1ac32 (Req 6.10): accept as satisfied? |
 | Q-012 | answered | none | verdict | Criterion C-a9f24733 (Req 6.11): accept as satisfied? |
-| Q-013 | open | none | verdict | Finding F-2192b892: Global image-caption-put exits 2, not 1 |
+| Q-013 | answered | none | verdict | Finding F-2192b892: Global image-caption-put exits 2, not 1 |
 <!-- l4:index:end -->
 
 ---
@@ -395,7 +395,7 @@ accept: test 522-555 asserts the recorded tenant_id == acme and that --tenant no
 
 ## Q-013: Finding F-2192b892: Global image-caption-put exits 2, not 1
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -415,3 +415,4 @@ Answer `accept` to waive the finding, or `reject` and say why: a rejected findin
 
 ### Answer
 <!-- write below this line -->
+reject: R6.10 (requirements.md:171) requires exit 1; main.py:1497-1498 turns the KeyError into typer.BadParameter (exit 2) and test_cli_tenancy.py:500 asserts only != 0. WHEN image-caption-put is given an id or path with no active image file-record in the selected tenant THEN it prints 'error: no active image file-record found ...' to stderr and exits 1.
