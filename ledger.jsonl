@@ -126,3 +126,4 @@
 {"at":"2026-10-20T21:47:47Z","attempt":1,"cost_usd":8.920022,"runs":10,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T21:48:28Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-20T21:48:28Z","run":"r-20261020T2148Z-440a","type":"unit.dispatched","unit":"kiro:tenant-scoped-mcp"}
+{"at":"2026-10-20T23:50:13Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:tenant-scoped-mcp"}
