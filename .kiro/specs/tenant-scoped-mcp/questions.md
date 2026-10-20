@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 4 | technical | packages/mcp/tests/test_tools.py:51 test_all_tools_registered does not include the required tenant tools |
+| Q-001 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51 test_all_tools_registered does not include the required tenant tools |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/mcp/tests/test_tools.py:51 test_all_tools_registered does not include the required tenant tools
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 4
 - **Kind:** technical
 - **Asked:** 2026-10-20T23:49Z by deepseek, run r-20261020T2148Z-440a, task 4
