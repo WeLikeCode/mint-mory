@@ -43,6 +43,6 @@
   - Tests: R5.3; `uv run mypy packages` passes.
   - _Requirements: 5.1, 5.2, 5.3_
 
-- [ ] 7. Full gate
+- [x] 7. Full gate
   - Existing suite unchanged; `.l4/config.yaml` gates exit 0 with coverage ≥ 80%.
   - _Requirements: 6.1, 6.2_
