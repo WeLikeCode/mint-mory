@@ -17,7 +17,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-004 | answered | none | verdict | Criterion C-b86d1447 (Req 2.4): accept as satisfied? |
 | Q-005 | answered | none | verdict | Criterion C-5dc41637 (Req 5.2): accept as satisfied? |
 | Q-006 | answered | none | verdict | Criterion C-17c1d2d1 (Req 6.4): accept as satisfied? |
-| Q-007 | open | none | verdict | Criterion C-29450002 (Req 6.6): accept as satisfied? |
+| Q-007 | answered | none | verdict | Criterion C-29450002 (Req 6.6): accept as satisfied? |
 | Q-008 | open | none | verdict | Criterion C-f9c22bd5 (Req 6.7): accept as satisfied? |
 | Q-009 | open | none | verdict | Criterion C-fbe84147 (Req 6.8): accept as satisfied? |
 | Q-010 | open | none | verdict | Criterion C-0459af16 (Req 6.9): accept as satisfied? |
@@ -209,7 +209,7 @@ accept: test_missing_and_inactive_tenants_are_handled (test_cli_tenancy.py:170-2
 
 ## Q-007: Criterion C-29450002 (Req 6.6): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -235,6 +235,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: ingest dedup is scoped to the write tenant (main.py:524-525); the test at 221-239 ends with rows [acme, global], which fails both if the repeat stored a row and if the acme copy suppressed the global one
 ---
 
 ## Q-008: Criterion C-f9c22bd5 (Req 6.7): accept as satisfied?
