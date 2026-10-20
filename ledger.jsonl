@@ -50,3 +50,4 @@
 {"at":"2026-10-20T02:18:28Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-reads is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-20T02:18:30Z","attempt":1,"cost_usd":0.272116,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-reads"}
 {"at":"2026-10-20T02:18:30Z","run":"r-20261020T0218Z-fb76","type":"unit.dispatched","unit":"kiro:multi-tenancy-reads"}
+{"at":"2026-10-20T04:59:57Z","detail":"the repository CI is still running on the hand-off commit 84ccb5e4ba (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"84ccb5e4ba969e562954bb8de358dd59a12c54e0","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:multi-tenancy-reads"}
