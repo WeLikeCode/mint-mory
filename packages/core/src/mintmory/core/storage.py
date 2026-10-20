@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import scoring, telemetry
 from mintmory.core.entities import extract_entities
-from mintmory.core.hybrid_search import collect_scores, fuse_and_search
+from mintmory.core.hybrid_search import _passes_filter, collect_scores, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
@@ -2353,7 +2353,32 @@ class SqliteBackend:
         tenant_id: str | None = None,
         limit: int | None = None,
     ) -> list[MemoryRecord]:
-        raise NotImplementedError
+        """Query-text-free list of memories for the cross-tenant copy.
+
+        SQL keeps only non-archived rows (plus the tenant predicate when
+        concrete); ``_passes_filter`` (the same helper the search pipeline
+        uses) applies the ``MemoryFilter`` semantics in Python, and ``limit``
+        counts only matching rows because it is applied after the filter.
+        """
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be >= 0")
+        conn = self.connect()
+        sql = "SELECT * FROM memories WHERE is_archived = 0"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY created_at, id"
+        rows = conn.execute(sql, params).fetchall()
+        records = [self._row_to_memory(row) for row in rows]
+        matching = [
+            mem
+            for mem in records
+            if _passes_filter(mem, filter or MemoryFilter(), include_archived=False)
+        ]
+        if limit is None:
+            return matching
+        return matching[:limit]
 
 
 # ---------------------------------------------------------------------------

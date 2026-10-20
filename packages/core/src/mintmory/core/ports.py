@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from mintmory.core.types import (
         ConceptLink,
         ConceptLinkType,
+        MemoryFilter,
         MemoryRecord,
         MemoryStats,
         MemorySummary,
@@ -265,6 +266,21 @@ class StorageBackend(Protocol):
         tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """SQL backing for notes_list."""
+        ...
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        """Query-text-free list for the cross-tenant copy.
+
+        SQL prefilters on ``is_archived = 0`` (plus ``tenant_id = ?`` when
+        concrete) ordered by ``created_at, id``; ``hybrid_search._passes_filter``
+        applies the filter and ``limit`` counts matching rows only.
+        """
         ...
 
     # ------------------------------------------------------------------

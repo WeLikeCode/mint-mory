@@ -47,6 +47,7 @@ from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
     ConceptLink,
     ConceptLinkType,
+    MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
@@ -1215,6 +1216,16 @@ class PostgresBackend:
                 r for r in records if anchor_lower in str(r.metadata.get("anchor", "")).lower()
             ]
         return records
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        self._require_global_tenant(tenant_id, "list_memories")
+        raise TenancyNotSupportedError("list_memories")
 
     # ------------------------------------------------------------------
     # ConceptLink

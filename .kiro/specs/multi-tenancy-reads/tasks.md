@@ -28,7 +28,7 @@
     returns only `t1` rows and writes nothing.
   - _Requirements: 2.1, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-- [ ] 4. `list_memories` (`storage.py`, `ports.py`)
+- [x] 4. `list_memories` (`storage.py`, `ports.py`)
   - Per R4.1; Protocol entry.
   - Tests: the R4.2 examples; negative limit → `ValueError`; R4.3.
   - _Requirements: 4.1, 4.2, 4.3_
