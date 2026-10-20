@@ -16,7 +16,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-003 | accepted | 3 | technical | packages/cli/tests/test_tenancy_dreaming_cli_transport.py:112 |
 | Q-004 | accepted | 3 | technical | packages/api/tests/test_tenancy_dreaming_api_transport.py:111 |
 | Q-005 | answered | none | verdict | Criterion C-7881686c (Req 3.1): accept as satisfied? |
-| Q-006 | open | none | verdict | Criterion C-d9c39ea3 (Req 3.2): accept as satisfied? |
+| Q-006 | answered | none | verdict | Criterion C-d9c39ea3 (Req 3.2): accept as satisfied? |
 | Q-007 | open | none | verdict | Criterion C-63860dbc (Req 3.3): accept as satisfied? |
 | Q-008 | open | none | verdict | Criterion C-a0213e6c (Req 4.1): accept as satisfied? |
 <!-- l4:index:end -->
@@ -150,7 +150,7 @@ accept: verified on the unit branch: MCP memory_dream (server.py), CLI dream (ma
 
 ## Q-006: Criterion C-d9c39ea3 (Req 3.2): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -176,6 +176,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: verified on the unit branch: run_dream returns a DreamReport (one tenant's, or DreamAllReport.total() for the global scope, the per-tenant total); MCP returns report.model_dump(mode='json'), the CLI prints the DreamReport table, the API route has response_model=DreamReport (its test parses the body as DreamReport).
 ---
 
 ## Q-007: Criterion C-63860dbc (Req 3.3): accept as satisfied?
