@@ -18,7 +18,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-005 | answered | none | verdict | Criterion C-5dc41637 (Req 5.2): accept as satisfied? |
 | Q-006 | answered | none | verdict | Criterion C-17c1d2d1 (Req 6.4): accept as satisfied? |
 | Q-007 | answered | none | verdict | Criterion C-29450002 (Req 6.6): accept as satisfied? |
-| Q-008 | open | none | verdict | Criterion C-f9c22bd5 (Req 6.7): accept as satisfied? |
+| Q-008 | answered | none | verdict | Criterion C-f9c22bd5 (Req 6.7): accept as satisfied? |
 | Q-009 | open | none | verdict | Criterion C-fbe84147 (Req 6.8): accept as satisfied? |
 | Q-010 | open | none | verdict | Criterion C-0459af16 (Req 6.9): accept as satisfied? |
 | Q-011 | open | none | verdict | Criterion C-5cf1ac32 (Req 6.10): accept as satisfied? |
@@ -240,7 +240,7 @@ accept: ingest dedup is scoped to the write tenant (main.py:524-525); the test a
 
 ## Q-008: Criterion C-f9c22bd5 (Req 6.7): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -266,6 +266,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: test 265-305 asserts the note is stamped acme, exactly one ANNOTATES link to the acme memory and none to the global one, and both the scoped and unscoped notes listings show it
 ---
 
 ## Q-009: Criterion C-fbe84147 (Req 6.8): accept as satisfied?
