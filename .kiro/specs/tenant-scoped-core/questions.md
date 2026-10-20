@@ -15,6 +15,10 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | accepted | 3 | technical | packages/mcp/tests/test_tenancy_dreaming_mcp_transport.py:114 |
 | Q-003 | accepted | 3 | technical | packages/cli/tests/test_tenancy_dreaming_cli_transport.py:112 |
 | Q-004 | accepted | 3 | technical | packages/api/tests/test_tenancy_dreaming_api_transport.py:111 |
+| Q-005 | open | none | verdict | Criterion C-7881686c (Req 3.1): accept as satisfied? |
+| Q-006 | open | none | verdict | Criterion C-d9c39ea3 (Req 3.2): accept as satisfied? |
+| Q-007 | open | none | verdict | Criterion C-63860dbc (Req 3.3): accept as satisfied? |
+| Q-008 | open | none | verdict | Criterion C-a0213e6c (Req 4.1): accept as satisfied? |
 <!-- l4:index:end -->
 
 ---
@@ -107,6 +111,127 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/api/tests/test_tenancy_dreaming_api_transport.py`: in `_seed_two_tenants` (lines 67-71) use contents that share two entities by replacing `"Alice works at Acme", "global"` with `"Alice works at Acme in Berlin", "global"`, `"Bob works at Acme", "global"` with `"Bob works at Acme in Berlin", "global"`, `"Alice works at Acme", "t1"` with `"Alice works at Acme in Berlin", "t1"`, `"Carol works at Acme", "t1"` with `"Carol works at Acme in Berlin", "t1"`, and `"Dan works at Acme", "t1"` with `"Dan works at Acme in Berlin", "t1"`.
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-005: Criterion C-7881686c (Req 3.1): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+- **Criteria:** C-7881686c (Req 3.1)
+
+### Context
+Criterion C-7881686c (Req 3.1) is needs human after round 1.
+
+Scenario:
+MCP `memory_dream(intensity="light")` (`packages/mcp/src/mintmory/mcp/server.py`), CLI `dream [--full/--light]` (`packages/cli/src/mintmory/cli/main.py`) and HTTP `POST /dream` (`packages/api/src/mintmory/api/app.py`, whose route function is itself named `run_dream`, so it imports the core function as `from mintmory.core.dreaming import run_dream as run_tenant_dreams`) SHALL call `run_dream(store, intensity=…, tenant_id=None, engine_factory=…)`; MCP and CLI build engines with `build_dreaming_engine(store, settings.llm, link_settings=settings.link, summary_settings=settings.summary, tenant_id=t)`, the API with `DreamingEngine(store, tenant_id=t)` (as today, no LLM).
+
+Why: the judge answered insufficient_evidence
+Judge: insufficient_evidence
+Tracing tests: packages.api.tests.test_tenancy_dreaming_api_transport::test_dream_runs_each_tenant_without_cross_tenant_links (passed, red_assertion); packages.cli.tests.test_tenancy_dreaming_cli_transport::test_dream_runs_each_tenant_without_cross_tenant_links (passed, red_assertion); packages.mcp.tests.test_tenancy_dreaming_mcp_transport::test_memory_dream_runs_each_tenant_without_cross_tenant_links (passed, red_assertion)
+Ignored tests: none
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+If the code is right and the scenarios are incomplete, `reject` with a scenario: WHEN ... THEN ...
+
+### Options
+1. accept
+2. reject: <reason>, or WHEN ... THEN ... for a spec gap
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-006: Criterion C-d9c39ea3 (Req 3.2): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+- **Criteria:** C-d9c39ea3 (Req 3.2)
+
+### Context
+Criterion C-d9c39ea3 (Req 3.2) is needs human after round 1.
+
+Scenario:
+The return shape SHALL stay a `DreamReport` in every transport (MCP JSON, CLI table, API `response_model=DreamReport`): for the global scope it is the per-tenant total. `multi-tenancy-cli` and `tenant-scoped-mcp` add the named scope later with the same function.
+
+Why: the judge answered insufficient_evidence
+Judge: insufficient_evidence
+Tracing tests: packages.api.tests.test_tenancy_dreaming_api_transport::test_dream_runs_each_tenant_without_cross_tenant_links (passed, red_assertion); packages.cli.tests.test_tenancy_dreaming_cli_transport::test_dream_runs_each_tenant_without_cross_tenant_links (passed, red_assertion); packages.mcp.tests.test_tenancy_dreaming_mcp_transport::test_memory_dream_runs_each_tenant_without_cross_tenant_links (passed, red_assertion)
+Ignored tests: none
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+If the code is right and the scenarios are incomplete, `reject` with a scenario: WHEN ... THEN ...
+
+### Options
+1. accept
+2. reject: <reason>, or WHEN ... THEN ... for a spec gap
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-007: Criterion C-63860dbc (Req 3.3): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+- **Criteria:** C-63860dbc (Req 3.3)
+
+### Context
+Criterion C-63860dbc (Req 3.3) is needs human after round 1.
+
+Scenario:
+`DreamFailedError` SHALL surface as an MCP tool error (fastmcp `ToolError` on the client), a CLI `error: <message>` on stderr with exit code 1, and HTTP 500 `{"detail": <message>}`. Test seam: monkeypatch both `mintmory.core.dreaming.DreamingEngine.run_light` and `.run_full` to raise `RuntimeError("boom")`, so every tenant's pass fails at any intensity (the CLI defaults to light, MCP's `memory_dream` to `"light"`, and the API's `DreamRequest.intensity` is required).
+
+Why: the judge answered insufficient_evidence
+Judge: insufficient_evidence
+Tracing tests: packages.api.tests.test_tenancy_dreaming_api_transport::test_dream_failure_returns_500_detail (passed, red_assertion); packages.cli.tests.test_tenancy_dreaming_cli_transport::test_dream_failure_reports_error_on_stderr (passed, red_assertion); packages.mcp.tests.test_tenancy_dreaming_mcp_transport::test_memory_dream_failure_surfaces_as_a_tool_error (passed, red_assertion)
+Ignored tests: none
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+If the code is right and the scenarios are incomplete, `reject` with a scenario: WHEN ... THEN ...
+
+### Options
+1. accept
+2. reject: <reason>, or WHEN ... THEN ... for a spec gap
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-008: Criterion C-a0213e6c (Req 4.1): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+- **Criteria:** C-a0213e6c (Req 4.1)
+
+### Context
+Criterion C-a0213e6c (Req 4.1) is needs human after round 1.
+
+Scenario:
+MCP `summary_jobs` / `summary_put`, CLI `summary-jobs` / `summary-put` and HTTP `GET /summaries/jobs` / `PUT /summaries/{concept}` SHALL build their engine with `tenant_id=TENANT_GLOBAL`, so on a multi-tenant database they work on `global` memories only. On a one-tenant database the output is identical to today.
+
+Why: the judge answered insufficient_evidence
+Judge: insufficient_evidence
+Tracing tests: packages.api.tests.test_tenancy_dreaming_api_transport::test_summary_routes_stay_on_the_global_tenant (passed, red_assertion); packages.cli.tests.test_tenancy_dreaming_cli_transport::test_summary_commands_stay_on_the_global_tenant (passed, red_assertion); packages.mcp.tests.test_tenancy_dreaming_mcp_transport::test_summary_paths_stay_on_the_global_tenant (passed, red_assertion)
+Ignored tests: none
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+If the code is right and the scenarios are incomplete, `reject` with a scenario: WHEN ... THEN ...
+
+### Options
+1. accept
+2. reject: <reason>, or WHEN ... THEN ... for a spec gap
 
 ### Answer
 <!-- write below this line -->
