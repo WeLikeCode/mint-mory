@@ -896,3 +896,11 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def _effective_tenant() -> str | None:
+    raise NotImplementedError
+
+
+def _bootstrap_scope(scope: str) -> None:
+    raise NotImplementedError
