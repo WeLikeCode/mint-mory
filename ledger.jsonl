@@ -128,3 +128,5 @@
 {"at":"2026-10-20T21:48:28Z","run":"r-20261020T2148Z-440a","type":"unit.dispatched","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-20T23:50:13Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-20T23:52:43Z","by":"harness","reason":"the cause is gone: kiro:tenant-scoped-mcp is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-20T23:52:45Z","attempt":1,"cost_usd":0.257502,"runs":2,"type":"plan.charged","unit":"kiro:tenant-scoped-mcp"}
+{"at":"2026-10-20T23:52:45Z","run":"r-20261020T2352Z-c165","type":"unit.dispatched","unit":"kiro:tenant-scoped-mcp"}
