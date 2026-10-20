@@ -1,7 +1,7 @@
 # Implementation Plan
 
-- [ ] 1. Fix the findings of the verifier
-  - [ ] 1.1 [chore] repository CI failed: ci.yml / lint · types · tests (F-fda7e586)
+- [x] 1. Fix the findings of the verifier
+  - [x] 1.1 [chore] repository CI failed: ci.yml / lint · types · tests (F-fda7e586)
 
 ## Task Dependency Graph
 
