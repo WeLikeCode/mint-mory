@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | technical | Make packages/cli/tests/conftest.py exist at HEAD for the colour-independent CLI help fixture |
+| Q-001 | answered | 1.1 | technical | Make packages/cli/tests/conftest.py exist at HEAD for the colour-independent CLI help fixture |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Make packages/cli/tests/conftest.py exist at HEAD for the colour-independent CLI help fixture
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** technical
 - **Asked:** 2026-10-20T21:16Z by deepseek, run r-20261020T2041Z-32d2, task 1.1
@@ -33,3 +33,4 @@ FB-001/F-da38e145 says: add packages/cli/tests/conftest.py with an autouse fixtu
 
 ### Answer
 <!-- write below this line -->
+Option 1, done: commit 2df8259 adds packages/cli/tests/conftest.py with the autouse fixture (monkeypatch.setattr(typer.rich_utils, 'FORCE_TERMINAL', None)) on l4/kiro/multi-tenancy-cli. Checked locally: with GITHUB_ACTIONS=true all 207 CLI tests pass (test_help_documents_the_tenant_option failed without it). The regression test already exists: packages/cli/tests/test_cli_tenancy_help_colour.py (fix-3). Do not change conftest.py. Never set FORCE_TERMINAL in a test: the fixture runs before the test body, so a test that sets it to True and expects no ANSI escape fails. If task 1.1 must add a test, add one that runs `tenant --help` and asserts its output has no '\x1b[' and lists the tenant commands.
