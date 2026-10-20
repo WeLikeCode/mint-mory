@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from mintmory.core import scoring, telemetry
 from mintmory.core.types import (
+    TENANT_GLOBAL,
     MemoryFilter,
     MemoryRecord,
     QueryResult,
@@ -164,8 +165,6 @@ def fuse_and_search(
     session-recording / retrieval-bumping logic lives here so it is identical
     across all backends.
     """
-    if tenant_id is not None or record_session is not True:
-        raise NotImplementedError
     with telemetry.search_phase("fusion") as handle:
         base_scores = _merge_and_normalise(
             fts_scores, trigram_scores, vector_scores, vector_rrf_weight
@@ -173,6 +172,8 @@ def fuse_and_search(
 
         candidate_ids = list(base_scores.keys())
         memories = load_memories_fn(candidate_ids)
+        if tenant_id is not None:
+            memories = [mem for mem in memories if mem.tenant_id == tenant_id]
 
         filt = request.filter or MemoryFilter()
 
@@ -200,7 +201,10 @@ def fuse_and_search(
             anchor_ids = [mem.id for mem in primary]
             around_ids = search_around_fn(anchor_ids, request.search_around)
             existing = {mem.id for mem in primary}
-            for extra in load_memories_fn(around_ids):
+            extras = load_memories_fn(around_ids)
+            if tenant_id is not None:
+                extras = [mem for mem in extras if mem.tenant_id == tenant_id]
+            for extra in extras:
                 if extra.id not in existing:
                     primary.append(extra)
                     existing.add(extra.id)
@@ -210,25 +214,35 @@ def fuse_and_search(
         if auto_include_cap > 0:
             for mem in primary:
                 annotating = get_annotating_notes_fn(mem.id, auto_include_cap)
+                if tenant_id is not None:
+                    annotating = [note for note in annotating if note.tenant_id == tenant_id]
                 if annotating:
                     notes_on_results[mem.id] = annotating
 
         # Decision lineage: persist session + results, bump retrieval counters.
-        session = QuerySession(query_text=request.query)
-        create_session_fn(session)
-        results = [
-            QueryResult(
-                session_id=session.id,
-                memory_id=mem.id,
-                relevance_score=base_scores.get(mem.id, 0.0),
-            )
-            for mem in primary
-        ]
-        record_query_results_fn(results)
-        bump_retrieval_fn([mem.id for mem in primary], now)
+        session = QuerySession(
+            query_text=request.query,
+            tenant_id=TENANT_GLOBAL if tenant_id is None else tenant_id,
+        )
+        if record_session:
+            create_session_fn(session)
+            results = [
+                QueryResult(
+                    session_id=session.id,
+                    memory_id=mem.id,
+                    relevance_score=base_scores.get(mem.id, 0.0),
+                    tenant_id=session.tenant_id,
+                )
+                for mem in primary
+            ]
+            record_query_results_fn(results)
+            bump_retrieval_fn([mem.id for mem in primary], now)
+            session_id = session.id
+        else:
+            session_id = ""
 
         response = SearchResponse(
-            session_id=session.id,
+            session_id=session_id,
             memories=primary,
             total_found=len(primary),
             search_around_ids=around_ids,

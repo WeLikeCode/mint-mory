@@ -18,7 +18,7 @@
   - Tests: three-way per helper with the seed of the design.
   - _Requirements: 1.1_
 
-- [ ] 3. Search, traversal and anchoring (`storage.py`, `hybrid_search.py`)
+- [x] 3. Search, traversal and anchoring (`storage.py`, `hybrid_search.py`)
   - Tenant on `_fts_scores`, `_trigram_scores`, `_vector_scores`,
     `_load_memories`, `search_around`, `anchor_candidates`, `search`;
     `fuse_and_search(…, tenant_id=None, record_session=True)` with the session

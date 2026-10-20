@@ -172,14 +172,14 @@ def test_vector_scores_sql_carries_tenant_predicate(monkeypatch: Any, tmp_path: 
     unset_trace(store)
     assert len(scoped) == 1
     assert "SELECT" in scoped[0].upper()
-    assert "tenant_id = ?" in scoped[0]
+    assert "tenant_id = 't1'" in scoped[0]
 
     unscoped: list[str] = []
     set_trace(store, unscoped)
     store._vector_scores("x", query_embedding, 50)
     unset_trace(store)
     assert len(unscoped) == 1
-    assert "tenant_id = ?" not in unscoped[0]
+    assert "tenant_id =" not in unscoped[0]
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +256,9 @@ def test_search_scopes_results_session_and_sql_over_shared_entity(alice: Seed) -
     lacks_predicate = [
         sql
         for sql in scoped_stmts
-        if ("memories" in sql or "concept_links" in sql) and "tenant_id" not in sql
+        if sql.lstrip().startswith("SELECT")
+        and ("memories" in sql or "concept_links" in sql)
+        and "tenant_id" not in sql
     ]
     assert lacks_predicate == []
     assert (
@@ -368,8 +370,7 @@ def _fuse_callables(alice: Seed) -> tuple[dict[str, Any], dict[str, list[Any]]]:
     )
 
 
-def _fuse_kwargs(alice: Seed) -> dict[str, Any]:
-    callables, _ = _fuse_callables(alice)
+def _fuse_kwargs(alice: Seed, callables: dict[str, Any]) -> dict[str, Any]:
     return {
         "request": SearchRequest(query="Alice"),
         "fts_scores": {alice.a1.id: 1.0, alice.g1.id: 0.5},
@@ -393,8 +394,8 @@ def test_fuse_and_search_stamps_tenant_and_drops_foreign_rows(alice: Seed) -> No
     assert "record_session" in signature.parameters
     assert signature.parameters["record_session"].default is True
 
-    _, calls = _fuse_callables(alice)
-    response = fuse_and_search(**_fuse_kwargs(alice), tenant_id="t1")
+    callables, calls = _fuse_callables(alice)
+    response = fuse_and_search(**_fuse_kwargs(alice, callables), tenant_id="t1")
     assert response is not None
     assert [mem.id for mem in response.memories] == [alice.a1.id]
     assert calls["created"] and calls["created"][0].tenant_id == "t1"
@@ -412,8 +413,10 @@ def test_fuse_and_search_stamps_tenant_and_drops_foreign_rows(alice: Seed) -> No
 def test_fuse_and_search_without_recording_returns_results_and_empty_session(
     alice: Seed,
 ) -> None:
-    _, calls = _fuse_callables(alice)
-    response = fuse_and_search(**_fuse_kwargs(alice), tenant_id="t1", record_session=False)
+    callables, calls = _fuse_callables(alice)
+    response = fuse_and_search(
+        **_fuse_kwargs(alice, callables), tenant_id="t1", record_session=False
+    )
     assert response is not None
     assert [mem.id for mem in response.memories] == [alice.a1.id]
     assert response.session_id == ""

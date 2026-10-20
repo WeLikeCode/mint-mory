@@ -1011,22 +1011,24 @@ class SqliteBackend:
 
     def _fts_scores(self, query: str, limit: int, tenant_id: str | None = None) -> dict[str, float]:
         """Run FTS5 MATCH and return {memory_id: bm25-derived score (higher=better)}."""
-        if tenant_id is not None:
-            raise NotImplementedError
         match_expr = _sanitise_fts_query(query)
         if not match_expr:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT m.id AS id, bm25(memories_fts) AS rank "
+            "FROM memories_fts "
+            "JOIN memories m ON m.rowid = memories_fts.rowid "
+            "WHERE memories_fts MATCH ? "
+        )
+        params: list[Any] = [match_expr]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY rank LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT m.id AS id, bm25(memories_fts) AS rank "
-                "FROM memories_fts "
-                "JOIN memories m ON m.rowid = memories_fts.rowid "
-                "WHERE memories_fts MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (match_expr, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
         # bm25 returns lower = more relevant; negate so higher = better.
@@ -1036,24 +1038,26 @@ class SqliteBackend:
         self, query: str, limit: int, tenant_id: str | None = None
     ) -> dict[str, float]:
         """Run the trigram FTS5 MATCH and return {memory_id: score (higher=better)}."""
-        if tenant_id is not None:
-            raise NotImplementedError
         if not self._trigram_loaded:
             return {}
         match_expr = _trigram_match_expr(query)
         if not match_expr:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT m.id AS id, bm25(memories_trigram) AS rank "
+            "FROM memories_trigram "
+            "JOIN memories m ON m.rowid = memories_trigram.rowid "
+            "WHERE memories_trigram MATCH ? "
+        )
+        params: list[Any] = [match_expr]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY rank LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT m.id AS id, bm25(memories_trigram) AS rank "
-                "FROM memories_trigram "
-                "JOIN memories m ON m.rowid = memories_trigram.rowid "
-                "WHERE memories_trigram MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (match_expr, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
         # bm25 returns lower = more relevant; negate so higher = better.
@@ -1073,8 +1077,6 @@ class SqliteBackend:
         embeddings) are skipped. Isolated behind this method so an ANN backend can
         replace the scan later without touching search()/fusion (see ADR-0006).
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         if not self.vector_search_available():
             return {}
         blob: bytes | None
@@ -1085,13 +1087,18 @@ class SqliteBackend:
         if blob is None:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT id, vec_distance_cosine(embedding, ?) AS dist "
+            "FROM memories WHERE embedding IS NOT NULL "
+        )
+        params: list[Any] = [blob]
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY dist ASC LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT id, vec_distance_cosine(embedding, ?) AS dist "
-                "FROM memories WHERE embedding IS NOT NULL "
-                "ORDER BY dist ASC LIMIT ?",
-                (blob, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
             # dist is NULL when a stored embedding has a different
             # dimension than the query (mixed embedders in one DB) —
             # skip those rows rather than crashing on float(None); they
@@ -1117,16 +1124,44 @@ class SqliteBackend:
         Fusion/scoring/session logic lives in ``hybrid_search.fuse_and_search``
         so it is shared identically with PostgresBackend.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         # Wider candidate pool than the final limit so filtering + scoring have
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
 
+        def _fts() -> dict[str, float]:
+            if tenant_id is None:
+                return self._fts_scores(request.query, pool)
+            return self._fts_scores(request.query, pool, tenant_id)
+
+        def _trigram() -> dict[str, float]:
+            if tenant_id is None:
+                return self._trigram_scores(request.query, pool)
+            return self._trigram_scores(request.query, pool, tenant_id)
+
+        def _vector() -> dict[str, float]:
+            if tenant_id is None:
+                return self._vector_scores(request.query, query_embedding, pool)
+            return self._vector_scores(request.query, query_embedding, pool, tenant_id)
+
+        def _load(ids: list[str]) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self._load_memories(ids)
+            return self._load_memories(ids, tenant_id)
+
+        def _around(anchors: list[str], spec: SearchAroundSpec) -> list[str]:
+            if tenant_id is None:
+                return self.search_around(anchors, spec)
+            return self.search_around(anchors, spec, tenant_id)
+
+        def _notes(memory_id: str, cap: int) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self.get_annotating_notes(memory_id, cap)
+            return self.get_annotating_notes(memory_id, cap, tenant_id)
+
         fts_scores, trigram_scores, vec_scores = collect_scores(
-            fts_fn=lambda: self._fts_scores(request.query, pool),
-            trigram_fn=lambda: self._trigram_scores(request.query, pool),
-            vector_fn=lambda: self._vector_scores(request.query, query_embedding, pool),
+            fts_fn=_fts,
+            trigram_fn=_trigram,
+            vector_fn=_vector,
         )
 
         # Lazily resolve note_bonus / auto_include_cap from NoteSettings on first
@@ -1140,31 +1175,38 @@ class SqliteBackend:
 
             self._auto_include_cap = NoteSettings().auto_include_cap
 
+        tenant = self.get_tenant(tenant_id) if tenant_id is not None else None
+
         return fuse_and_search(
             request=request,
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=_load,
             bump_retrieval_fn=self._bump_retrieval,
             create_session_fn=self.create_session,
             record_query_results_fn=self.record_query_results,
-            get_annotating_notes_fn=self.get_annotating_notes,
-            search_around_fn=self.search_around,
+            get_annotating_notes_fn=_notes,
+            search_around_fn=_around,
             note_bonus=self._note_bonus,
             auto_include_cap=self._auto_include_cap,
             now=_utcnow(),
+            tenant_id=tenant_id,
+            record_session=tenant_id is None or (tenant is not None and tenant.is_active),
         )
 
     def _load_memories(self, ids: list[str], tenant_id: str | None = None) -> list[MemoryRecord]:
-        if tenant_id is not None:
-            raise NotImplementedError
         if not ids:
             return []
         conn = self.connect()
         placeholders = ", ".join("?" for _ in ids)
-        rows = conn.execute(f"SELECT * FROM memories WHERE id IN ({placeholders})", ids).fetchall()
+        sql = f"SELECT * FROM memories WHERE id IN ({placeholders})"
+        params: list[Any] = list(ids)
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_annotating_notes(
@@ -1273,21 +1315,19 @@ class SqliteBackend:
         record query_results, and does NOT bump retrieval counters. Returns
         ``(normalised_score, record)`` pairs sorted best-first.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         from mintmory.core.hybrid_search import fuse_and_rank  # noqa: PLC0415
 
         pool = max(limit * 5, 50)
-        fts_scores = self._fts_scores(about, pool)
-        vec_scores = self._vector_scores(about, None, pool)
-        trigram_scores = self._trigram_scores(about, pool)
+        fts_scores = self._fts_scores(about, pool, tenant_id)
+        vec_scores = self._vector_scores(about, None, pool, tenant_id)
+        trigram_scores = self._trigram_scores(about, pool, tenant_id)
 
         return fuse_and_rank(
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=lambda ids: self._load_memories(ids, tenant_id),
             limit=limit,
         )
 
@@ -1423,8 +1463,6 @@ class SqliteBackend:
         spec.min_strength. Follows source->target always, and for symmetric link
         types also target->source. Anchors are excluded from the result; dedup'd.
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         if not anchor_ids:
             return []
 
@@ -1445,7 +1483,6 @@ class SqliteBackend:
             if not frontier:
                 break
             placeholders = ", ".join("?" for _ in frontier)
-            params: list[Any] = list(frontier)
             sql = (
                 f"SELECT source_memory_id, target_memory_id, link_type "
                 f"FROM concept_links "
@@ -1453,7 +1490,10 @@ class SqliteBackend:
                 f"(source_memory_id IN ({placeholders}) "
                 f" OR target_memory_id IN ({placeholders}))"
             )
-            params = [spec.min_strength, *frontier, *frontier]
+            params: list[Any] = [spec.min_strength, *frontier, *frontier]
+            if tenant_id is not None:
+                sql += " AND tenant_id = ?"
+                params.append(tenant_id)
             rows = conn.execute(sql, params).fetchall()
 
             next_frontier: set[str] = set()
