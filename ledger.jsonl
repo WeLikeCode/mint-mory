@@ -93,3 +93,5 @@
 {"at":"2026-10-20T13:12:43Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-cli is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-20T13:12:46Z","attempt":1,"cost_usd":1.595313,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T13:12:46Z","run":"r-20261020T1312Z-7b7c","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T13:13:59Z","attempt":1,"cost_usd":1.595313,"runs":4,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T13:13:59Z","run":"r-20261020T1313Z-2c93","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
