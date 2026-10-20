@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | accepted | 3 | technical | packages/mcp/tests/test_tenancy_dreaming_mcp_transport.py:114 |
 | Q-003 | accepted | 3 | technical | packages/cli/tests/test_tenancy_dreaming_cli_transport.py:112 |
 | Q-004 | accepted | 3 | technical | packages/api/tests/test_tenancy_dreaming_api_transport.py:111 |
-| Q-005 | open | none | verdict | Criterion C-7881686c (Req 3.1): accept as satisfied? |
+| Q-005 | answered | none | verdict | Criterion C-7881686c (Req 3.1): accept as satisfied? |
 | Q-006 | open | none | verdict | Criterion C-d9c39ea3 (Req 3.2): accept as satisfied? |
 | Q-007 | open | none | verdict | Criterion C-63860dbc (Req 3.3): accept as satisfied? |
 | Q-008 | open | none | verdict | Criterion C-a0213e6c (Req 4.1): accept as satisfied? |
@@ -119,7 +119,7 @@ Edit `packages/api/tests/test_tenancy_dreaming_api_transport.py`: in `_seed_two_
 
 ## Q-005: Criterion C-7881686c (Req 3.1): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -145,6 +145,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: verified on the unit branch: MCP memory_dream (server.py), CLI dream (main.py) and HTTP POST /dream (app.py, importing run_dream as run_tenant_dreams) each call run_dream(store, intensity=..., tenant_id=None, engine_factory=...); MCP and CLI build engines with build_dreaming_engine(store, settings.llm, link_settings=settings.link, summary_settings=settings.summary, tenant_id=t), the API with DreamingEngine(store, tenant_id=t). The three transport tests that trace it pass.
 ---
 
 ## Q-006: Criterion C-d9c39ea3 (Req 3.2): accept as satisfied?
