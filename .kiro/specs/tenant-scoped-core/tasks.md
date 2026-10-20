@@ -46,7 +46,7 @@
   - Tests: the R6.3 examples; unscoped search over two tenants (R6.1).
   - _Requirements: 6.1, 6.2, 6.3_
 
-- [ ] 6. Full gate
+- [x] 6. Full gate
   - Existing suite unchanged on a one-tenant database; `.l4/config.yaml` gates
     exit 0 with coverage ≥ 80%.
   - _Requirements: 7.1_
