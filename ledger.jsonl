@@ -69,3 +69,5 @@
 {"at":"2026-10-20T07:29:04Z","by":"harness","reason":"the cause is gone: kiro:tenant-scoped-core is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-20T07:29:06Z","attempt":1,"cost_usd":0.389407,"runs":3,"type":"plan.charged","unit":"kiro:tenant-scoped-core"}
 {"at":"2026-10-20T07:29:06Z","run":"r-20261020T0729Z-c0e2","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
+{"at":"2026-10-20T10:32:15Z","attempt":1,"cost_usd":0.632247,"runs":4,"type":"plan.charged","unit":"kiro:tenant-scoped-core"}
+{"at":"2026-10-20T10:32:15Z","run":"r-20261020T1032Z-59e4","type":"unit.dispatched","unit":"kiro:tenant-scoped-core"}
