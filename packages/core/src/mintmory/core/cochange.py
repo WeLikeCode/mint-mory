@@ -765,12 +765,19 @@ def apply_changesets(
 # ---------------------------------------------------------------------------
 
 
-def changed_with(store: SqliteBackend, path: str) -> list[dict[str, Any]]:
+def changed_with(
+    store: SqliteBackend,
+    path: str,
+    *,
+    tenant_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Return peer documents that co-changed with the document at ``path``.
 
     Each result has: {path, strength, observed_at, kind}.
     MM-34: kind is taken from peer metadata.changeset_kind.
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     conn = store.connect()
 
     rows = conn.execute(
@@ -839,6 +846,7 @@ def documents_timeline(
     to_iso: str | None = None,
     collection: str | None = None,
     limit: int = 50,
+    tenant_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return document memories newest-first (by valid_from) in the given window.
 
@@ -850,6 +858,8 @@ def documents_timeline(
     When no window is specified (since/from_iso/to_iso all None), all documents
     are returned (no time restriction).
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     now = datetime.now(UTC).replace(tzinfo=None)
 
     if since is not None or from_iso is not None or to_iso is not None:

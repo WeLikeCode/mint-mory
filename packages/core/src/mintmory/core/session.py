@@ -68,6 +68,8 @@ def apply_feedback(
     stale_ids: list[str],
     confidence_rating: int | None = None,
     reasoning: str | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> QuerySession:
     """Apply passive self-assessment feedback and conclude the session.
 
@@ -88,6 +90,8 @@ def apply_feedback(
             (callers map this to HTTP 409 Conflict). The check is performed
             before any score mutation so feedback is never applied twice.
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     session = adapter.get_session(session_id)
     if session is None:
         raise ValueError(f"session {session_id!r} not found")

@@ -130,6 +130,8 @@ def create_note(
     until: datetime | None = None,
     category: MemoryCategory | None = None,
     settings: NoteSettings | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> NoteResult:
     """Create a user-authored note (the ONE capture primitive).
 
@@ -159,6 +161,8 @@ def create_note(
         :class:`~mintmory.core.types.NoteResult` describing what was created
         and what it anchored to.
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     # Step 1: resolve settings.
     if settings is None:
         from mintmory.core.config import NoteSettings
@@ -228,6 +232,8 @@ def notes_list(
     overdue: bool = False,
     limit: int = 50,
     now: datetime | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> list[MemoryRecord]:
     """List notes (``is_note=1``), newest-first by default.
 
@@ -265,6 +271,8 @@ def notes_list(
     Raises:
         ValueError: when both ``upcoming`` and ``overdue`` are ``True``.
     """
+    if tenant_id is not None:
+        raise NotImplementedError
     if upcoming and overdue:
         raise ValueError(
             "'upcoming' and 'overdue' are mutually exclusive — set at most one to True."
