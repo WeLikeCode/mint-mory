@@ -1,4 +1,4 @@
-# Verification: kiro:tenant-scoped-core: NEEDS_HUMAN (round 1)
+# Verification: kiro:tenant-scoped-core: PASS (round 2)
 
 traceability: 32/32 criteria covered by a discriminating test
 
@@ -16,17 +16,17 @@ traceability: 32/32 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.0 | base staging@47bb91111d contained |
-| 1 | integrity | ok | 149.7 | 10 sub-checks (+3 unfrozen by human answers); scope: 24 changed file(s) |
-| 2 | build | ok | 3.6 |  |
-| 3 | tests | ok | 66.1 |  |
-| 4 | traceability | ok | 0.1 | 32/32 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 7.6 | 31/32 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 59.1 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
@@ -206,6 +206,13 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-8308a89a | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-61a564ed | ok | 0.820 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-005 accept C-7881686c by human: verified on the unit branch: MCP memory_dream (server.py), CLI dream (main.py) and HTTP POST /dream (app.py, importing run_dream as run_tenant_dreams) each call run_dream(store, intensity=..., tenant_id=None, engine_factory=...); MCP and CLI build engines with build_dreaming_engine(store, settings.l...
+- Q-006 accept C-d9c39ea3 by human: verified on the unit branch: run_dream returns a DreamReport (one tenant's, or DreamAllReport.total() for the global scope, the per-tenant total); MCP returns report.model_dump(mode='json'), the CLI prints the DreamReport table, the API route has response_model=DreamReport (its test parses the body ...
+- Q-007 accept C-63860dbc by human: verified on the unit branch: run_dream raises DreamFailedError when any tenant's pass fails; the CLI catches it and prints 'error: <message>' on stderr with exit code 1, the API's exception handler returns 500 {'detail': str(exc)}, and the MCP tool lets it propagate so the fastmcp client gets a Tool...
+- Q-008 accept C-a0213e6c by human: verified on the unit branch: MCP summary_jobs/summary_put, CLI summary-jobs/summary-put and HTTP GET /summaries/jobs and PUT /summaries/{concept} all build their engine with tenant_id=TENANT_GLOBAL, so on a multi-tenant database they see global memories only and on a one-tenant database (everything ...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -225,10 +232,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-ac42fe75 | Req 2.5 | pass | pass | the judge passed it and a discriminating test passes |
 | C-d95fbef7 | Req 2.6 | pass | pass | the judge passed it and a discriminating test passes |
 | C-dc6f014f | Req 2.7 | pass | pass | the judge passed it and a discriminating test passes |
-| C-7881686c | Req 3.1 | insufficient_evidence | needs_human | the judge answered insufficient_evidence |
-| C-d9c39ea3 | Req 3.2 | insufficient_evidence | needs_human | the judge answered insufficient_evidence |
-| C-63860dbc | Req 3.3 | insufficient_evidence | needs_human | the judge answered insufficient_evidence |
-| C-a0213e6c | Req 4.1 | insufficient_evidence | needs_human | the judge answered insufficient_evidence |
+| C-7881686c | Req 3.1 | insufficient_evidence | pass | accepted by human: verified on the unit branch: MCP memory_dream (server.py), CLI dream (main.py) and HTTP POST /dream (app.py, importing run_dream as run_tenant_dreams) each call run_dream(store, intensity=..., tenant_id=None, engine_factory=...); MCP and CLI build engines with build_dreaming_engin... |
+| C-d9c39ea3 | Req 3.2 | insufficient_evidence | pass | accepted by human: verified on the unit branch: run_dream returns a DreamReport (one tenant's, or DreamAllReport.total() for the global scope, the per-tenant total); MCP returns report.model_dump(mode='json'), the CLI prints the DreamReport table, the API route has response_model=DreamReport (its te... |
+| C-63860dbc | Req 3.3 | insufficient_evidence | pass | accepted by human: verified on the unit branch: run_dream raises DreamFailedError when any tenant's pass fails; the CLI catches it and prints 'error: <message>' on stderr with exit code 1, the API's exception handler returns 500 {'detail': str(exc)}, and the MCP tool lets it propagate so the fastmcp... |
+| C-a0213e6c | Req 4.1 | insufficient_evidence | pass | accepted by human: verified on the unit branch: MCP summary_jobs/summary_put, CLI summary-jobs/summary-put and HTTP GET /summaries/jobs and PUT /summaries/{concept} all build their engine with tenant_id=TENANT_GLOBAL, so on a multi-tenant database they see global memories only and on a one-tenant da... |
 | C-051abf8f | Req 4.2 | pass | pass | the judge passed it and a discriminating test passes |
 | C-18514cb1 | Req 5.1 | pass | pass | the judge passed it and a discriminating test passes |
 | C-abd8e186 | Req 5.2 | pass | pass | the judge passed it and a discriminating test passes |
