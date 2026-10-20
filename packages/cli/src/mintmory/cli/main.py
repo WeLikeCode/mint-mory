@@ -1495,7 +1495,7 @@ def image_caption_put(
                 tenant_id=_write_tenant(),
             )
         except KeyError as exc:
-            raise typer.BadParameter(str(exc)) from exc
+            _fail_text(str(exc.args[0]))
 
     console.print(
         f"[green]Stored description[/green] [bold]{result.record.id}[/bold] "
