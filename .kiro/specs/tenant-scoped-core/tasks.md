@@ -31,7 +31,7 @@
     `ToolError` / exit 1 / HTTP 500 (R3.3).
   - _Requirements: 3.1, 3.2, 3.3, 4.1, 4.2_
 
-- [ ] 4. Core functions (`notes.py`, `vision.py`, `session.py`, `cochange.py`)
+- [x] 4. Core functions (`notes.py`, `vision.py`, `session.py`, `cochange.py`)
   - Signatures and behaviour of R5.1–R5.6.
   - Tests: the R5.1 anchoring example; `notes_list(tenant_id="t1")`;
     `image_jobs` / `image_caption_put` confined (foreign file-record →

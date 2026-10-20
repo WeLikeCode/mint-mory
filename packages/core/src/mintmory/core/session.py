@@ -29,7 +29,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from mintmory.core.prompts import FEEDBACK_PROMPT
-from mintmory.core.types import MemoryRecord, QueryResult, QuerySession
+from mintmory.core.types import MemoryRecord, QueryResult, QuerySession, TenantInactiveError
 
 if TYPE_CHECKING:
     from mintmory.core.ports import StorageBackend
@@ -38,6 +38,13 @@ if TYPE_CHECKING:
 def _utcnow() -> datetime:
     """Naive UTC datetime, matching the model defaults (``datetime.utcnow``)."""
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _assert_tenant_active(adapter: StorageBackend, tenant_id: str) -> None:
+    """Raise ``TenantInactiveError`` when the record's tenant is deactivated."""
+    tenant = adapter.get_tenant(tenant_id)
+    if tenant is not None and not tenant.is_active:
+        raise TenantInactiveError(tenant_id)
 
 
 def create_session(adapter: StorageBackend, query_text: str) -> QuerySession:
@@ -90,18 +97,25 @@ def apply_feedback(
             (callers map this to HTTP 409 Conflict). The check is performed
             before any score mutation so feedback is never applied twice.
     """
-    if tenant_id is not None:
-        raise NotImplementedError
-    session = adapter.get_session(session_id)
+    session = adapter.get_session(session_id, tenant_id=tenant_id)
     if session is None:
         raise ValueError(f"session {session_id!r} not found")
     if session.concluded:
         raise ValueError(f"session {session_id!r} is already concluded")
+    _assert_tenant_active(adapter, session.tenant_id)
+
+    for memory_id in [*useful_ids, *stale_ids]:
+        memory = adapter.get_memory(memory_id, tenant_id=tenant_id)
+        if memory is None:
+            if tenant_id is None:
+                raise KeyError(f"memory {memory_id!r} not found")
+            raise ValueError(f"memory {memory_id!r} not found")
+        _assert_tenant_active(adapter, memory.tenant_id)
 
     for memory_id in useful_ids:
-        adapter.apply_feedback(memory_id, useful=True, stale=False)
+        adapter.apply_feedback(memory_id, useful=True, stale=False, tenant_id=tenant_id)
     for memory_id in stale_ids:
-        adapter.apply_feedback(memory_id, useful=False, stale=True)
+        adapter.apply_feedback(memory_id, useful=False, stale=True, tenant_id=tenant_id)
 
     # Phase-0: session-level UPDATE stays in its own separate transaction,
     # mirroring the original boundary (deferred to Phase 2 for atomicity).
@@ -113,7 +127,7 @@ def apply_feedback(
         stale_ids,
     )
 
-    refreshed = adapter.get_session(session_id)
+    refreshed = adapter.get_session(session_id, tenant_id=tenant_id)
     assert refreshed is not None  # just updated, row exists
     return refreshed
 
