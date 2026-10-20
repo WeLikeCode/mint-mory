@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import contextlib
 import os
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
 import typer
@@ -34,8 +35,10 @@ from mintmory.core.types import (
     TENANT_GLOBAL,
     ConceptLinkType,
     DreamIntensity,
+    InvalidTenantIdError,
     MemoryCategory,
     MemorySource,
+    validate_tenant_id,
 )
 from numpy.typing import NDArray
 from rich.console import Console
@@ -45,13 +48,77 @@ if TYPE_CHECKING:
     from mintmory.core.ports import StorageBackend
     from mintmory.core.storage import SqliteBackend
 
-app = typer.Typer(name="mintmory", help="MintMory — typed memory for LLM agents")
+app = typer.Typer(
+    name="mintmory",
+    help=(
+        "MintMory — typed memory for LLM agents\n\n"
+        "Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant."
+    ),
+)
 console = Console()
+
+_TENANT: str | None = None
+_NO_TENANT_COMMANDS = {
+    "serve",
+    "mcp-serve",
+    "doctor",
+    "index-tree",
+    "history",
+    "migrate-storage",
+}
+
+
+def _fail(exc: Exception) -> NoReturn:
+    typer.echo(f"error: {exc}", err=True)
+    raise typer.Exit(code=1)
+
+
+def _fail_text(message: str) -> NoReturn:
+    typer.echo(f"error: {message}", err=True)
+    raise typer.Exit(code=1)
+
+
+@contextlib.contextmanager
+def _tenant_errors() -> Iterator[None]:
+    from mintmory.core.dreaming import DreamFailedError
+    from mintmory.core.types import TenantError
+
+    try:
+        yield
+    except (TenantError, DreamFailedError) as exc:
+        _fail(exc)
+
+
+def _read_tenant() -> str | None:
+    return _TENANT
+
+
+def _write_tenant() -> str:
+    return _TENANT or TENANT_GLOBAL
 
 
 @app.callback()
-def _init_telemetry(ctx: typer.Context) -> None:
+def _init_telemetry(
+    ctx: typer.Context,
+    tenant: str | None = typer.Option(
+        None,
+        "--tenant",
+        help=(
+            "Tenant id. Absent or 'global': reads span every tenant and writes "
+            "go to the global tenant."
+        ),
+    ),
+) -> None:
     """Initialise telemetry for CLI commands; ``serve`` and ``mcp-serve`` defer to their servers."""
+    global _TENANT
+    _TENANT = None
+    if tenant and tenant != TENANT_GLOBAL:
+        try:
+            _TENANT = validate_tenant_id(tenant)
+        except InvalidTenantIdError as exc:
+            _fail(exc)
+    if _TENANT is not None and ctx.invoked_subcommand in _NO_TENANT_COMMANDS:
+        _fail_text(f"'{ctx.invoked_subcommand}' does not support --tenant; run it without --tenant")
     if ctx.invoked_subcommand in ("serve", "mcp-serve"):
         return
     from mintmory.core import telemetry
@@ -66,8 +133,59 @@ def _get_store() -> StorageBackend:
 
     settings = load_settings()
     store = build_storage(settings.storage, embedder=embedder_from_settings(settings.embed))
-    store.initialise()
+    with _tenant_errors():
+        store.initialise()
     return store
+
+
+# ---------------------------------------------------------------------------
+# mintmory tenant — tenant directory commands
+# ---------------------------------------------------------------------------
+
+tenant_app = typer.Typer(name="tenant", help="Tenant directory commands")
+app.add_typer(tenant_app)
+
+
+@tenant_app.command("create")
+def tenant_create(
+    tenant_id: str = typer.Argument(..., help="Tenant id to create"),
+    name: str = typer.Option("", "--name", help="Human-readable tenant name"),
+) -> None:
+    """Create a tenant idempotently."""
+    with _tenant_errors():
+        store = _get_store()
+        existed = store.get_tenant(tenant_id) is not None
+        store.create_tenant(tenant_id, name or "")
+    if existed:
+        console.print(f"tenant {tenant_id!r} already exists")
+    else:
+        console.print(f"created tenant {tenant_id!r}")
+
+
+@tenant_app.command("list")
+def tenant_list(
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table"),
+) -> None:
+    """List every tenant in the directory, ordered by id."""
+    import json as _json
+
+    with _tenant_errors():
+        store = _get_store()
+        tenants = store.list_tenants()
+
+    if as_json:
+        typer.echo(_json.dumps([t.model_dump(mode="json") for t in tenants]))
+        return
+
+    table = Table(title="Tenants")
+    table.add_column("id", style="cyan", no_wrap=True)
+    table.add_column("name")
+    table.add_column("is_active", style="magenta")
+    table.add_column("created_at", style="yellow")
+    for t in tenants:
+        table.add_row(t.id, t.name, "true" if t.is_active else "false", t.created_at.isoformat())
+    console.print(table)
+    console.print(f"[dim]{len(tenants)} tenant(s)[/dim]")
 
 
 def _parse_category(category: str) -> MemoryCategory:
@@ -126,13 +244,14 @@ def add(
     """Add a new memory."""
     cat = _parse_category(category)
     src = _parse_source(source)
-    store = _get_store()
-    record = store.add_memory(
-        content=content,
-        category=cat,
-        source=src,
-        verified=verified,
-    )
+    with _tenant_errors():
+        store = _get_store()
+        record = store.add_memory(
+            content=content,
+            category=cat,
+            source=src,
+            verified=verified,
+        )
     console.print(f"[green]Added memory[/green] [bold]{record.id}[/bold]")
 
 
@@ -223,8 +342,9 @@ def dream(
 @app.command()
 def stats() -> None:
     """Show memory health statistics."""
-    store = _get_store()
-    s = store.get_stats()
+    with _tenant_errors():
+        store = _get_store()
+        s = store.get_stats()
 
     table = Table(title="Memory statistics")
     table.add_column("metric", style="cyan")
@@ -2029,11 +2149,3 @@ def migrate_storage(
 
 if __name__ == "__main__":
     app()
-
-
-def _read_tenant() -> str | None:
-    raise NotImplementedError
-
-
-def _write_tenant() -> str:
-    raise NotImplementedError

@@ -6,7 +6,7 @@
 > packages/cli/`); full `.l4/config.yaml` gates before the PR. No test needs
 > Postgres, Docker or a network service.
 
-- [ ] 1. Root `--tenant` option and refusals (`main.py`)
+- [x] 1. Root `--tenant` option and refusals (`main.py`)
   - Option and help text, `_TENANT`, `_read_tenant`, `_write_tenant`,
     validation, the `_NO_TENANT_COMMANDS` refusal, `_fail`, `_fail_text`,
     `_tenant_errors`.
