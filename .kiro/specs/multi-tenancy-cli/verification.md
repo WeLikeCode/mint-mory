@@ -1,55 +1,59 @@
-# Verification: kiro:multi-tenancy-cli: FAIL (round 7)
+# Verification: kiro:multi-tenancy-cli: PASS (round 8)
 
 traceability: 20/30 criteria covered by a discriminating test
 
 - Base: `7ae2320de153d99a3aef4d11ef87be3d8b8e4aac`
-- Head: `281b38f1d67f6561fe27f6fb3aa6b12728b34a70`
+- Head: `f6be200685fb6c64fe3d5b04c641f2ac19af466c`
 - Implementer profiles: deepseek, glm
-- Judge: claude-judge (claude-sonnet-5-5), 2 call(s), prompt sha256 `28124c3ea5b8c16a42d96b4eb619e7a270c4c8f33f80a387f9a4151ae1078a20`
-- Judge replies of claude-judge (this unit, all rounds): valid 0, repaired 0, retried 5, discarded 0; this round: retried
+- Judge: claude-judge (claude-sonnet-5-5), 2 call(s), prompt sha256 `f096192ae0a60f2722e57024d4f9ac1052b9e4af3f9a2a2627f97fe4a3902897`
+- Judge replies of claude-judge (this unit, all rounds): valid 0, repaired 0, retried 6, discarded 0; this round: retried
 - independence: declared (unverified): claude-judge anthropic (served claude-sonnet-5-5), deepseek deepseek (declared), glm zhipu (declared)
-- Cost: $1.5491
+- Cost: $1.4869
 
 ## Ladder
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
 | 0 | preconditions | ok | 0.1 | base staging@7ae2320de1 contained |
-| 1 | integrity | ok | 93.5 | 10 sub-checks; scope: 54 changed file(s) |
-| 2 | build | ok | 5.7 |  |
-| 3 | tests | ok | 94.0 |  |
-| 4 | traceability | ok | 178.0 | 20/30 criteria covered |
+| 1 | integrity | ok | 99.8 | 10 sub-checks; scope: 66 changed file(s) |
+| 2 | build | ok | 6.8 |  |
+| 3 | tests | ok | 100.1 |  |
+| 4 | traceability | ok | 189.1 | 20/30 criteria covered |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
 | 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 3.1 | 30/30 criteria judged by jev |
-| 9 | judge | ok | 88.8 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | FAIL |
+| 8 | s1 judge | ok | 2.1 | 30/30 criteria judged by jev |
+| 9 | judge | ok | 55.9 | 2 call(s) |
+| 10 | aggregation | ok | 0.0 | PASS |
 
 ## Gates
 
 | Gate | Status | Command | Log |
 |---|---|---|---|
-| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261020T2041Z-32d2/017-setup.log |
-| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261020T2041Z-32d2/018-lint.log |
-| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261020T2041Z-32d2/019-lint.log |
-| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261020T2041Z-32d2/020-typecheck.log |
-| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261020T2041Z-32d2/021-test.log |
+| setup | pass | `uv sync --frozen --extra cochange --extra otel --extra postgres` | .l4-out/gates/r-20261020T2120Z-fa5a/015-setup.log |
+| lint | pass | `.venv/bin/ruff check --extend-exclude .l4 .` | .l4-out/gates/r-20261020T2120Z-fa5a/016-lint.log |
+| lint | pass | `.venv/bin/ruff format --check .` | .l4-out/gates/r-20261020T2120Z-fa5a/017-lint.log |
+| typecheck | pass | `.venv/bin/mypy packages` | .l4-out/gates/r-20261020T2120Z-fa5a/018-typecheck.log |
+| test | pass | `.venv/bin/pytest -q --junitxml=.l4-out/junit.xml` | .l4-out/gates/r-20261020T2120Z-fa5a/019-test.log |
 
 ## Integrity
 
 | Check | Status | Note |
 |---|---|---|
 | protected paths | ok | no protected path differs from the base |
-| pre-existing tests | ok | 6 test file(s) compared with the base |
+| pre-existing tests | ok | 8 test file(s) compared with the base |
 | red-green freeze | ok | 3 task(s): red and green compared |
-| test path freeze | ok | 5 harness step commit(s) checked |
+| test path freeze | ok | 6 harness step commit(s) checked |
 | content scan | ok | no result-manipulating construct in the changed support and runner files |
 | gate configuration | skipped | no gate or runner configuration file changed |
 | test awareness | ok | no production line reacts to the test run |
 | suppressions | skipped | no new suppression comment |
 | tdd history | ok | 6 task(s); red tests passing at head: step 3 |
-| pre-existing tests still pass | ok | 2247 of 2247 base tests pass on the unit's code with its 6 test and support files at the base (base: evidence) |
+| pre-existing tests still pass | ok | 2247 of 2247 base tests pass on the unit's code with its 7 test and support files at the base (base: evidence) |
+
+## Test changes made by humans (allowed, L4-SEC-004)
+
+- packages/cli/tests/conftest.py kept at head for the run (only people's commits changed it (2df8259b69))
 
 ## Traceability
 
@@ -57,33 +61,33 @@ traceability: 20/30 criteria covered by a discriminating test
 |---|---|---|---|---|---|
 | C-59ce4fbd | Req 1.1 | covered | packages.cli.tests.test_cli_tenancy_root::test_tenant_option_goes_before_the_command (passed, zero_value) | - | 0.88 |
 | C-81db0c61 | Req 1.2 | covered | packages.cli.tests.test_cli_tenancy_root::test_invalid_tenant_is_rejected_before_any_command (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_refusals_and_validation_happen_before_the_command (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_tenant_scope_maps_a... | - | 0.86 |
-| C-041d227d | Req 1.3 | covered | packages.cli.tests.test_cli_tenancy_root::test_tenant_scope_maps_absent_empty_global_and_named (passed, zero_value) | - | 0.79 |
-| C-bfe27132 | Req 1.4 | covered | packages.cli.tests.test_cli_tenancy_help_colour::test_help_is_colourless_and_documents_the_tenant_option (passed, chore, inadequate); packages.cli.tests.test_cli_tenancy_root::test_help_documents_the_tenant_option (passed, zero_value) | - | 0.86 |
-| C-cf987871 | Req 2.1 | covered | packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant (passed, red_assertion); packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped (passed, red_assertion) | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests... | 0.84 |
+| C-041d227d | Req 1.3 | covered | packages.cli.tests.test_cli_tenancy_root::test_tenant_scope_maps_absent_empty_global_and_named (passed, zero_value) | - | 0.81 |
+| C-bfe27132 | Req 1.4 | covered | packages.cli.tests.test_cli_tenancy_help_colour::test_help_is_colourless_and_documents_the_tenant_option (passed, chore); packages.cli.tests.test_cli_tenancy_root::test_help_documents_the_tenant_option (passed, zero_value); packages.cli.tests.test_cli_tenant_help_fixture::test_root_help_is_plain_and... | - | 0.83 |
+| C-cf987871 | Req 2.1 | covered | packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant (passed, red_assertion); packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped (passed, red_assertion) | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests... | 0.82 |
 | C-8610aa4b | Req 2.2 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.18 |
-| C-92f6541b | Req 2.3 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests... | 0.22 |
-| C-b86d1447 | Req 2.4 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_ingest_dedups_within_the_write_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.te... | 0.27 |
-| C-20bd1e63 | Req 3.1 | covered | packages.cli.tests.test_cli_tenancy_root::test_doctor_refuses_a_named_tenant (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_history_refuses_a_named_tenant (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_index_tree_refuses_a_named_tenant (passed, zero_value)... | - | 0.94 |
+| C-92f6541b | Req 2.3 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled (it traces 7 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests... | 0.23 |
+| C-b86d1447 | Req 2.4 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_ingest_dedups_within_the_write_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.te... | 0.26 |
+| C-20bd1e63 | Req 3.1 | covered | packages.cli.tests.test_cli_tenancy_root::test_doctor_refuses_a_named_tenant (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_history_refuses_a_named_tenant (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_index_tree_refuses_a_named_tenant (passed, zero_value)... | - | 0.95 |
 | C-7760785e | Req 3.2 | covered | packages.cli.tests.test_cli_tenancy::test_valid_tenant_option_does_not_change_the_tenant_directory (passed, pre_satisfied); packages.cli.tests.test_cli_tenancy_root::test_valid_tenant_does_not_change_the_tenant_directory (passed, zero_value) | - | 0.92 |
-| C-c35d15c6 | Req 4.1 | covered | packages.cli.tests.test_cli_tenancy::test_tenant_create_reports_created_again_and_invalid_ids (passed, pre_satisfied); packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants (passed, pre_satisfied) | - | 0.88 |
-| C-58023183 | Req 4.2 | covered | packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants (passed, pre_satisfied) | - | 0.86 |
-| C-8e7b8062 | Req 5.1 | covered | packages.cli.tests.test_cli_tenancy_root::test_tenant_migration_error_is_reported (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_tenant_not_found_from_a_write_is_reported (passed, zero_value) | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.74 |
+| C-c35d15c6 | Req 4.1 | covered | packages.cli.tests.test_cli_tenancy::test_tenant_create_reports_created_again_and_invalid_ids (passed, pre_satisfied); packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants (passed, pre_satisfied); packages.cli.tests.test_cli_tenant_help_fixture::test_tenant_... | - | 0.87 |
+| C-58023183 | Req 4.2 | covered | packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants (passed, pre_satisfied) | - | 0.85 |
+| C-8e7b8062 | Req 5.1 | covered | packages.cli.tests.test_cli_tenancy_root::test_tenant_migration_error_is_reported (passed, zero_value); packages.cli.tests.test_cli_tenancy_root::test_tenant_not_found_from_a_write_is_reported (passed, zero_value) | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.75 |
 | C-5dc41637 | Req 5.2 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_ingest_dedups_within_the_write_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.te... | 0.08 |
-| C-a79e558d | Req 6.1 | covered | packages.cli.tests.test_cli_tenancy::test_tenant_create_reports_created_again_and_invalid_ids (passed, pre_satisfied); packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants (passed, pre_satisfied) | - | 0.94 |
-| C-46c6afc8 | Req 6.2 | covered | packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant (passed, red_assertion); packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped (passed, red_assertion) | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests... | 0.78 |
-| C-f10d86d5 | Req 6.3 | covered | packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant (passed, red_assertion) | - | 0.89 |
-| C-17c1d2d1 | Req 6.4 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.18 |
-| C-8fa7e2dd | Req 6.5 | covered | packages.cli.tests.test_cli_tenancy_root::test_refusals_and_validation_happen_before_the_command (passed, zero_value) | - | 0.91 |
+| C-a79e558d | Req 6.1 | covered | packages.cli.tests.test_cli_tenancy::test_tenant_create_reports_created_again_and_invalid_ids (passed, pre_satisfied); packages.cli.tests.test_cli_tenancy::test_tenant_list_reports_fresh_global_and_created_tenants (passed, pre_satisfied) | - | 0.95 |
+| C-46c6afc8 | Req 6.2 | covered | packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant (passed, red_assertion); packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped (passed, red_assertion) | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)); packages.cli.tests... | 0.79 |
+| C-f10d86d5 | Req 6.3 | covered | packages.cli.tests.test_cli_tenancy::test_add_search_and_stats_use_the_selected_tenant (passed, red_assertion) | - | 0.91 |
+| C-17c1d2d1 | Req 6.4 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_missing_and_inactive_tenants_are_handled (it traces 7 criteria (verifier.max_criteria_per_test=3)) | 0.16 |
+| C-8fa7e2dd | Req 6.5 | covered | packages.cli.tests.test_cli_tenancy_root::test_refusals_and_validation_happen_before_the_command (passed, zero_value) | - | 0.90 |
 | C-29450002 | Req 6.6 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_ingest_dedups_within_the_write_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.09 |
-| C-f9c22bd5 | Req 6.7 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_note_and_notes_are_tenant_scoped (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.16 |
-| C-fbe84147 | Req 6.8 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.27 |
+| C-f9c22bd5 | Req 6.7 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_note_and_notes_are_tenant_scoped (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.15 |
+| C-fbe84147 | Req 6.8 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_dream_is_confined_to_the_selected_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.28 |
 | C-0459af16 | Req 6.9 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_summary_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)) | 0.23 |
 | C-5cf1ac32 | Req 6.10 | covered | packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_refuses_a_global_image_with_exit_one (passed, red_assertion); packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_without_an_active_record_exits_one[/tmp/no-such-image.png] (passed, red_as... | packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant (it traces 6 criteria (verifier.max_criteria_per_test=3)) | 0.91 |
 | C-a9f24733 | Req 6.11 | uncovered | - | packages.cli.tests.test_cli_tenancy::test_vision_run_and_caption_put_use_the_write_tenant (it traces 5 criteria (verifier.max_criteria_per_test=3)) | 0.32 |
 | C-dc6d50e5 | Req 6.12 | covered | packages.cli.tests.test_cli_tenancy::test_docs_commands_are_read_tenant_scoped (passed, red_assertion) | - | 0.85 |
 | C-74d42dd9 | Req 6.13 | covered | tests.integration.test_tenancy_cli::test_cli_tenancy_sequence_on_one_sqlite_file (passed, pre_satisfied) | - | 0.89 |
-| C-769977e3 | Req 6.14 | covered | tests.integration.test_tenancy_cli::test_cli_tenancy_sequence_on_one_sqlite_file (passed, pre_satisfied) | - | 0.75 |
-| C-88762101 | Req 7.1 | covered | packages.cli.tests.test_cli_tenancy_gate::test_gate_full_cli_tenancy_flow_and_coverage_floor (passed, pre_satisfied) | - | 0.80 |
+| C-769977e3 | Req 6.14 | covered | tests.integration.test_tenancy_cli::test_cli_tenancy_sequence_on_one_sqlite_file (passed, pre_satisfied) | - | 0.74 |
+| C-88762101 | Req 7.1 | covered | packages.cli.tests.test_cli_tenancy_gate::test_gate_full_cli_tenancy_flow_and_coverage_floor (passed, pre_satisfied) | - | 0.81 |
 | C-e0c27b16 | Req 2.2 | covered | packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_refuses_a_global_image_with_exit_one (passed, red_assertion); packages.cli.tests.test_cli_tenancy_image_caption_put_fix::test_image_caption_put_without_an_active_record_exits_one[/tmp/no-such-image.png] (passed, red_as... | - | 0.94 |
 
 ## Evidence
@@ -112,6 +116,12 @@ traceability: 20/30 criteria covered by a discriminating test
 | `.kiro/specs/multi-tenancy-cli-fix-3/design.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli-fix-3/questions.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli-fix-3/tasks.md` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli-fix-4/.config.kiro` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli-fix-4/.l4/fix.json` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli-fix-4/bugfix.md` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli-fix-4/design.md` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli-fix-4/questions.md` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli-fix-4/tasks.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-1/evidence.json` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-1/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-1/verification.md` |  | none | exempt: harness, spec or documentation path |
@@ -128,6 +138,9 @@ traceability: 20/30 criteria covered by a discriminating test
 | `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-5/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-6/verdict.json` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-6/verification.md` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-7/evidence.json` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-7/verdict.json` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli/.l4/evidence/round-7/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T1121Z-d7e0.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T1159Z-9e37.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T1312Z-7b7c.jsonl` |  | none | exempt: harness, spec or documentation path |
@@ -139,16 +152,19 @@ traceability: 20/30 criteria covered by a discriminating test
 | `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T2025Z-c4a7.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T2040Z-5bc5.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T2041Z-32d2.jsonl` |  | none | exempt: harness, spec or documentation path |
+| `.kiro/specs/multi-tenancy-cli/.l4/ledger/r-20261020T2120Z-fa5a.jsonl` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/feedback.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/questions.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/tasks.md` |  | none | exempt: harness, spec or documentation path |
 | `.kiro/specs/multi-tenancy-cli/verification.md` |  | none | exempt: harness, spec or documentation path |
 | `packages/cli/src/mintmory/cli/main.py` | cli | relevant | named in the spec |
+| `packages/cli/tests/conftest.py` |  | none | changed by human commit 2df8259b69 |
 | `packages/cli/tests/test_cli_tenancy.py` |  | relevant | new test file |
 | `packages/cli/tests/test_cli_tenancy_gate.py` |  | relevant | new test file |
 | `packages/cli/tests/test_cli_tenancy_help_colour.py` |  | relevant | new test file |
 | `packages/cli/tests/test_cli_tenancy_image_caption_put_fix.py` |  | relevant | new test file |
 | `packages/cli/tests/test_cli_tenancy_root.py` |  | relevant | new test file |
+| `packages/cli/tests/test_cli_tenant_help_fixture.py` |  | relevant | new test file |
 | `tests/integration/test_tenancy_cli.py` |  | relevant | new test file |
 
 ### Changed functions
@@ -157,8 +173,8 @@ Diff coverage not measured: pytest-cov is active; two coverage measurements woul
 
 ### Tests
 
-2279 of 2393 passed, 0 failed, 0 errored, 114 skipped.
-32 of 32 new tests passed.
+2281 of 2395 passed, 0 failed, 0 errored, 114 skipped.
+34 of 34 new tests passed.
 Skipped in files the unit did not touch: `packages.core.tests.conformance.test_backend::test_anchor_candidates_limit_honoured[postgres]`, `packages.core.tests.conformance.test_backend::test_anchor_candidates_returns_sorted_scored_pairs[postgres]`, `packages.core.tests.conformance.test_backend::test_anchor_candidates_side_effect_free[postgres]`, `packages.core.tests.conformance.test_backend::test_auto_include_archived_notes_excluded[postgres]`, `packages.core.tests.conformance.test_backend::test_auto_include_not_counted_in_total_found[postgres]`, `packages.core.tests.conformance.test_backend::test_auto_include_populates_notes_on_results[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_missing_id_raises_key_error[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_note_stale_flags_not_penalises[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_note_useful_still_increments[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_stale_increments_staleness[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_stale_threshold_sets_is_stale[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_staleness_cap_at_ten[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_useful_increments_score_and_count[postgres]`, `packages.core.tests.conformance.test_backend::test_feedback_usefulness_cap_at_ten[postgres]`, `packages.core.tests.conformance.test_backend::test_find_image_file_record_returns_active_match[postgres]`, `packages.core.tests.conformance.test_backend::test_find_image_file_record_returns_none_for_miss[postgres]`, `packages.core.tests.conformance.test_backend::test_get_annotating_descriptions_cap_zero_returns_empty[postgres]`, `packages.core.tests.conformance.test_backend::test_get_annotating_descriptions_honours_cap[postgres]`, `packages.core.tests.conformance.test_backend::test_get_annotating_descriptions_returns_description[postgres]`, `packages.core.tests.conformance.test_backend::test_get_anomaly_flagged_ids[postgres]`, `packages.core.tests.conformance.test_backend::test_get_anomaly_high_staleness_useful_ids[postgres]`, `packages.core.tests.conformance.test_backend::test_get_anomaly_never_accessed_ids[postgres]`, `packages.core.tests.conformance.test_backend::test_get_existing_relates_to_pairs[postgres]`, `packages.core.tests.conformance.test_backend::test_get_flagged_memories_returns_flagged[postgres]`, `packages.core.tests.conformance.test_backend::test_get_high_staleness_useful_excludes_notes[postgres]`, `packages.core.tests.conformance.test_backend::test_get_high_staleness_useful_returns_target[postgres]`, `packages.core.tests.conformance.test_backend::test_get_never_accessed_stale_excludes_notes[postgres]`, `packages.core.tests.conformance.test_backend::test_get_never_accessed_stale_returns_target[postgres]`, `packages.core.tests.conformance.test_backend::test_get_rehabilitable_rows[postgres]`, `packages.core.tests.conformance.test_backend::test_get_stale_archivable_ids[postgres]`, `packages.core.tests.conformance.test_backend::test_link_add_get_basic[postgres]`, `packages.core.tests.conformance.test_backend::test_link_dedup_insert_or_ignore[postgres]`, `packages.core.tests.conformance.test_backend::test_link_filter_by_type[postgres]`, `packages.core.tests.conformance.test_backend::test_link_symmetric_both_ends_reachable[postgres]`, `packages.core.tests.conformance.test_backend::test_list_active_memory_ids_includes_only_active[postgres]`, `packages.core.tests.conformance.test_backend::test_list_image_file_records_excludes_kind_tagged[postgres]`, `packages.core.tests.conformance.test_backend::test_list_image_file_records_returns_ext_records[postgres]`, `packages.core.tests.conformance.test_backend::test_list_notes_excludes_archived_by_default[postgres]`, `packages.core.tests.conformance.test_backend::test_list_notes_includes_archived_when_flag_set[postgres]`, `packages.core.tests.conformance.test_backend::test_list_notes_overdue_includes_past_due[postgres]`, `packages.core.tests.conformance.test_backend::test_list_notes_overdue_not_in_upcoming[postgres]`, `packages.core.tests.conformance.test_backend::test_list_notes_returns_plain_note[postgres]`, `packages.core.tests.conformance.test_backend::test_manifest_delete_removes_path[postgres]`, `packages.core.tests.conformance.test_backend::test_manifest_get_missing_returns_none[postgres]`, `packages.core.tests.conformance.test_backend::test_manifest_paths_returns_tracked_set[postgres]`, `packages.core.tests.conformance.test_backend::test_manifest_upsert_get_all_fields[postgres]`, `packages.core.tests.conformance.test_backend::test_manifest_upsert_replaces_existing[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_add_get_round_trip_all_fields[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_archive[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_defaults_after_add[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_entity_extraction_on_add[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_exists_false_for_missing[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_exists_true_for_existing[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_get_nonexistent_returns_none[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_supersede[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_supplied_entities_preserved[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_update_content_reextracts_entities[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_update_missing_id_raises_key_error[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_update_partial_fields[postgres]`, `packages.core.tests.conformance.test_backend::test_memory_update_refreshes_updated_at[postgres]`, `packages.core.tests.conformance.test_backend::test_mixed_dimension_embedding_survival[postgres]`, `packages.core.tests.conformance.test_backend::test_ping_returns_true[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_depth_1[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_depth_2[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_directional_not_reversed[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_empty_anchors[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_link_type_filter[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_min_strength_filters[postgres]`, `packages.core.tests.conformance.test_backend::test_search_around_symmetric_reverse[postgres]`, `packages.core.tests.conformance.test_backend::test_search_basic_fts_finds_relevant[postgres]`, `packages.core.tests.conformance.test_backend::test_search_bumps_retrieval_count[postgres]`, `packages.core.tests.conformance.test_backend::test_search_creates_query_session[postgres]`, `packages.core.tests.conformance.test_backend::test_search_excludes_archived_by_default[postgres]`, `packages.core.tests.conformance.test_backend::test_search_excludes_stale_by_default[postgres]`, `packages.core.tests.conformance.test_backend::test_search_prefix_matches_compound_word[postgres]`, `packages.core.tests.conformance.test_backend::test_search_respects_limit[postgres]`, `packages.core.tests.conformance.test_backend::test_search_space_split_compound_matches[postgres]`, `packages.core.tests.conformance.test_backend::test_session_create_and_get[postgres]`, `packages.core.tests.conformance.test_backend::test_session_get_missing_returns_none[postgres]`, `packages.core.tests.conformance.test_backend::test_session_mark_concluded[postgres]`, `packages.core.tests.conformance.test_backend::test_session_record_query_results[postgres]`, `packages.core.tests.conformance.test_backend::test_session_update_feedback_sets_fields[postgres]`, `packages.core.tests.conformance.test_backend::test_stats_counts_correct[postgres]`, `packages.core.tests.conformance.test_backend::test_summary_get_missing_returns_none[postgres]`, `packages.core.tests.conformance.test_backend::test_summary_list_returns_all[postgres]`, `packages.core.tests.conformance.test_backend::test_summary_upsert_and_get[postgres]`, `packages.core.tests.conformance.test_backend::test_summary_upsert_replaces_existing[postgres]`, `packages.core.tests.conformance.test_backend::test_trigram_finds_infix_substring[postgres]`, `packages.core.tests.conformance.test_backend::test_trigram_substring_match[postgres]`, `packages.core.tests.conformance.test_backend::test_vector_search_available_returns_bool[postgres]`, `packages.core.tests.conformance.test_backend::test_vector_search_memory_exists_with_content[postgres]`, `packages.core.tests.conformance.test_backend::test_vector_search_returns_non_empty_results[postgres]`, `packages.core.tests.conformance.test_backend::test_write_on_one_handle_visible_on_second[postgres]`, `packages.core.tests.conformance.test_golden_retrieval::test_golden_corpus_all_memories_searchable[postgres]`, `packages.core.tests.conformance.test_golden_retrieval::test_golden_retrieval_recall_at_k[postgres]`, `packages.core.tests.conformance.test_golden_retrieval::test_golden_retrieval_total_found_consistent[postgres]`, `packages.core.tests.test_migrate.TestMigrationIdempotency::test_dry_run_reports_src_counts`, `packages.core.tests.test_migrate.TestMigrationIdempotency::test_dry_run_writes_nothing`, `packages.core.tests.test_migrate.TestMigrationIdempotency::test_no_row_duplication_after_force`, `packages.core.tests.test_migrate.TestMigrationIdempotency::test_second_run_with_force_succeeds`, `packages.core.tests.test_migrate.TestMigrationIdempotency::test_second_run_without_force_raises`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_embedding_vector_round_trip`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_migration_report_all_ok`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_links`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_memory_round_trip`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_session`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_get_summary`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_list_notes`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_manifest_get`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_pg_search_returns_expected`, `packages.core.tests.test_migrate.TestMigrationRoundTrip::test_superseded_by_round_trip`, `packages.core.tests.test_pg_soak::test_pg_apply_feedback_lost_update_invariant`, `packages.core.tests.test_pg_soak::test_pg_soak_concurrent`, `tests.integration.test_round_trip.TestM3Sessions::test_session_feedback_updates_scores`
 
 ## S1 (recorded for calibration, never decides)
@@ -167,33 +183,33 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 |---|---|---|---|---|---|
 | C-59ce4fbd | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-81db0c61 | ok | 0.860 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-041d227d | ok | 0.790 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-bfe27132 | ok | 0.860 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-cf987871 | ok | 0.840 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-041d227d | ok | 0.810 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-bfe27132 | ok | 0.830 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-cf987871 | ok | 0.820 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-8610aa4b | ok | 0.180 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-92f6541b | ok | 0.220 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-b86d1447 | ok | 0.270 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-20bd1e63 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-92f6541b | ok | 0.230 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-b86d1447 | ok | 0.260 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-20bd1e63 | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-7760785e | ok | 0.920 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-c35d15c6 | ok | 0.880 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-58023183 | ok | 0.860 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-8e7b8062 | ok | 0.740 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-c35d15c6 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-58023183 | ok | 0.850 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-8e7b8062 | ok | 0.750 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-5dc41637 | ok | 0.080 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-a79e558d | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-46c6afc8 | ok | 0.780 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-f10d86d5 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-17c1d2d1 | ok | 0.180 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-8fa7e2dd | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-a79e558d | ok | 0.950 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-46c6afc8 | ok | 0.790 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-f10d86d5 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-17c1d2d1 | ok | 0.160 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-8fa7e2dd | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-29450002 | ok | 0.090 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-f9c22bd5 | ok | 0.160 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-fbe84147 | ok | 0.270 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-f9c22bd5 | ok | 0.150 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-fbe84147 | ok | 0.280 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-0459af16 | ok | 0.230 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-5cf1ac32 | ok | 0.910 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-a9f24733 | ok | 0.320 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-dc6d50e5 | ok | 0.850 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-74d42dd9 | ok | 0.890 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-769977e3 | ok | 0.750 | jev-1.13.0 | jev | evidence cut to fit the budget |
-| C-88762101 | ok | 0.800 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-769977e3 | ok | 0.740 | jev-1.13.0 | jev | evidence cut to fit the budget |
+| C-88762101 | ok | 0.810 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-e0c27b16 | ok | 0.940 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
 ## Human verdicts
@@ -285,18 +301,10 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 - [minor, deterministic] a test is ignored as evidence (criterion C-0459af16): packages.cli.tests.test_cli_tenancy::test_summary_commands_use_the_selected_tenant: it traces 6 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-5cf1ac32): packages.cli.tests.test_cli_tenancy::test_image_commands_use_the_selected_tenant: it traces 6 criteria (verifier.max_criteria_per_test=3)
 - [minor, deterministic] a test is ignored as evidence (criterion C-a9f24733): packages.cli.tests.test_cli_tenancy::test_vision_run_and_caption_put_use_the_write_tenant: it traces 5 criteria (verifier.max_criteria_per_test=3)
-- [major, judge] task multi-tenancy-cli-fix-3/1.1: conftest.py with autouse FORCE_TERMINAL reset absent from diff (criterion C-bfe27132): FB-001 and fix-3 ask for packages/cli/tests/conftest.py with an autouse fixture that sets typer.rich_utils.FORCE_TERMINAL to None. The diff does not contain it. The new help-colour test asserts FORCE_TERMINAL is None, and that holds only when the environment is clean. test_help_documents_the_tenant_option stays colour-dependent.
-- [minor, judge] the judge called a test inadequate (criterion C-bfe27132): packages.cli.tests.test_cli_tenancy_help_colour::test_help_is_colourless_and_documents_the_tenant_option
-- [major, feedback] FB-001 not addressed: No packages/cli/tests/conftest.py appears in the diff, so there is no autouse FORCE_TERMINAL reset...: Judged not addressed: No packages/cli/tests/conftest.py appears in the diff, so there is no autouse FORCE_TERMINAL reset. The new test only asserts FORCE_TERMINAL is None (test_cli_tenancy_help_colour.py). test_help_documents_the_tenant_option passes in the L4 gates but fails in the repository CI (GitHub Actions run 39482344837, job 'lint · types · tests', step 'Pytest (coverage gate ≥ 80%)': 1 failed, 2277 passed). In GitHub Actions the variable GITHUB_ACTIONS is set, and Typer then forces a colour terminal: typer/rich_utils.py sets FORCE_TERMINAL = True when GITHUB_ACTIONS, FORCE_COLOR or PY...
-
-## Fix unit
-
-Fix unit 4 is created for these tasks:
-- F-da38e145 FB-001 not addressed: No packages/cli/tests/conftest.py appears in the diff, so there is no autou...
 
 ## Feedback
 
-- FB-001: not addressed: No packages/cli/tests/conftest.py appears in the diff, so there is no autouse FORCE_TERMINAL reset. The new test only asserts FORCE_TERMINAL is None (test_cli_tenancy_help_colour.py).
+- FB-001: addressed at f6be200685: packages/cli/tests/conftest.py autouse fixture sets typer.rich_utils.FORCE_TERMINAL to None; test_cli_tenancy_help_colour.py and test_cli_tenant_help_fixture.py assert no ANSI and the help sentence.
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
@@ -334,6 +342,7 @@ Fix unit 4 is created for these tasks:
 
 ## Guard events
 
+- guard.violation: packages/cli/tests/conftest.py
 - guard.violation: packages/cli/tests/conftest.py
 - guard.violation: packages/cli/tests/conftest.py
 - guard.violation: packages/cli/tests/conftest.py

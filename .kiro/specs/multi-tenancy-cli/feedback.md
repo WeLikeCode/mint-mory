@@ -10,14 +10,14 @@ verification round, turns them into a fix unit and checks that each one was addr
 <!-- l4:feedback-index:start -->
 | ID | Status | Kind | Where | Feedback |
 |----|--------|------|-------|----------|
-| FB-001 | taken | tests | packages/cli/tests/test_cli_tenancy_root.py:87 | CLI help tests must not depend on terminal colour (repository CI fails) |
+| FB-001 | addressed | tests | packages/cli/tests/test_cli_tenancy_root.py:87 | CLI help tests must not depend on terminal colour (repository CI fails) |
 <!-- l4:feedback-index:end -->
 
 ---
 
 ## FB-001: CLI help tests must not depend on terminal colour (repository CI fails)
 
-- **Status:** taken
+- **Status:** addressed
 - **Kind:** tests
 - **Where:** `packages/cli/tests/test_cli_tenancy_root.py:87-96`
 - **Lesson:** no
@@ -40,4 +40,4 @@ test_help_documents_the_tenant_option passes in the L4 gates but fails in the re
 
 ### Outcome
 <!-- written by the harness -->
-Taken in round 7 into multi-tenancy-cli-fix-4
+Addressed in round 8 at f6be200685: packages/cli/tests/conftest.py autouse fixture sets typer.rich_utils.FORCE_TERMINAL to None; test_cli_tenancy_help_colour.py and test_cli_tenant_help_fixture.py assert no ANSI and the help sentence.
