@@ -2029,3 +2029,11 @@ def migrate_storage(
 
 if __name__ == "__main__":
     app()
+
+
+def _read_tenant() -> str | None:
+    raise NotImplementedError
+
+
+def _write_tenant() -> str:
+    raise NotImplementedError
