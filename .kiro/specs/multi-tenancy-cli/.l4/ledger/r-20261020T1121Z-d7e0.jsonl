@@ -90,3 +90,8 @@
 {"ts": "2026-10-20T11:52:43.423669Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 90, "type": "agent.session", "profile": "deepseek", "session_id": "ses_ea6dcebf8ffe1loUIdzpJQROfV"}
 {"ts": "2026-10-20T11:52:43.424083Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 91, "type": "budget.cost", "usd": 0.036776435999999996, "profile": "deepseek", "task": "2"}
 {"ts": "2026-10-20T11:52:43.471713Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 92, "type": "question.raised", "id": "Q-001", "task": "2", "kind": "technical", "title": "packages/cli/tests/test_cli_tenancy_root.py:41 — `--tenant acme add` success contradicts R2.4/R6.4"}
+{"ts": "2026-10-20T11:52:47.780428Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 93, "type": "pr.labels", "number": 44, "labels": ["l4:implementing", "l4:needs-answers"]}
+{"ts": "2026-10-20T11:52:47.785605Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 94, "type": "phase.changed", "from": "implementing", "to": "awaiting_human", "trigger": "questions_blocking", "exit_code": 11, "questions": ["Q-001"], "task": "2"}
+{"ts": "2026-10-20T11:52:51.684163Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 95, "type": "pr.labels", "number": 44, "labels": ["l4:awaiting_human", "l4:needs-answers"]}
+{"ts": "2026-10-20T11:52:52.991231Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 96, "type": "lock.released"}
+{"ts": "2026-10-20T11:52:52.991757Z", "run_id": "r-20261020T1121Z-d7e0", "unit": "kiro:multi-tenancy-cli", "seq": 97, "type": "run.finished", "exit_code": 11}
