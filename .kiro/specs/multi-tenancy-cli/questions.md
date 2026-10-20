@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 2 | technical | packages/cli/tests/test_cli_tenancy_root.py:41 — `--tenant acme add` success contradicts R2.4/R6.4 |
 | Q-002 | answered | none | verdict | Criterion C-8610aa4b (Req 2.2): accept as satisfied? |
 | Q-003 | answered | none | verdict | Criterion C-92f6541b (Req 2.3): accept as satisfied? |
-| Q-004 | open | none | verdict | Criterion C-b86d1447 (Req 2.4): accept as satisfied? |
+| Q-004 | answered | none | verdict | Criterion C-b86d1447 (Req 2.4): accept as satisfied? |
 | Q-005 | open | none | verdict | Criterion C-5dc41637 (Req 5.2): accept as satisfied? |
 | Q-006 | open | none | verdict | Criterion C-17c1d2d1 (Req 6.4): accept as satisfied? |
 | Q-007 | open | none | verdict | Criterion C-29450002 (Req 6.6): accept as satisfied? |
@@ -116,7 +116,7 @@ accept: --tenant nope search / summary-jobs / image-jobs exit 0 with empty resul
 
 ## Q-004: Criterion C-b86d1447 (Req 2.4): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -142,6 +142,7 @@ If the code is right and the scenarios are incomplete, `reject` with a scenario:
 
 ### Answer
 <!-- write below this line -->
+accept: _check_write_tenant (main.py:102) runs before any store work in add, ingest, note, summary-put, image-caption-put and vision-run (main.py:263, 485, 1248, 1369, 1488, 1534); dream gets the check from run_dream (dreaming.py:1076-1079); all exit 1 for a missing or inactive tenant
 ---
 
 ## Q-005: Criterion C-5dc41637 (Req 5.2): accept as satisfied?
