@@ -147,3 +147,6 @@
 {"ts": "2026-10-20T21:16:40.164646Z", "run_id": "r-20261020T2041Z-32d2", "unit": "kiro:multi-tenancy-cli", "seq": 147, "type": "budget.cost", "usd": 0.042572441999999995, "profile": "deepseek", "task": "1.1", "fix_unit": "multi-tenancy-cli-fix-4"}
 {"ts": "2026-10-20T21:16:40.182362Z", "run_id": "r-20261020T2041Z-32d2", "unit": "kiro:multi-tenancy-cli", "seq": 148, "type": "step.timed", "phase": "single", "task": "1.1", "attempt": 2, "seconds": 531.2, "fix_unit": "multi-tenancy-cli-fix-4"}
 {"ts": "2026-10-20T21:16:40.184355Z", "run_id": "r-20261020T2041Z-32d2", "unit": "kiro:multi-tenancy-cli", "seq": 149, "type": "question.raised", "id": "Q-001", "task": "1.1", "kind": "technical", "title": "Make packages/cli/tests/conftest.py exist at HEAD for the colour-independent CLI help fixture", "fix_unit": "multi-tenancy-cli-fix-4"}
+{"ts": "2026-10-20T21:16:44.998611Z", "run_id": "r-20261020T2041Z-32d2", "unit": "kiro:multi-tenancy-cli", "seq": 150, "type": "pr.labels", "number": 44, "labels": ["l4:fixing", "l4:needs-answers"]}
+{"ts": "2026-10-20T21:16:47.215336Z", "run_id": "r-20261020T2041Z-32d2", "unit": "kiro:multi-tenancy-cli", "seq": 151, "type": "lock.released"}
+{"ts": "2026-10-20T21:16:47.216696Z", "run_id": "r-20261020T2041Z-32d2", "unit": "kiro:multi-tenancy-cli", "seq": 152, "type": "run.finished", "exit_code": 11}
