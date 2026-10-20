@@ -91,3 +91,5 @@
 {"at":"2026-10-20T11:59:26Z","run":"r-20261020T1159Z-9e37","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T12:54:55Z","detail":"awaiting_human: no new answers (verdicts open: Q-002, Q-003, Q-004, Q-005, Q-006, Q-007, Q-008, Q-009, Q-010, Q-011, Q-012, Q-013)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T13:12:43Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-cli is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-20T13:12:46Z","attempt":1,"cost_usd":1.595313,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T13:12:46Z","run":"r-20261020T1312Z-7b7c","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
