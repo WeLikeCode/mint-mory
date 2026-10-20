@@ -95,3 +95,4 @@
 {"at":"2026-10-20T13:12:46Z","run":"r-20261020T1312Z-7b7c","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T13:13:59Z","attempt":1,"cost_usd":1.595313,"runs":4,"type":"plan.charged","unit":"kiro:multi-tenancy-cli"}
 {"at":"2026-10-20T13:13:59Z","run":"r-20261020T1313Z-2c93","type":"unit.dispatched","unit":"kiro:multi-tenancy-cli"}
+{"at":"2026-10-20T13:15:19Z","detail":"round 2 does not fit in one job: raise timeout-minutes and L4_JOB_TIMEOUT_MINUTES or split the task, then l4 retry --unit kiro:multi-tenancy-cli --reason TEXT (stopped twice: 21 s left for an estimate of 600 s, then 30 s for 600 s)","reason":"unit_halted","type":"plan.stopped","unit":"kiro:multi-tenancy-cli"}

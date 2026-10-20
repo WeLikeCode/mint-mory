@@ -2,48 +2,48 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at e252b4515f812846113bba4f6ce3605693ee520b
+- Target: staging at 47df17902a323fcb923ad2f3003568c226893b90
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-19T14:33:16Z
-- Stopped: unit_halted (kiro:multi-tenancy): task 2: max_task_attempts (3) reached in red on deepseek (2), deepseek-free (2), glm-free (3); last failure: not discriminating: C-c842fbe1, C-d0373dab (its tests still pass, or fail by an error rather than an assertion, when the functions they use answer the zero value; none of its new tests fails 
+- Written: 2026-10-20T13:15:19Z
+- Stopped: unit_halted (kiro:multi-tenancy-cli): round 2 does not fit in one job: raise timeout-minutes and L4_JOB_TIMEOUT_MINUTES or split the task, then l4 retry --unit kiro:multi-tenancy-cli --reason TEXT (stopped twice: 21 s left for an estimate of 600 s, then 30 s for 600 s)
 
 ## Units
 
 ### kiro:multi-tenancy
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/40
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.13, 1 run(s), 1 attempt(s)
+- Result: integrated at 5d73c5c56746a639ee128bd0e3975a20243fbe65
+- Pull request: 40
+- Merge commit: 5d73c5c56746a639ee128bd0e3975a20243fbe65
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.27, 5 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-writes
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at fa4a2494d2e4aae40e044e8badaf6841bde6af82
+- Pull request: 41
+- Merge commit: fa4a2494d2e4aae40e044e8badaf6841bde6af82
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.60, 2 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-reads
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 47bb91111d99442cc9d5ab63a9396eae5c569a5d
+- Pull request: 42
+- Merge commit: 47bb91111d99442cc9d5ab63a9396eae5c569a5d
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $2.46, 3 run(s), 1 attempt(s)
 
 ### kiro:tenant-scoped-core
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 50be8282b07d9be15bd7d36f911627f716caf6e6
+- Pull request: 43
+- Merge commit: 50be8282b07d9be15bd7d36f911627f716caf6e6
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $2.01, 5 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-cli
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/44
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $1.60, 4 run(s), 1 attempt(s)
 
 ### kiro:tenant-scoped-mcp
 - Result: not integrated
@@ -82,12 +82,12 @@
 
 ## Batches
 
-- tenancy-sqlite (profile none): not checked
+- tenancy-sqlite (profile none): accepted at 47bb91111d99442cc9d5ab63a9396eae5c569a5d
 - tenancy-surfaces (profile none): not checked
 - tenancy-postgres (profile none): not checked
 
 ## Usage
 
-- Cost: $3.77
+- Cost: $12.58
 - Of which the readiness review: $3.64
-- Runs that dispatched a unit: 1
+- Runs that dispatched a unit: 19
