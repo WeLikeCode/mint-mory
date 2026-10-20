@@ -36,7 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
 from itertools import combinations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mintmory.core import scoring, telemetry
 from mintmory.core.config import LinkSettings, SummarySettings
@@ -974,3 +974,26 @@ class DreamingEngine:
             )
             rehabilitated += 1
         return rehabilitated
+
+
+def dream_all_tenants(
+    adapter: StorageBackend,
+    *,
+    intensity: DreamIntensity,
+    engine_factory: Callable[[str], DreamingEngine],
+) -> Any:
+    raise NotImplementedError
+
+
+def run_dream(
+    adapter: StorageBackend,
+    *,
+    intensity: DreamIntensity,
+    tenant_id: str | None,
+    engine_factory: Callable[[str], DreamingEngine],
+) -> Any:
+    raise NotImplementedError
+
+
+class DreamFailedError(RuntimeError):
+    pass
