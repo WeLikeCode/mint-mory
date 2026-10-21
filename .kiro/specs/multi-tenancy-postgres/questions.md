@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1 | technical | packages/core/tests/test_pg_fakes.py:24 — deliverable pg_fakes.py is frozen as a red test, so the R5.1 stubs can never pass |
+| Q-001 | answered | 1 | technical | packages/core/tests/test_pg_fakes.py:24 — deliverable pg_fakes.py is frozen as a red test, so the R5.1 stubs can never pass |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/core/tests/test_pg_fakes.py:24 — deliverable pg_fakes.py is frozen as a red test, so the R5.1 stubs can never pass
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1
 - **Kind:** technical
 - **Asked:** 2026-10-21T10:20Z by glm, run r-20261021T0949Z-2268, task 1
@@ -34,3 +34,4 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Answer
 <!-- write below this line -->
+Option 1: unfreeze packages/core/tests/pg_fakes.py for task 1 and replace its zero-value stubs with the full R5.1 FakePool, FakeConnection and FakeCursor that the frozen self-tests assert; change no other file under packages/core/tests. (Answered by the owner's delegate on the owner's explicit instruction, 2026-10-21.)
