@@ -34,6 +34,6 @@
   - R7.1 through the existing `backend` fixture.
   - _Requirements: 7.1_
 
-- [ ] 6. Full gate
+- [x] 6. Full gate
   - `.l4/config.yaml` gates exit 0 with coverage ≥ 80%.
   - _Requirements: 6.1_
