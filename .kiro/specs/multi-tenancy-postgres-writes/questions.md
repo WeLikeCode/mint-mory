@@ -13,6 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 1 | technical | packages/core/tests/test_pg_tenancy.py:299 — test_pg_transaction_tenancy still asserts the removed interim stub |
 | Q-002 | accepted | 1 | technical | packages/core/tests/test_transfer_links.py:359 — test_postgres_copy_fails_closed_before_any_write expects the removed transaction stub |
+| Q-003 | open | 2 | technical | packages/core/tests/test_pg_tenancy.py:255-292 - directory tests still assert the interim stub |
 <!-- l4:index:end -->
 
 ---
@@ -90,6 +91,29 @@ def test_postgres_copy_fails_closed_before_any_write() -> None:
     assert conn.commits == 0
     assert conn.rollbacks == 1
 \```
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-003: packages/core/tests/test_pg_tenancy.py:255-292 - directory tests still assert the interim stub
+
+- **Status:** open
+- **Blocking tasks:** 2
+- **Kind:** technical
+- **Asked:** 2026-10-21T19:08Z by deepseek, run r-20261021T1832Z-8b02, task 2
+
+### Context
+R5.5 requires test_pg_get_tenant_tenancy, test_pg_list_tenants_tenancy, test_pg_create_tenant_tenancy and test_pg_set_tenant_active_tenancy to be rewritten in place with the fake pool, but the red step left them unchanged. They call _backend() with _pool=None and assert a synthetic 'global' Tenant from get_tenant/list_tenants and TenancyNotSupportedError from create_tenant/set_tenant_active, while R1.1-R1.3/C-edb554ee require the synthetic global and those TenancyNotSupportedError raises to be removed. Implementing R1 makes all four fail (assert self._pool is not None at storage_postgres.py:383), and green may not edit frozen tests.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `packages/core/tests/test_pg_tenancy.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit multi-tenancy-postgres-writes`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `packages/core/tests/test_pg_tenancy.py`: replace test_pg_get_tenant_tenancy, test_pg_list_tenants_tenancy, test_pg_create_tenant_tenancy and test_pg_set_tenant_active_tenancy (lines 254-292) with FakePool-backed versions that assert the new directory behaviour: get_tenant maps a returned row and returns None when absent, list_tenants returns rows ordered by id, create_tenant inserts then selects and returns the row, set_tenant_active raises ProtectedTenantError for ('global', False) without an UPDATE, and no test asserts a synthetic 'global' or TenancyNotSupportedError.
+
+### Clarifier suggestion
+Edit `packages/core/tests/test_pg_tenancy.py`: replace test_pg_get_tenant_tenancy, test_pg_list_tenants_tenancy, test_pg_create_tenant_tenancy and test_pg_set_tenant_active_tenancy (lines 254-292) with FakePool-backed versions that assert the new directory behaviour: get_tenant maps a returned row and returns None when absent, list_tenants returns rows ordered by id, create_tenant inserts then selects and returns the row, set_tenant_active raises ProtectedTenantError for ('global', False) without an UPDATE, and no test asserts a synthetic 'global' or TenancyNotSupportedError.
 
 ### Answer
 <!-- write below this line -->
