@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1 | technical | packages/core/tests/test_pg_tenancy_reads.py:222 scoped invocation does not pass a tenant |
+| Q-001 | answered | 1 | technical | packages/core/tests/test_pg_tenancy_reads.py:222 scoped invocation does not pass a tenant |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: packages/core/tests/test_pg_tenancy_reads.py:222 scoped invocation does not pass a tenant
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1
 - **Kind:** technical
 - **Asked:** 2026-10-21T21:28Z by deepseek, run r-20261021T2100Z-e2d8, task 1
@@ -37,3 +37,4 @@ Edit `packages/core/tests/test_pg_tenancy_reads.py`: change `ReadCase.invoke` to
 
 ### Answer
 <!-- write below this line -->
+Option 1, with the tenant passed by keyword: for task 1 edit packages/core/tests/test_pg_tenancy_reads.py. Change ReadCase.invoke to Callable[[PostgresBackend, str | None], object]; give every lambda in _read_cases() a `tenant` parameter and pass it as `tenant_id=tenant` (by keyword, never positionally: anchor_candidates(about, limit, tenant_id) and get_never_accessed_stale(days_old, min_staleness, tenant_id) would take it as the wrong argument, and list_notes is keyword-only); the first call (line 222) is case.invoke(backend, _TENANT) and the second case.invoke(backend, None). Change no other file under packages/core/tests. (Answered by the owner's delegate on the owner's explicit instruction, 2026-10-22.)
