@@ -167,3 +167,4 @@
 {"at":"2026-10-21T08:20:41Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"bc8df7cc8b253b845be2786229014df03114b384","status":"pass","type":"unit.postcheck","unit":"kiro:cross-tenant-copy"}
 {"at":"2026-10-21T08:20:41Z","revision":"bc8df7cc8b253b845be2786229014df03114b384","type":"unit.integrated","unit":"kiro:cross-tenant-copy"}
 {"at":"2026-10-21T08:20:41Z","attempt":1,"cost_usd":4.417334,"runs":6,"type":"plan.charged","unit":"kiro:cross-tenant-copy"}
+{"at":"2026-10-21T08:21:31Z","batch":"tenancy-surfaces","profile":"none","revision":"bc8df7cc8b253b845be2786229014df03114b384","type":"batch.accepted"}
