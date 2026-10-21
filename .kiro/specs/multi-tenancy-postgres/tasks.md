@@ -22,7 +22,7 @@
   - Tests: every case of R2.4.
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
 
-- [ ] 4. Column parity and per-tenant keys (`storage_postgres.py`)
+- [x] 4. Column parity and per-tenant keys (`storage_postgres.py`)
   - R3.1–R3.4.
   - Tests (new file `packages/core/tests/test_pg_tenancy_columns.py`): R3.5 for
     each listed statement; the existing `test_pg_<method>_tenancy` functions

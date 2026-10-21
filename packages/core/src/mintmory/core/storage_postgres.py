@@ -110,7 +110,7 @@ _SELECT_MEMORY = (
     "valid_from, valid_until, usefulness_score, staleness_score, "
     "reinforcement_count, retrieval_count, is_stale, is_active, is_archived, "
     "superseded_by, flagged_for_review, contradicts_ids, is_note, "
-    "created_at, updated_at, last_accessed_at, metadata"
+    "created_at, updated_at, last_accessed_at, metadata, tenant_id"
 )
 
 # ---------------------------------------------------------------------------
@@ -389,6 +389,7 @@ class PostgresBackend:
                 "query_sessions, query_results, memory_summaries "
                 "RESTART IDENTITY CASCADE"
             )
+            conn.execute("DELETE FROM tenants WHERE id <> 'global'")
             conn.commit()
 
     def _inject_wrong_dim_embedding(self, memory_id: str, dim: int = 8) -> None:
@@ -460,6 +461,7 @@ class PostgresBackend:
             updated_at=_from_pg_dt(row["updated_at"]) or _utcnow(),
             last_accessed_at=_from_pg_dt(row["last_accessed_at"]),
             metadata=row["metadata"] or {},
+            tenant_id=row["tenant_id"],
         )
 
     # ------------------------------------------------------------------
@@ -491,13 +493,15 @@ class PostgresBackend:
                   confidence, source, verified, valid_from, valid_until,
                   usefulness_score, staleness_score, reinforcement_count, retrieval_count,
                   is_stale, is_active, is_archived, superseded_by, flagged_for_review,
-                  contradicts_ids, is_note, created_at, updated_at, last_accessed_at, metadata
+                  contradicts_ids, is_note, created_at, updated_at, last_accessed_at, metadata,
+                  tenant_id
                 ) VALUES (
                   %s, %s, %s, %s::jsonb, %s,
                   %s, %s, %s, %s, %s,
                   %s, %s, %s, %s,
                   %s, %s, %s, %s, %s,
-                  %s::jsonb, %s, %s, %s, %s, %s::jsonb
+                  %s::jsonb, %s, %s, %s, %s, %s::jsonb,
+                  %s
                 )
                 """,
                 (
@@ -526,6 +530,7 @@ class PostgresBackend:
                     record.updated_at,
                     record.last_accessed_at,
                     json.dumps(record.metadata),
+                    record.tenant_id,
                 ),
             )
             conn.commit()
@@ -672,9 +677,9 @@ class PostgresBackend:
             row = _execute_dict(
                 conn,
                 "SELECT path, collection, size, mtime, content_hash, index_mode, "
-                "memory_ids, online_only, last_seen "
-                "FROM index_manifest WHERE path = %s",
-                (path,),
+                "memory_ids, online_only, last_seen, tenant_id "
+                "FROM index_manifest WHERE path = %s AND tenant_id = %s",
+                (path, tenant_id),
             ).fetchone()
         if row is None:
             return None
@@ -688,7 +693,7 @@ class PostgresBackend:
             memory_ids=row["memory_ids"],  # TEXT → string (matches Protocol)
             online_only=int(bool(row["online_only"])),
             last_seen=str(row["last_seen"]) if row["last_seen"] else "",
-            tenant_id="global",
+            tenant_id=row["tenant_id"],
         )
 
     def manifest_upsert(
@@ -711,9 +716,9 @@ class PostgresBackend:
                 """
                 INSERT INTO index_manifest
                   (path, collection, size, mtime, content_hash, index_mode,
-                   memory_ids, online_only, last_seen)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT(path) DO UPDATE SET
+                   memory_ids, online_only, last_seen, tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, path) DO UPDATE SET
                   collection   = EXCLUDED.collection,
                   size         = EXCLUDED.size,
                   mtime        = EXCLUDED.mtime,
@@ -733,6 +738,7 @@ class PostgresBackend:
                     json.dumps(memory_ids),
                     online_only,
                     _utcnow().isoformat(),
+                    tenant_id,
                 ),
             )
             conn.commit()
@@ -742,7 +748,8 @@ class PostgresBackend:
         assert self._pool is not None
         with self._pool.connection() as conn:
             rows = conn.execute(
-                "SELECT path FROM index_manifest WHERE collection = %s", (collection,)
+                "SELECT path FROM index_manifest WHERE collection = %s AND tenant_id = %s",
+                (collection, tenant_id),
             ).fetchall()
         return {row[0] for row in rows}
 
@@ -750,7 +757,10 @@ class PostgresBackend:
         self._require_global_tenant(tenant_id, "manifest_delete")
         assert self._pool is not None
         with self._pool.connection() as conn:
-            conn.execute("DELETE FROM index_manifest WHERE path = %s", (path,))
+            conn.execute(
+                "DELETE FROM index_manifest WHERE path = %s AND tenant_id = %s",
+                (path, tenant_id),
+            )
             conn.commit()
 
     # ------------------------------------------------------------------
@@ -1104,7 +1114,7 @@ class PostgresBackend:
                   m.usefulness_score, m.staleness_score, m.reinforcement_count,
                   m.retrieval_count, m.is_stale, m.is_active, m.is_archived,
                   m.superseded_by, m.flagged_for_review, m.contradicts_ids, m.is_note,
-                  m.created_at, m.updated_at, m.last_accessed_at, m.metadata
+                  m.created_at, m.updated_at, m.last_accessed_at, m.metadata, m.tenant_id
                 FROM concept_links l
                 JOIN memories m ON m.id = l.source_memory_id
                 WHERE l.target_memory_id = %s AND l.link_type = %s
@@ -1132,7 +1142,7 @@ class PostgresBackend:
                   m.usefulness_score, m.staleness_score, m.reinforcement_count,
                   m.retrieval_count, m.is_stale, m.is_active, m.is_archived,
                   m.superseded_by, m.flagged_for_review, m.contradicts_ids, m.is_note,
-                  m.created_at, m.updated_at, m.last_accessed_at, m.metadata
+                  m.created_at, m.updated_at, m.last_accessed_at, m.metadata, m.tenant_id
                 FROM concept_links l
                 JOIN memories m ON m.id = l.source_memory_id
                 WHERE l.target_memory_id = %s AND l.link_type = %s
@@ -1282,9 +1292,10 @@ class PostgresBackend:
                 """
                 INSERT INTO concept_links
                   (id, source_memory_id, target_memory_id, link_type, entity,
-                   strength, confidence, source, verified, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (source_memory_id, target_memory_id, link_type)
+                   strength, confidence, source, verified, created_at, updated_at,
+                   tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, source_memory_id, target_memory_id, link_type)
                 DO NOTHING
                 """,
                 (
@@ -1299,6 +1310,7 @@ class PostgresBackend:
                     link.verified,
                     link.created_at,
                     link.updated_at,
+                    link.tenant_id,
                 ),
             )
             conn.commit()
@@ -1314,7 +1326,7 @@ class PostgresBackend:
         assert self._pool is not None
         sql = (
             "SELECT id, source_memory_id, target_memory_id, link_type, entity, "
-            "strength, confidence, source, verified, created_at, updated_at "
+            "strength, confidence, source, verified, created_at, updated_at, tenant_id "
             "FROM concept_links "
             "WHERE (source_memory_id = %s OR target_memory_id = %s)"
         )
@@ -1339,6 +1351,7 @@ class PostgresBackend:
             verified=bool(row["verified"]),
             created_at=_from_pg_dt(row["created_at"]) or _utcnow(),
             updated_at=_from_pg_dt(row["updated_at"]) or _utcnow(),
+            tenant_id=row["tenant_id"],
         )
 
     # ------------------------------------------------------------------
@@ -1353,8 +1366,8 @@ class PostgresBackend:
                 """
                 INSERT INTO query_sessions
                   (id, query_text, created_at, confidence_rating, reasoning,
-                   useful_ids, stale_ids, concluded)
-                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+                   useful_ids, stale_ids, concluded, tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
                 """,
                 (
                     session.id,
@@ -1365,6 +1378,7 @@ class PostgresBackend:
                     json.dumps(session.useful_ids),
                     json.dumps(session.stale_ids),
                     session.concluded,
+                    session.tenant_id,
                 ),
             )
             conn.commit()
@@ -1377,7 +1391,7 @@ class PostgresBackend:
             row = _execute_dict(
                 conn,
                 "SELECT id, query_text, created_at, confidence_rating, reasoning, "
-                "useful_ids, stale_ids, concluded "
+                "useful_ids, stale_ids, concluded, tenant_id "
                 "FROM query_sessions WHERE id = %s",
                 (session_id,),
             ).fetchone()
@@ -1392,6 +1406,7 @@ class PostgresBackend:
             useful_ids=row["useful_ids"] or [],  # JSONB → list (auto-decoded)
             stale_ids=row["stale_ids"] or [],
             concluded=bool(row["concluded"]),
+            tenant_id=row["tenant_id"],
         )
 
     def record_query_results(self, results: list[QueryResult]) -> None:
@@ -1403,8 +1418,8 @@ class PostgresBackend:
         sql = """
             INSERT INTO query_results
               (session_id, memory_id, relevance_score,
-               was_accessed, was_useful, was_stale)
-            VALUES (%s, %s, %s, %s, %s, %s)
+               was_accessed, was_useful, was_stale, tenant_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (session_id, memory_id) DO UPDATE SET
               relevance_score = EXCLUDED.relevance_score,
               was_accessed    = EXCLUDED.was_accessed,
@@ -1419,6 +1434,7 @@ class PostgresBackend:
                 r.was_accessed,
                 r.was_useful,
                 r.was_stale,
+                r.tenant_id,
             )
             for r in results
         ]
@@ -1491,9 +1507,9 @@ class PostgresBackend:
             conn.execute(
                 """
                 INSERT INTO memory_summaries
-                  (id, concept, summary_text, memory_count, is_current, generated_at)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT(concept) DO UPDATE SET
+                  (id, concept, summary_text, memory_count, is_current, generated_at, tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (tenant_id, concept) DO UPDATE SET
                   summary_text = EXCLUDED.summary_text,
                   memory_count = EXCLUDED.memory_count,
                   is_current   = EXCLUDED.is_current,
@@ -1506,6 +1522,7 @@ class PostgresBackend:
                     summary.memory_count,
                     summary.is_current,
                     summary.generated_at,
+                    summary.tenant_id,
                 ),
             )
             conn.commit()
@@ -1519,9 +1536,10 @@ class PostgresBackend:
         with self._pool.connection() as conn:
             row = _execute_dict(
                 conn,
-                "SELECT id, concept, summary_text, memory_count, is_current, generated_at "
-                "FROM memory_summaries WHERE concept = %s",
-                (concept,),
+                "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
+                "tenant_id "
+                "FROM memory_summaries WHERE concept = %s AND tenant_id = %s",
+                (concept, tenant_id),
             ).fetchone()
         if row is None:
             return None
@@ -1532,6 +1550,7 @@ class PostgresBackend:
             memory_count=int(row["memory_count"]),
             is_current=bool(row["is_current"]),
             generated_at=_from_pg_dt(row["generated_at"]) or _utcnow(),
+            tenant_id=row["tenant_id"],
         )
 
     def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
@@ -1540,7 +1559,8 @@ class PostgresBackend:
         with self._pool.connection() as conn:
             rows = _execute_dict(
                 conn,
-                "SELECT id, concept, summary_text, memory_count, is_current, generated_at "
+                "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
+                "tenant_id "
                 "FROM memory_summaries ORDER BY concept",
             ).fetchall()
         return [
@@ -1551,6 +1571,7 @@ class PostgresBackend:
                 memory_count=int(r["memory_count"]),
                 is_current=bool(r["is_current"]),
                 generated_at=_from_pg_dt(r["generated_at"]) or _utcnow(),
+                tenant_id=r["tenant_id"],
             )
             for r in rows
         ]
