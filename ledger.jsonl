@@ -175,3 +175,4 @@
 {"at":"2026-10-21T09:49:48Z","attempt":1,"cost_usd":0.0,"runs":2,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T09:49:48Z","run":"r-20261021T0949Z-2268","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T10:21:28Z","detail":"awaiting_human: no new answers (open: Q-001)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy-postgres"}
+{"at":"2026-10-21T16:11:33Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-postgres is awaiting_human","type":"plan.resumed"}
