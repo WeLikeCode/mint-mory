@@ -12,7 +12,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 4 | technical | packages/mcp/tests/test_mcp_tenancy_directory.py:87-115 and :257 omit tenant_copy from the frozen expected inventory |
-| Q-002 | open | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
+| Q-002 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
 <!-- l4:index:end -->
 
 ---
@@ -41,7 +41,7 @@ Edit `packages/mcp/tests/test_mcp_tenancy_directory.py`: add `"tenant_copy": "co
 
 ## Q-002: packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 4
 - **Kind:** technical
 - **Asked:** 2026-10-21T06:08Z by deepseek, run r-20261021T0355Z-3d98, task 4
