@@ -13,7 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 4 | technical | packages/mcp/tests/test_mcp_tenancy_directory.py:87-115 and :257 omit tenant_copy from the frozen expected inventory |
 | Q-002 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
-| Q-003 | open | 5 | technical | packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy |
+| Q-003 | accepted | 5 | technical | packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy |
 <!-- l4:index:end -->
 
 ---
@@ -65,7 +65,7 @@ Edit `packages/mcp/tests/test_tools.py`: add `"tenant_copy",` after `"tenant_lis
 
 ## Q-003: packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 5
 - **Kind:** technical
 - **Asked:** 2026-10-21T06:37Z by deepseek, run r-20261021T0612Z-645f, task 5
