@@ -12,7 +12,7 @@ not edit, so the replacement behaviour is pinned here under new names.
 from __future__ import annotations
 
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -21,13 +21,19 @@ from typing import Any
 import pytest
 from mintmory.core.storage_postgres import PostgresBackend
 from mintmory.core.types import (
+    ConceptLink,
+    ConceptLinkType,
     InvalidTenantIdError,
     MemoryCategory,
     MemoryRecord,
+    MemorySummary,
     ProtectedTenantError,
+    QueryResult,
+    QuerySession,
     SearchRequest,
     TenancyNotSupportedError,
     Tenant,
+    TenantInactiveError,
     TenantNotFoundError,
 )
 
@@ -509,3 +515,298 @@ def test_pg_tenant_directory_has_no_synthetic_global() -> None:
             updated_at=created,
         )
     ]
+
+
+# ---------------------------------------------------------------------------
+# Task 3 — the write guard (R2.1-R2.4, R5.1, R5.3, R5.6)
+# ---------------------------------------------------------------------------
+
+_GUARDED_WRITES: tuple[str, ...] = (
+    "add_memory",
+    "update_memory",
+    "archive_memory",
+    "supersede_memory",
+    "apply_feedback",
+    "add_link",
+    "create_session",
+    "record_query_results",
+    "update_session_feedback",
+    "mark_session_concluded",
+    "upsert_summary",
+    "manifest_upsert",
+    "manifest_delete",
+)
+
+_WRITE_PREFIXES: tuple[str, ...] = ("INSERT", "UPDATE", "DELETE")
+
+
+def _memory_row(memory_id: str, tenant_id: str) -> dict[str, Any]:
+    stamp = datetime(2026, 1, 1)
+    return {
+        "id": memory_id,
+        "content": f"content {memory_id}",
+        "category": "fact",
+        "entity_ids": [],
+        "confidence": 1.0,
+        "source": "agent",
+        "verified": False,
+        "valid_from": None,
+        "valid_until": None,
+        "usefulness_score": 0.0,
+        "staleness_score": 0.0,
+        "reinforcement_count": 0,
+        "retrieval_count": 0,
+        "is_stale": False,
+        "is_active": True,
+        "is_archived": False,
+        "superseded_by": None,
+        "flagged_for_review": False,
+        "contradicts_ids": [],
+        "is_note": False,
+        "created_at": stamp,
+        "updated_at": stamp,
+        "last_accessed_at": None,
+        "metadata": {},
+        "tenant_id": tenant_id,
+    }
+
+
+def _session_row(session_id: str, tenant_id: str) -> dict[str, Any]:
+    return {
+        "id": session_id,
+        "query_text": "who?",
+        "created_at": datetime(2026, 1, 1),
+        "confidence_rating": None,
+        "reasoning": None,
+        "useful_ids": [],
+        "stale_ids": [],
+        "concluded": False,
+        "tenant_id": tenant_id,
+    }
+
+
+def _summary_row(summary_id: str, concept: str, tenant_id: str) -> dict[str, Any]:
+    return {
+        "id": summary_id,
+        "concept": concept,
+        "summary_text": "summary",
+        "memory_count": 1,
+        "is_current": True,
+        "generated_at": datetime(2026, 1, 1),
+        "tenant_id": tenant_id,
+    }
+
+
+def _guard_responder(guard_rows: list[Any]) -> Callable[[str, Any], list[Any]]:
+    """Answer the guard with *guard_rows* and every other lookup with tenant t1."""
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        normalised = " ".join(sql.split())
+        if normalised.startswith("SELECT is_active FROM tenants"):
+            return guard_rows
+        if normalised.startswith("SELECT tenant_id FROM memories WHERE id = %s"):
+            return [{"tenant_id": "t1"}]
+        if "FROM memories WHERE id = %s" in normalised:
+            return [_memory_row(str(params[0]), "t1")]
+        if normalised.startswith("SELECT tenant_id FROM query_sessions WHERE id = %s"):
+            return [{"tenant_id": "t1"}]
+        if "FROM query_sessions WHERE id = %s" in normalised:
+            return [_session_row(str(params[0]), "t1")]
+        if "FROM memory_summaries" in normalised:
+            return [_summary_row("summary-1", "acme", "t1")]
+        return []
+
+    return responder
+
+
+def _write_calls(backend: PostgresBackend) -> dict[str, Callable[[], object]]:
+    record = MemoryRecord(content="guarded fact", category=MemoryCategory.FACT, tenant_id="t1")
+    link = ConceptLink(
+        source_memory_id="a1",
+        target_memory_id="a2",
+        link_type=ConceptLinkType.RELATES_TO,
+        tenant_id="t1",
+    )
+    session = QuerySession(query_text="who?", tenant_id="t1")
+    result = QueryResult(session_id="s1", memory_id="a1", relevance_score=1.0, tenant_id="t1")
+    summary = MemorySummary(concept="acme", summary_text="summary", memory_count=1, tenant_id="t1")
+    return {
+        "add_memory": lambda: backend.add_memory(record),
+        "update_memory": lambda: backend.update_memory("a1", content="changed"),
+        "archive_memory": lambda: backend.archive_memory("a1", tenant_id="t1"),
+        "supersede_memory": lambda: backend.supersede_memory("a1", "a2", tenant_id="t1"),
+        "apply_feedback": lambda: backend.apply_feedback("a1", True, False, tenant_id="t1"),
+        "add_link": lambda: backend.add_link(link),
+        "create_session": lambda: backend.create_session(session),
+        "record_query_results": lambda: backend.record_query_results([result]),
+        "update_session_feedback": lambda: backend.update_session_feedback("s1", 5, "r", [], []),
+        "mark_session_concluded": lambda: backend.mark_session_concluded("s1"),
+        "upsert_summary": lambda: backend.upsert_summary(summary),
+        "manifest_upsert": lambda: backend.manifest_upsert(
+            "/a",
+            "default",
+            size=1,
+            mtime=0.0,
+            online_only=False,
+            index_mode="content",
+            memory_ids=[],
+            tenant_id="t1",
+        ),
+        "manifest_delete": lambda: backend.manifest_delete("/a", tenant_id="t1"),
+    }
+
+
+def _guard_index(conn: FakeConnection) -> int:
+    for index, (sql, _params) in enumerate(conn.executed):
+        if sql.lstrip().startswith("SELECT is_active FROM tenants"):
+            return index
+    raise AssertionError("the write never ran the tenant guard")
+
+
+def _writes_after_guard(conn: FakeConnection, guard_at: int) -> list[str]:
+    return [
+        sql
+        for sql, _params in conn.executed[guard_at + 1 :]
+        if sql.lstrip().upper().startswith(_WRITE_PREFIXES)
+    ]
+
+
+def _run_write(call: Callable[[], object]) -> None:
+    """Run a write, turning the interim stub into a plain assertion failure."""
+    try:
+        call()
+    except TenancyNotSupportedError as exc:
+        pytest.fail(f"the write must replace the interim stub: {exc}")
+
+
+@pytest.mark.l4("C-9e1dc670", "C-4f87b6ae", "C-15dbdabf")
+@pytest.mark.parametrize("method", _GUARDED_WRITES)
+def test_pg_guarded_write_missing_tenant_writes_nothing(method: str) -> None:
+    conn = FakeConnection(responder=_guard_responder([]))
+    backend = _backend(FakePool(conn))
+
+    with pytest.raises(TenantNotFoundError):
+        _run_write(_write_calls(backend)[method])
+
+    guard_at = _guard_index(conn)
+    assert _writes_after_guard(conn, guard_at) == []
+
+
+@pytest.mark.l4("C-9e1dc670", "C-4f87b6ae", "C-15dbdabf")
+@pytest.mark.parametrize("method", _GUARDED_WRITES)
+def test_pg_guarded_write_inactive_tenant_writes_nothing(method: str) -> None:
+    conn = FakeConnection(responder=_guard_responder([{"is_active": False}]))
+    backend = _backend(FakePool(conn))
+
+    with pytest.raises(TenantInactiveError):
+        _run_write(_write_calls(backend)[method])
+
+    guard_at = _guard_index(conn)
+    assert _writes_after_guard(conn, guard_at) == []
+
+
+@pytest.mark.l4("C-9e1dc670")
+def test_pg_assert_tenant_writable_selects_on_the_given_connection() -> None:
+    missing = FakeConnection(responder=lambda sql, params: [])
+    backend = PostgresBackend("postgresql://unused")
+
+    with pytest.raises(TenantNotFoundError) as missing_error:
+        backend._assert_tenant_writable(missing, "nope")
+    assert missing_error.value.tenant_id == "nope"
+    assert [(" ".join(sql.split()), params) for sql, params in missing.executed] == [
+        ("SELECT is_active FROM tenants WHERE id = %s", ("nope",))
+    ]
+
+    inactive = FakeConnection(responder=lambda sql, params: [{"is_active": False}])
+    with pytest.raises(TenantInactiveError) as inactive_error:
+        backend._assert_tenant_writable(inactive, "t1")
+    assert inactive_error.value.tenant_id == "t1"
+    assert [(" ".join(sql.split()), params) for sql, params in inactive.executed] == [
+        ("SELECT is_active FROM tenants WHERE id = %s", ("t1",))
+    ]
+
+
+@pytest.mark.l4("C-d09bf668")
+def test_pg_write_lookup_helpers_read_single_column_rows() -> None:
+    def responder(sql: str, params: Any) -> list[Any]:
+        normalised = " ".join(sql.split())
+        if normalised == "SELECT tenant_id FROM memories WHERE id = %s":
+            return [{"tenant_id": "t1"}] if params == ("a1",) else []
+        if normalised == "SELECT tenant_id FROM query_sessions WHERE id = %s":
+            return [{"tenant_id": "t1"}] if params == ("s1",) else []
+        if normalised == "SELECT id FROM memory_summaries WHERE tenant_id = %s AND concept = %s":
+            return [{"id": "summary-1"}] if params == ("t1", "acme") else []
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+
+    assert backend._stored_tenant(conn, "a1") == "t1"
+    assert backend._stored_tenant(conn, "missing") is None
+    assert backend._session_tenant(conn, "s1") == "t1"
+    assert backend._session_tenant(conn, "missing") is None
+    assert backend._summary_id(conn, "t1", "acme") == "summary-1"
+    assert backend._summary_id(conn, "t1", "missing") is None
+
+
+@pytest.mark.l4("C-f0e033f2", "C-4f87b6ae")
+def test_pg_tenant_deactivated_after_the_guard_still_writes() -> None:
+    state = {"active": True}
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        if sql.lstrip().startswith("SELECT is_active FROM tenants"):
+            answer = [{"is_active": state["active"]}]
+            state["active"] = False
+            return answer
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+
+    _run_write(lambda: backend.add_memory(_record("written after deactivation")))
+
+    assert state["active"] is False
+    assert any(sql.lstrip().startswith("INSERT INTO memories") for sql, _params in conn.executed)
+    assert conn.commits == 1
+
+
+@pytest.mark.l4("C-98cd17f1")
+def test_pg_bump_retrieval_only_updates_active_tenants() -> None:
+    conn = FakeConnection()
+    backend = _backend(FakePool(conn))
+    now = datetime(2026, 4, 5, 6, 7, 8)
+
+    backend._bump_retrieval(["a1"], now)
+
+    update_sql, update_params = next(
+        (sql, params)
+        for sql, params in conn.executed
+        if sql.lstrip().startswith("UPDATE memories SET retrieval_count")
+    )
+    assert "tenant_id IN (SELECT id FROM tenants WHERE is_active)" in " ".join(update_sql.split())
+    assert update_params == [now, "a1"]
+
+
+@pytest.mark.l4("C-d07310eb", "C-1b7a83e9")
+@pytest.mark.parametrize(
+    ("method", "table"),
+    (
+        ("add_memory", "memories"),
+        ("add_link", "concept_links"),
+        ("upsert_summary", "memory_summaries"),
+        ("manifest_upsert", "index_manifest"),
+    ),
+)
+def test_pg_active_tenant_write_inserts_t1_and_commits_once(method: str, table: str) -> None:
+    conn = FakeConnection(responder=_guard_responder([{"is_active": True}]))
+    backend = _backend(FakePool(conn))
+
+    _run_write(_write_calls(backend)[method])
+
+    insert_sql, insert_params = next(
+        (sql, params)
+        for sql, params in conn.executed
+        if sql.lstrip().upper().startswith(f"INSERT INTO {table.upper()}")
+    )
+    assert "t1" in insert_params, insert_sql
+    assert conn.commits == 1

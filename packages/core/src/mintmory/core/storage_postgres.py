@@ -1902,6 +1902,18 @@ class PostgresBackend:
         for statement in plan_pg_tenant_migration(*snapshot):
             conn.execute(statement)
 
+    def _assert_tenant_writable(self, conn: Any, tenant_id: str) -> None:
+        raise NotImplementedError
+
+    def _stored_tenant(self, conn: Any, memory_id: str) -> str | None:
+        raise NotImplementedError
+
+    def _session_tenant(self, conn: Any, session_id: str) -> str | None:
+        raise NotImplementedError
+
+    def _summary_id(self, conn: Any, tenant_id: str, concept: str) -> str | None:
+        raise NotImplementedError
+
 
 def plan_pg_tenant_migration(
     columns: dict[str, set[str]],
