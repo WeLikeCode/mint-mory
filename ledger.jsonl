@@ -182,3 +182,4 @@
 {"at":"2026-10-21T18:00:35Z","by":"harness","reason":"the cause is gone: the merge of kiro:multi-tenancy-postgres can go on","type":"plan.resumed"}
 {"at":"2026-10-21T18:00:42Z","head":"789f4683dfb870872217ea72be3cab3064180f37","pr":47,"target_before":"bc8df7cc8b253b845be2786229014df03114b384","type":"unit.merge_requested","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T18:00:48Z","ci":"green","head":"789f4683dfb870872217ea72be3cab3064180f37","merge_commit":"558990c6aefef6e02b37ab7a728a139487b7c319","method":"squash","pr":47,"raced":false,"type":"unit.merged","unit":"kiro:multi-tenancy-postgres"}
+{"at":"2026-10-21T18:00:53Z","branch":"l4/kiro/multi-tenancy-postgres","head":"789f4683dfb870872217ea72be3cab3064180f37","type":"unit.branch_deleted","unit":"kiro:multi-tenancy-postgres"}
