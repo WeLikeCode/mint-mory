@@ -1,0 +1,12 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "kiro:cross-tenant-copy",
+  "round": 1,
+  "findings": [
+    "F-37e92031"
+  ],
+  "chores": [],
+  "test_chores": [],
+  "refactors": [],
+  "retakes": []
+}
