@@ -488,6 +488,18 @@ class StorageSettings(BaseSettings):
     pool_max: int = Field(default=10, ge=1)
 
 
+class McpSettings(BaseSettings):
+    """MCP transport settings (``MINTMORY_MCP_*``).
+
+    ``tenant`` is the default scope for a ``mintmory-mcp`` process; an empty
+    string means the global scope. ``--tenant`` on the command line overrides it.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_MCP_", extra="ignore")
+
+    tenant: str = ""
+
+
 class Settings(BaseSettings):
     """Aggregate of every settings group. Each group still reads its own env vars."""
 
