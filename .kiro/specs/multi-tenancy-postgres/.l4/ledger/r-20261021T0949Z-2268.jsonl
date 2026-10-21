@@ -97,3 +97,8 @@
 {"ts": "2026-10-21T10:20:37.015553Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 97, "type": "budget.cost", "usd": 0.0, "profile": "glm", "task": "1"}
 {"ts": "2026-10-21T10:20:37.041561Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 98, "type": "step.timed", "phase": "green", "task": "1", "attempt": 4, "seconds": 175.5}
 {"ts": "2026-10-21T10:20:37.044404Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 99, "type": "question.raised", "id": "Q-001", "task": "1", "kind": "technical", "title": "packages/core/tests/test_pg_fakes.py:24 — deliverable pg_fakes.py is frozen as a red test, so the R5.1 stubs can never pass"}
+{"ts": "2026-10-21T10:20:41.458900Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 100, "type": "pr.labels", "number": 47, "labels": ["l4:implementing", "l4:needs-answers"]}
+{"ts": "2026-10-21T10:20:41.466834Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 101, "type": "phase.changed", "from": "implementing", "to": "awaiting_human", "trigger": "questions_blocking", "exit_code": 11, "questions": ["Q-001"], "task": "1"}
+{"ts": "2026-10-21T10:20:45.209455Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 102, "type": "pr.labels", "number": 47, "labels": ["l4:awaiting_human", "l4:needs-answers"]}
+{"ts": "2026-10-21T10:20:46.849064Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 103, "type": "lock.released"}
+{"ts": "2026-10-21T10:20:46.849654Z", "run_id": "r-20261021T0949Z-2268", "unit": "kiro:multi-tenancy-postgres", "seq": 104, "type": "run.finished", "exit_code": 11}
