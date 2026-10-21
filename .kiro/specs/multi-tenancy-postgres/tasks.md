@@ -6,7 +6,7 @@
 > No test needs Postgres, Docker or a network service; add no skip, skipif or
 > xfail marker and no `pytest.skip(` call.
 
-- [ ] 1. Test seam (`packages/core/tests/pg_fakes.py`)
+- [x] 1. Test seam (`packages/core/tests/pg_fakes.py`)
   - `FakePool`, `FakeConnection`, `FakeCursor` per R5.1, with a self-test.
   - _Requirements: 5.1_
 
