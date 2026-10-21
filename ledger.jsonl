@@ -201,3 +201,4 @@
 {"at":"2026-10-21T19:34:46Z","attempt":1,"cost_usd":0.429283,"runs":4,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres-writes"}
 {"at":"2026-10-21T19:34:46Z","run":"r-20261021T1934Z-fb51","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres-writes"}
 {"at":"2026-10-21T20:46:41Z","detail":"the repository CI is still running on the hand-off commit 3b88a7645f (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"3b88a7645f7f6c9350a74afdc2d963c5204b456d","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:multi-tenancy-postgres-writes"}
+{"at":"2026-10-21T20:57:38Z","by":"harness","reason":"the cause is gone: the merge of kiro:multi-tenancy-postgres-writes can go on","type":"plan.resumed"}
