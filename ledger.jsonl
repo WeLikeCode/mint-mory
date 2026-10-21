@@ -170,3 +170,4 @@
 {"at":"2026-10-21T08:21:31Z","batch":"tenancy-surfaces","profile":"none","revision":"bc8df7cc8b253b845be2786229014df03114b384","type":"batch.accepted"}
 {"at":"2026-10-21T08:22:13Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T08:22:13Z","run":"r-20261021T0822Z-f473","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres"}
+{"at":"2026-10-21T09:45:19Z","detail":"task 1: max_task_attempts (3) reached in red on glm (2), glm-free (3); last failure: vacuous: C-0a8c52fb (none of its tests fails by assertion: packages.core.tests.test_pg_fakes::test_fake_connection_counts_commits_and_rollbacks, packages.core.tests.test_pg_fakes::test_fake_connection_default_respon","reason":"unit_halted","type":"plan.stopped","unit":"kiro:multi-tenancy-postgres"}
