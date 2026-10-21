@@ -15,15 +15,20 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
 from mintmory.core.storage_postgres import PostgresBackend
 from mintmory.core.types import (
+    InvalidTenantIdError,
     MemoryCategory,
     MemoryRecord,
+    ProtectedTenantError,
     SearchRequest,
     TenancyNotSupportedError,
+    Tenant,
+    TenantNotFoundError,
 )
 
 from packages.core.tests.pg_fakes import FakeConnection, FakePool
@@ -204,3 +209,303 @@ def test_pg_transaction_no_longer_raises_tenancy_not_supported() -> None:
         pytest.fail(f"transaction() must replace the interim stub: {exc}")
 
     assert conn.commits == 1
+
+
+# ---------------------------------------------------------------------------
+# Task 2 — the tenant directory (R1.1-R1.3, R5.4, R5.7)
+# ---------------------------------------------------------------------------
+
+
+def _tenant_row(
+    tenant_id: str,
+    name: str,
+    is_active: bool,
+    created_at: datetime,
+    updated_at: datetime,
+) -> dict[str, Any]:
+    return {
+        "id": tenant_id,
+        "name": name,
+        "is_active": is_active,
+        "created_at": created_at,
+        "updated_at": updated_at,
+    }
+
+
+def _create_tenant(backend: PostgresBackend, tenant_id: str, name: str = "") -> Tenant:
+    """Call create_tenant, turning the interim stub into a plain assertion failure."""
+    try:
+        return backend.create_tenant(tenant_id, name)
+    except TenancyNotSupportedError as exc:
+        pytest.fail(f"create_tenant must replace the interim stub: {exc}")
+
+
+def _set_tenant_active(backend: PostgresBackend, tenant_id: str, active: bool) -> Tenant:
+    """Call set_tenant_active, turning the interim stub into an assertion failure."""
+    try:
+        return backend.set_tenant_active(tenant_id, active)
+    except TenancyNotSupportedError as exc:
+        pytest.fail(f"set_tenant_active must replace the interim stub: {exc}")
+
+
+def _naive_utc() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+@pytest.mark.l4("C-f55a34a6", "C-be5b17eb", "C-1b7a83e9")
+def test_pg_create_tenant_inserts_then_selects_and_returns_row() -> None:
+    created = datetime(2026, 1, 2, 3, 4, 5)
+    row = _tenant_row("acme", "Acme Corp", True, created, created)
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        if "FROM tenants WHERE id = %s" in sql:
+            return [row]
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+    before = _naive_utc()
+
+    tenant = _create_tenant(backend, "acme", "Acme Corp")
+
+    after = _naive_utc()
+    assert tenant == Tenant(
+        id="acme",
+        name="Acme Corp",
+        is_active=True,
+        created_at=created,
+        updated_at=created,
+    )
+    statements = [(" ".join(sql.split()), params) for sql, params in conn.executed]
+    assert len(statements) == 2, statements
+    insert_sql, insert_params = statements[0]
+    assert insert_sql == (
+        "INSERT INTO tenants (id, name, is_active, created_at, updated_at) "
+        "VALUES (%s, %s, TRUE, %s, %s) ON CONFLICT (id) DO NOTHING"
+    )
+    tenant_param, name_param, first_now, second_now = insert_params
+    assert (tenant_param, name_param) == ("acme", "Acme Corp")
+    assert first_now == second_now
+    assert isinstance(first_now, datetime)
+    assert first_now.tzinfo is None, "the TIMESTAMP columns take a naive UTC datetime"
+    assert before <= first_now <= after
+    select_sql, select_params = statements[1]
+    assert select_sql == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants WHERE id = %s"
+    )
+    assert select_params == ("acme",)
+
+
+@pytest.mark.l4("C-f55a34a6", "C-be5b17eb")
+def test_pg_create_tenant_returns_the_existing_row_on_conflict() -> None:
+    existing = datetime(2025, 6, 7, 8, 9, 10)
+    row = _tenant_row("acme", "First name", False, existing, existing)
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        if "FROM tenants WHERE id = %s" in sql:
+            return [row]
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+
+    tenant = _create_tenant(backend, "acme", "Second name")
+
+    assert tenant == Tenant(
+        id="acme",
+        name="First name",
+        is_active=False,
+        created_at=existing,
+        updated_at=existing,
+    )
+    insert_sql = " ".join(conn.executed[0][0].split())
+    assert "ON CONFLICT (id) DO NOTHING" in insert_sql
+
+
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-1b7a83e9")
+def test_pg_get_tenant_selects_and_maps_the_row() -> None:
+    created = datetime(2026, 2, 3, 4, 5, 6)
+    row = _tenant_row("t1", "Tenant one", True, created, created)
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        if params == ("t1",):
+            return [row]
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+
+    tenant = backend.get_tenant("t1")
+
+    assert tenant == Tenant(
+        id="t1",
+        name="Tenant one",
+        is_active=True,
+        created_at=created,
+        updated_at=created,
+    )
+    assert backend.get_tenant("missing") is None
+    select_sql, select_params = conn.executed[0]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants WHERE id = %s"
+    )
+    assert select_params == ("t1",)
+
+
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-1b7a83e9")
+def test_pg_list_tenants_reads_every_row_ordered_by_id() -> None:
+    first = _tenant_row("alpha", "Alpha", True, datetime(2026, 1, 1), datetime(2026, 1, 1))
+    second = _tenant_row("beta", "Beta", False, datetime(2026, 1, 2), datetime(2026, 1, 3))
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        if "ORDER BY id" in sql:
+            return [first, second]
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+
+    tenants = backend.list_tenants()
+
+    assert [tenant.id for tenant in tenants] == ["alpha", "beta"]
+    assert tenants[0].name == "Alpha"
+    assert tenants[0].is_active is True
+    assert tenants[1].is_active is False
+    assert tenants[1].updated_at == datetime(2026, 1, 3)
+    select_sql, select_params = conn.executed[0]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants ORDER BY id"
+    )
+    assert select_params is None
+
+
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-edb554ee")
+def test_pg_set_tenant_active_updates_flag_and_returns_updated_row() -> None:
+    created = datetime(2026, 1, 1, 8, 0, 0)
+    state: dict[str, Any] = {"active": False, "updated": created}
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        normalised = " ".join(sql.split())
+        if normalised.startswith("UPDATE tenants"):
+            state["active"] = bool(params[0])
+            state["updated"] = params[1]
+            return [_tenant_row("t1", "Acme", state["active"], created, state["updated"])]
+        if "FROM tenants WHERE id = %s" in normalised:
+            return [_tenant_row("t1", "Acme", state["active"], created, state["updated"])]
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+    before = _naive_utc()
+
+    tenant = _set_tenant_active(backend, "t1", True)
+
+    after = _naive_utc()
+    assert tenant.is_active is True
+    assert tenant.created_at == created
+    assert tenant.updated_at.tzinfo is None
+    assert before <= tenant.updated_at <= after
+    update = next(
+        (sql, params) for sql, params in conn.executed if sql.lstrip().startswith("UPDATE tenants")
+    )
+    update_sql = " ".join(update[0].split())
+    assert update_sql == "UPDATE tenants SET is_active = %s, updated_at = %s WHERE id = %s"
+    active_param, updated_param, tenant_param = update[1]
+    assert active_param is True
+    assert tenant_param == "t1"
+    assert isinstance(updated_param, datetime)
+    assert updated_param.tzinfo is None
+    assert before <= updated_param <= after
+
+
+@pytest.mark.l4("C-c0d003ce", "C-3f98f2b5")
+def test_pg_set_tenant_active_unknown_id_raises_not_found() -> None:
+    conn = FakeConnection(responder=lambda sql, params: [])
+    backend = _backend(FakePool(conn))
+
+    with pytest.raises(TenantNotFoundError):
+        _set_tenant_active(backend, "nope", False)
+
+    assert not [sql for sql, _ in conn.executed if sql.lstrip().startswith("UPDATE tenants")]
+
+
+@pytest.mark.l4("C-c0d003ce", "C-3f98f2b5", "C-edb554ee")
+def test_pg_set_tenant_active_cannot_deactivate_global() -> None:
+    created = datetime(2026, 1, 1)
+    row = _tenant_row("global", "Global", True, created, created)
+    conn = FakeConnection(responder=lambda sql, params: [row])
+    backend = _backend(FakePool(conn))
+
+    with pytest.raises(ProtectedTenantError):
+        _set_tenant_active(backend, "global", False)
+
+    assert not [sql for sql, _ in conn.executed if sql.lstrip().startswith("UPDATE tenants")]
+
+
+@pytest.mark.l4("C-c0d003ce", "C-3f98f2b5")
+def test_pg_set_tenant_active_global_true_returns_unchanged() -> None:
+    created = datetime(2026, 1, 1)
+    row = _tenant_row("global", "Global", True, created, created)
+    conn = FakeConnection(responder=lambda sql, params: [row])
+    backend = _backend(FakePool(conn))
+
+    tenant = _set_tenant_active(backend, "global", True)
+
+    assert tenant == Tenant(
+        id="global",
+        name="Global",
+        is_active=True,
+        created_at=created,
+        updated_at=created,
+    )
+    assert not [sql for sql, _ in conn.executed if sql.lstrip().startswith("UPDATE tenants")]
+
+
+@pytest.mark.l4("C-f55a34a6", "C-3f98f2b5")
+def test_pg_create_tenant_validates_the_id_before_any_sql() -> None:
+    conn = FakeConnection()
+    backend = _backend(FakePool(conn))
+
+    try:
+        _create_tenant(backend, "Bad")
+    except InvalidTenantIdError:
+        pass
+    else:
+        pytest.fail("create_tenant must reject an invalid tenant id")
+
+    assert conn.executed == [], "the id is validated before any SQL statement"
+
+
+@pytest.mark.l4("C-edb554ee", "C-c0d003ce")
+def test_pg_tenant_directory_has_no_synthetic_global() -> None:
+    created = datetime(2026, 3, 4, 5, 6, 7)
+    row = _tenant_row("t1", "Tenant one", True, created, created)
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        normalised = " ".join(sql.split())
+        if "ORDER BY id" in normalised:
+            return [row]
+        if params == ("t1",):
+            return [row]
+        return []
+
+    conn = FakeConnection(responder=responder)
+    backend = _backend(FakePool(conn))
+
+    assert backend.get_tenant("global") is None, "the synthetic global tenant is gone"
+    assert backend.get_tenant("t1") == Tenant(
+        id="t1",
+        name="Tenant one",
+        is_active=True,
+        created_at=created,
+        updated_at=created,
+    )
+    assert backend.list_tenants() == [
+        Tenant(
+            id="t1",
+            name="Tenant one",
+            is_active=True,
+            created_at=created,
+            updated_at=created,
+        )
+    ]
