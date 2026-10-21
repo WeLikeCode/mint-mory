@@ -11,14 +11,14 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1.1 | ambiguous | Conflicting frozen test blocks the R3.2 fix |
+| Q-001 | answered | 1.1 | ambiguous | Conflicting frozen test blocks the R3.2 fix |
 <!-- l4:index:end -->
 
 ---
 
 ## Q-001: Conflicting frozen test blocks the R3.2 fix
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1.1
 - **Kind:** ambiguous
 - **Asked:** 2026-10-21T07:37Z by deepseek, run r-20261021T0729Z-ec22, task 1.1
@@ -33,3 +33,4 @@ Criterion C-18a7043f and design finding F-37e92031 require all_active over more 
 
 ### Answer
 <!-- write below this line -->
+Option 1: unfreeze packages/core/tests/test_transfer_selection.py for task 1.1 and change only test_skipped_duplicates_do_not_count_toward_copy_max, which encodes the wrong rule for all_active. Keep its point (R3.4: skipped duplicates do not count toward COPY_MAX in the records to copy) with explicit ids, which R3.2 does not cover: COPY_MAX = 2, memory_ids=[dup, m2] where dup's content already exists in the destination and m2 has one active attached note; the copy succeeds with m2 and its note copied (2 records) and 1 duplicate skipped, while counting the duplicate would make 3 > 2. The new R3.2 behaviour (all_active or a filter over more than COPY_MAX remaining rows raises before any write) gets its own test. Change no other existing test.
