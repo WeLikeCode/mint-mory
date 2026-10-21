@@ -216,3 +216,5 @@
 {"at":"2026-10-21T21:31:14Z","run":"r-20261021T2131Z-5a19","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres-reads"}
 {"at":"2026-10-21T21:48:53Z","detail":"awaiting_human: no new answers (open: Q-002, Q-003)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy-postgres-reads"}
 {"at":"2026-10-21T21:50:53Z","by":"harness","reason":"the cause is gone: kiro:multi-tenancy-postgres-reads is awaiting_human","type":"plan.resumed"}
+{"at":"2026-10-21T21:50:55Z","attempt":1,"cost_usd":0.277611,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres-reads"}
+{"at":"2026-10-21T21:50:55Z","run":"r-20261021T2150Z-8d11","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres-reads"}
