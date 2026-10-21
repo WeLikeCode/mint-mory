@@ -111,6 +111,7 @@ import numpy as np
 #   pass 2 — UPDATE superseded_by where it was set in source
 # The remaining tables have no cycles.
 _FK_ORDER: list[str] = [
+    "tenants",
     "memories",
     "memory_summaries",
     "index_manifest",
@@ -118,6 +119,10 @@ _FK_ORDER: list[str] = [
     "concept_links",
     "query_results",
 ]
+
+# The tenant directory is migrated first: every other table's tenant_id
+# references tenants(id).
+_TENANTS_COLS = ("id", "name", "is_active", "created_at", "updated_at")
 
 # ---------------------------------------------------------------------------
 # Columns to SELECT from each SQLite table (explicit — avoids surprise changes)
@@ -153,6 +158,7 @@ _MEMORIES_COLS = (
     "updated_at",
     "last_accessed_at",
     "metadata",
+    "tenant_id",
 )
 
 _CONCEPT_LINKS_COLS = (
@@ -167,6 +173,7 @@ _CONCEPT_LINKS_COLS = (
     "verified",
     "created_at",
     "updated_at",
+    "tenant_id",
 )
 
 _MEMORY_SUMMARIES_COLS = (
@@ -176,6 +183,7 @@ _MEMORY_SUMMARIES_COLS = (
     "memory_count",
     "is_current",
     "generated_at",
+    "tenant_id",
 )
 
 _INDEX_MANIFEST_COLS = (
@@ -188,6 +196,7 @@ _INDEX_MANIFEST_COLS = (
     "memory_ids",
     "online_only",
     "last_seen",
+    "tenant_id",
 )
 
 _QUERY_SESSIONS_COLS = (
@@ -199,6 +208,7 @@ _QUERY_SESSIONS_COLS = (
     "useful_ids",
     "stale_ids",
     "concluded",
+    "tenant_id",
 )
 
 _QUERY_RESULTS_COLS = (
@@ -208,9 +218,11 @@ _QUERY_RESULTS_COLS = (
     "was_accessed",
     "was_useful",
     "was_stale",
+    "tenant_id",
 )
 
 _TABLE_COLS: dict[str, tuple[str, ...]] = {
+    "tenants": _TENANTS_COLS,
     "memories": _MEMORIES_COLS,
     "concept_links": _CONCEPT_LINKS_COLS,
     "memory_summaries": _MEMORY_SUMMARIES_COLS,
@@ -221,10 +233,11 @@ _TABLE_COLS: dict[str, tuple[str, ...]] = {
 
 # Primary-key column(s) for sorting (checksum stability)
 _TABLE_PK: dict[str, list[str]] = {
+    "tenants": ["id"],
     "memories": ["id"],
     "concept_links": ["id"],
     "memory_summaries": ["id"],
-    "index_manifest": ["path"],
+    "index_manifest": ["tenant_id", "path"],
     "query_sessions": ["id"],
     "query_results": ["session_id", "memory_id"],
 }
@@ -240,6 +253,7 @@ _CHECKSUM_EXCLUDED: dict[str, set[str]] = {
     #   direct bytes comparison would require deserializing both sides, and
     #   (b) it is semantically derived from 'content' (already checksummed).
     # content_tsv: PG GENERATED ALWAYS AS column — absent in SQLite entirely.
+    "tenants": set(),
     "memories": {"embedding", "content_tsv"},
     "concept_links": set(),
     "memory_summaries": set(),
@@ -250,6 +264,7 @@ _CHECKSUM_EXCLUDED: dict[str, set[str]] = {
 
 # Boolean columns (SQLite: INTEGER 0/1 → PG: BOOLEAN)
 _BOOL_COLS: dict[str, set[str]] = {
+    "tenants": {"is_active"},
     "memories": {
         "verified",
         "is_stale",
@@ -267,6 +282,7 @@ _BOOL_COLS: dict[str, set[str]] = {
 
 # Datetime columns (SQLite: TEXT ISO-8601 → PG: TIMESTAMP naive UTC)
 _DATETIME_COLS: dict[str, set[str]] = {
+    "tenants": {"created_at", "updated_at"},
     "memories": {"valid_from", "valid_until", "created_at", "updated_at", "last_accessed_at"},
     "concept_links": {"created_at", "updated_at"},
     "memory_summaries": {"generated_at"},
@@ -277,6 +293,7 @@ _DATETIME_COLS: dict[str, set[str]] = {
 
 # JSONB columns (SQLite: TEXT JSON → PG: JSONB, auto-decoded by psycopg)
 _JSONB_COLS: dict[str, set[str]] = {
+    "tenants": set(),
     "memories": {"entity_ids", "contradicts_ids", "metadata"},
     "concept_links": set(),
     "memory_summaries": set(),
@@ -582,7 +599,7 @@ def _pg_truncate_all(conn: Any) -> None:
     """TRUNCATE all MintMory tables (for --force re-run). CASCADE handles FKs."""
     conn.execute(
         "TRUNCATE memories, concept_links, index_manifest, "
-        "query_sessions, query_results, memory_summaries "
+        "query_sessions, query_results, memory_summaries, tenants "
         "RESTART IDENTITY CASCADE"
     )
     conn.commit()
@@ -612,13 +629,15 @@ def _insert_memories_batch(
           confidence, source, verified, valid_from, valid_until,
           usefulness_score, staleness_score, reinforcement_count, retrieval_count,
           is_stale, is_active, is_archived, superseded_by, flagged_for_review,
-          contradicts_ids, is_note, created_at, updated_at, last_accessed_at, metadata
+          contradicts_ids, is_note, created_at, updated_at, last_accessed_at, metadata,
+          tenant_id
         ) VALUES (
           %s, %s, %s, %s::jsonb, %s,
           %s, %s, %s, %s, %s,
           %s, %s, %s, %s,
           %s, %s, %s, %s, %s,
-          %s::jsonb, %s, %s, %s, %s, %s::jsonb
+          %s::jsonb, %s, %s, %s, %s, %s::jsonb,
+          %s
         ) ON CONFLICT (id) DO NOTHING
     """
     params_list: list[tuple[Any, ...]] = []
@@ -651,6 +670,7 @@ def _insert_memories_batch(
                 _parse_datetime(r["updated_at"]),
                 _parse_datetime(r.get("last_accessed_at")),
                 r["metadata"],  # TEXT JSON → ::jsonb
+                r["tenant_id"],
             )
         )
     with conn.cursor() as cur:
@@ -685,9 +705,9 @@ def _insert_concept_links_batch(
     sql = """
         INSERT INTO concept_links
           (id, source_memory_id, target_memory_id, link_type, entity,
-           strength, confidence, source, verified, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (source_memory_id, target_memory_id, link_type) DO NOTHING
+           strength, confidence, source, verified, created_at, updated_at, tenant_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (tenant_id, source_memory_id, target_memory_id, link_type) DO NOTHING
     """
     params_list = [
         (
@@ -702,6 +722,7 @@ def _insert_concept_links_batch(
             bool(r["verified"]),
             _parse_datetime(r["created_at"]),
             _parse_datetime(r["updated_at"]),
+            r["tenant_id"],
         )
         for r in rows
     ]
@@ -720,8 +741,8 @@ def _insert_memory_summaries_batch(
         return len(rows)
     sql = """
         INSERT INTO memory_summaries
-          (id, concept, summary_text, memory_count, is_current, generated_at)
-        VALUES (%s, %s, %s, %s, %s, %s)
+          (id, concept, summary_text, memory_count, is_current, generated_at, tenant_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO NOTHING
     """
     params_list = [
@@ -732,6 +753,7 @@ def _insert_memory_summaries_batch(
             int(r["memory_count"]),
             bool(r["is_current"]),
             _parse_datetime(r["generated_at"]),
+            r["tenant_id"],
         )
         for r in rows
     ]
@@ -751,9 +773,9 @@ def _insert_index_manifest_batch(
     sql = """
         INSERT INTO index_manifest
           (path, collection, size, mtime, content_hash, index_mode,
-           memory_ids, online_only, last_seen)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (path) DO NOTHING
+           memory_ids, online_only, last_seen, tenant_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (tenant_id, path) DO NOTHING
     """
     params_list = [
         (
@@ -766,6 +788,7 @@ def _insert_index_manifest_batch(
             r["memory_ids"],  # TEXT in both SQLite and PG
             bool(r["online_only"]),
             r["last_seen"],  # TEXT ISO-8601 in both
+            r["tenant_id"],
         )
         for r in rows
     ]
@@ -785,8 +808,8 @@ def _insert_query_sessions_batch(
     sql = """
         INSERT INTO query_sessions
           (id, query_text, created_at, confidence_rating, reasoning,
-           useful_ids, stale_ids, concluded)
-        VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
+           useful_ids, stale_ids, concluded, tenant_id)
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
         ON CONFLICT (id) DO NOTHING
     """
     params_list = [
@@ -799,6 +822,7 @@ def _insert_query_sessions_batch(
             r["useful_ids"],  # TEXT JSON → ::jsonb
             r["stale_ids"],  # TEXT JSON → ::jsonb
             bool(r["concluded"]),
+            r["tenant_id"],
         )
         for r in rows
     ]
@@ -817,8 +841,9 @@ def _insert_query_results_batch(
         return len(rows)
     sql = """
         INSERT INTO query_results
-          (session_id, memory_id, relevance_score, was_accessed, was_useful, was_stale)
-        VALUES (%s, %s, %s, %s, %s, %s)
+          (session_id, memory_id, relevance_score, was_accessed, was_useful, was_stale,
+           tenant_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (session_id, memory_id) DO NOTHING
     """
     params_list = [
@@ -829,6 +854,7 @@ def _insert_query_results_batch(
             bool(r["was_accessed"]),
             bool(r["was_useful"]),
             bool(r["was_stale"]),
+            r["tenant_id"],
         )
         for r in rows
     ]
@@ -841,6 +867,7 @@ _TABLE_INSERT_FN: dict[
     str,
     Callable[[Any, list[dict[str, Any]]], int],
 ] = {
+    "tenants": lambda conn, rows: _insert_tenants_batch(conn, rows),
     "memories": lambda conn, rows: _insert_memories_batch(conn, rows),
     "concept_links": lambda conn, rows: _insert_concept_links_batch(conn, rows),
     "memory_summaries": lambda conn, rows: _insert_memory_summaries_batch(conn, rows),
@@ -869,6 +896,58 @@ def _target_checksum(pg_conn: Any, table: str) -> str:
     """Fetch all rows from PG (sorted by PK) and compute the canonical checksum."""
     rows = _pg_fetch_all_sorted(pg_conn, table)
     return _compute_checksum_from_dicts(rows, table)
+
+
+# ---------------------------------------------------------------------------
+# Tenant-aware source pre-checks
+# ---------------------------------------------------------------------------
+
+_PRE_TENANCY_MESSAGE = (
+    "source database predates multi-tenancy: open it once with this MintMory "
+    "version (any command) to migrate it, then retry"
+)
+
+_SIX_TENANTED_TABLES = (
+    "memories",
+    "concept_links",
+    "memory_summaries",
+    "index_manifest",
+    "query_sessions",
+    "query_results",
+)
+
+
+def _validate_tenant_source(conn: sqlite3.Connection) -> None:
+    """Reject a source that predates multi-tenancy or points at missing tenants.
+
+    The source is opened read-only, so it is never migrated here.  Runs before
+    any target write and on the dry-run path too.
+    """
+    row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tenants'"
+    ).fetchone()
+    if row is None:
+        raise ValueError(_PRE_TENANCY_MESSAGE)
+
+    for table in _SIX_TENANTED_TABLES:
+        columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "tenant_id" not in columns:
+            raise ValueError(_PRE_TENANCY_MESSAGE)
+
+    for table in _FK_ORDER:
+        if table == "tenants":
+            continue
+        unknown = [
+            r[0]
+            for r in conn.execute(
+                f"SELECT DISTINCT tenant_id FROM {table} "
+                "WHERE tenant_id NOT IN (SELECT id FROM tenants)"
+            ).fetchall()
+        ]
+        if unknown:
+            raise ValueError(
+                f"source table {table!r} references unknown tenant(s): {sorted(unknown)}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -925,6 +1004,8 @@ def migrate_sqlite_to_postgres(
     sqlite_conn.execute("PRAGMA foreign_keys = ON")
 
     try:
+        _validate_tenant_source(sqlite_conn)
+
         if dry_run:
             # -------------------------------------------------------------------
             # Dry-run path: read SQLite only, compute source counts + checksums.
@@ -1011,7 +1092,9 @@ def migrate_sqlite_to_postgres(
                         if not batch:
                             break
 
-                        if table == "memories":
+                        if table == "tenants":
+                            written += _insert_tenants_batch(pg_conn, batch)
+                        elif table == "memories":
                             written += _insert_memories_batch(pg_conn, batch)
                         elif table == "concept_links":
                             written += _insert_concept_links_batch(pg_conn, batch)
@@ -1078,4 +1161,22 @@ def _insert_tenants_batch(
     *,
     dry_run: bool = False,
 ) -> int:
-    raise NotImplementedError
+    if dry_run or not rows:
+        return len(rows)
+    sql = """
+        INSERT INTO tenants (id, name, is_active, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING
+    """
+    params_list = [
+        (
+            r["id"],
+            r["name"],
+            bool(r["is_active"]),
+            _parse_datetime(r["created_at"]),
+            _parse_datetime(r["updated_at"]),
+        )
+        for r in rows
+    ]
+    with conn.cursor() as cur:
+        cur.executemany(sql, params_list)
+    return len(rows)

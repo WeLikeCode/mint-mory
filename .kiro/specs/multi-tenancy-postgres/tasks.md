@@ -29,7 +29,7 @@
     pass unchanged.
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5_
 
-- [ ] 5. `migrate.py`
+- [x] 5. `migrate.py`
   - R4.1–R4.5.
   - Tests: R4.6; the existing pure-logic tests of `test_migrate.py` pass
     (updated in place where they build rows by hand; no test function deleted).
