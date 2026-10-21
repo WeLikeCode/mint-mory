@@ -23,7 +23,7 @@
   - Tests: R9.2 links, R9.3, R9.8; a link to a skipped duplicate is not created.
   - _Requirements: 6.1, 7.1, 7.3, 7.4, 9.2, 9.3, 9.8_
 
-- [ ] 4. MCP `tenant_copy` (`packages/mcp/.../server.py`)
+- [x] 4. MCP `tenant_copy` (`packages/mcp/.../server.py`)
   - Tool per R8.1 (unknown filter keys rejected); `TOOL_TENANT_SCOPE` entry and
     kind `"copy"`; the parameter test and `test_all_tools_registered` of
     `tenant-scoped-mcp` updated in place.
