@@ -46,12 +46,14 @@ from mintmory.core.scoring import (
 )
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
+    TENANT_GLOBAL,
     ConceptLink,
     ConceptLinkType,
     MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
+    ProtectedTenantError,
     QueryResult,
     QuerySession,
     SearchAroundSpec,
@@ -60,6 +62,8 @@ from mintmory.core.types import (
     TenancyNotSupportedError,
     Tenant,
     TenantMigrationError,
+    TenantNotFoundError,
+    validate_tenant_id,
 )
 
 if TYPE_CHECKING:
@@ -1786,29 +1790,79 @@ class PostgresBackend:
             raise TenancyNotSupportedError(operation)
 
     @staticmethod
-    def _interim_global_tenant() -> Tenant:
-        sentinel = datetime(1970, 1, 1)
+    def _row_to_tenant(row: dict[str, Any]) -> Tenant:
+        created_at = _from_pg_dt(row["created_at"])
+        updated_at = _from_pg_dt(row["updated_at"])
+        assert created_at is not None
+        assert updated_at is not None
         return Tenant(
-            id="global",
-            name="Global (default) tenant",
-            is_active=True,
-            created_at=sentinel,
-            updated_at=sentinel,
+            id=row["id"],
+            name=row["name"],
+            is_active=bool(row["is_active"]),
+            created_at=created_at,
+            updated_at=updated_at,
         )
 
+    _SELECT_TENANT = "SELECT id, name, is_active, created_at, updated_at FROM tenants"
+
     def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
-        raise TenancyNotSupportedError("create_tenant")
+        """Create a tenant idempotently; an existing id is returned unchanged."""
+        validate_tenant_id(tenant_id)
+        now = _utcnow()
+        with self._conn() as conn:
+            _execute_dict(
+                conn,
+                "INSERT INTO tenants (id, name, is_active, created_at, updated_at) "
+                "VALUES (%s, %s, TRUE, %s, %s) ON CONFLICT (id) DO NOTHING",
+                (tenant_id, name, now, now),
+            )
+            row = _execute_dict(
+                conn,
+                f"{self._SELECT_TENANT} WHERE id = %s",
+                (tenant_id,),
+            ).fetchone()
+        assert row is not None
+        return self._row_to_tenant(row)
 
     def get_tenant(self, tenant_id: str) -> Tenant | None:
-        if tenant_id == "global":
-            return self._interim_global_tenant()
-        return None
+        """Return the tenant row, or None for an unknown id."""
+        with self._conn() as conn:
+            row = _execute_dict(
+                conn,
+                f"{self._SELECT_TENANT} WHERE id = %s",
+                (tenant_id,),
+            ).fetchone()
+        return None if row is None else self._row_to_tenant(row)
 
     def list_tenants(self) -> list[Tenant]:
-        return [self._interim_global_tenant()]
+        """Every tenant (active and inactive), ordered by id ascending."""
+        with self._conn() as conn:
+            rows = _execute_dict(conn, f"{self._SELECT_TENANT} ORDER BY id").fetchall()
+        return [self._row_to_tenant(row) for row in rows]
 
     def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
-        raise TenancyNotSupportedError("set_tenant_active")
+        """Activate/deactivate a tenant; ``global`` cannot be deactivated."""
+        existing = self.get_tenant(tenant_id)
+        if existing is None:
+            raise TenantNotFoundError(tenant_id)
+        if tenant_id == TENANT_GLOBAL:
+            if not active:
+                raise ProtectedTenantError()
+            return existing
+        now = _utcnow()
+        with self._conn() as conn:
+            _execute_dict(
+                conn,
+                "UPDATE tenants SET is_active = %s, updated_at = %s WHERE id = %s",
+                (bool(active), now, tenant_id),
+            )
+            row = _execute_dict(
+                conn,
+                f"{self._SELECT_TENANT} WHERE id = %s",
+                (tenant_id,),
+            ).fetchone()
+        assert row is not None
+        return self._row_to_tenant(row)
 
     def _ensure_tenant_columns(self, conn: Any) -> None:
         """Read the catalog and apply the tenant migration plan on *conn*."""

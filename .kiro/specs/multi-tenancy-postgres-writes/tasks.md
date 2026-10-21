@@ -13,7 +13,7 @@
   - Tests: R4.5; `test_pg_transaction_tenancy` rewritten in place (R5.5).
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 5.5_
 
-- [ ] 2. Tenant directory (`storage_postgres.py`)
+- [x] 2. Tenant directory (`storage_postgres.py`)
   - R1.1–R1.3.
   - Tests: R5.4, R5.7 (directory errors); the directory `test_pg_<method>_tenancy`
     functions rewritten in place (R5.5).

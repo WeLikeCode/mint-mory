@@ -25,6 +25,7 @@ from mintmory.core.types import (
     MemoryFilter,
     MemoryRecord,
     MemorySummary,
+    ProtectedTenantError,
     QueryResult,
     QuerySession,
     SearchAroundSpec,
@@ -251,45 +252,122 @@ def test_pg_record_query_results_tenancy() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+def _tenant_row(
+    tenant_id: str,
+    name: str,
+    is_active: bool,
+    created_at: datetime,
+    updated_at: datetime,
+) -> dict[str, object]:
+    return {
+        "id": tenant_id,
+        "name": name,
+        "is_active": is_active,
+        "created_at": created_at,
+        "updated_at": updated_at,
+    }
+
+
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-1b7a83e9")
 def test_pg_get_tenant_tenancy() -> None:
-    backend = _backend()
-    global_tenant = backend.get_tenant("global")
-    assert global_tenant == Tenant(
-        id="global",
-        name="Global (default) tenant",
+    created = datetime(2026, 1, 2, 3, 4, 5)
+    row = _tenant_row("t1", "Tenant one", True, created, created)
+
+    def responder(sql: str, params: object) -> list[object]:
+        return [row] if params == ("t1",) else []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    assert backend.get_tenant("t1") == Tenant(
+        id="t1",
+        name="Tenant one",
         is_active=True,
-        created_at=datetime(1970, 1, 1),
-        updated_at=datetime(1970, 1, 1),
+        created_at=created,
+        updated_at=created,
     )
-    assert backend.get_tenant("t1") is None
-    assert backend._pool is None
+    assert backend.get_tenant("missing") is None
+    select_sql, select_params = conn.executed[0]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants WHERE id = %s"
+    )
+    assert select_params == ("t1",)
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-1b7a83e9")
 def test_pg_list_tenants_tenancy() -> None:
-    backend = _backend()
+    first = _tenant_row("alpha", "Alpha", True, datetime(2026, 1, 1), datetime(2026, 1, 1))
+    second = _tenant_row("beta", "Beta", False, datetime(2026, 1, 2), datetime(2026, 1, 3))
+
+    def responder(sql: str, params: object) -> list[object]:
+        return [first, second] if "ORDER BY id" in sql else []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
     tenants = backend.list_tenants()
-    assert [tenant.id for tenant in tenants] == ["global"]
-    assert tenants[0].name == "Global (default) tenant"
-    assert tenants[0].is_active is True
-    assert backend._pool is None
+
+    assert [tenant.id for tenant in tenants] == ["alpha", "beta"]
+    assert [tenant.is_active for tenant in tenants] == [True, False]
+    select_sql, select_params = conn.executed[0]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants ORDER BY id"
+    )
+    assert select_params is None
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-f55a34a6", "C-be5b17eb", "C-1b7a83e9")
 def test_pg_create_tenant_tenancy() -> None:
-    backend = _backend()
-    with pytest.raises(TenancyNotSupportedError):
-        backend.create_tenant("acme", "Acme Corp")
-    assert backend._pool is None
+    created = datetime(2026, 1, 2, 3, 4, 5)
+    row = _tenant_row("acme", "Acme Corp", True, created, created)
+
+    def responder(sql: str, params: object) -> list[object]:
+        return [row] if "FROM tenants WHERE id = %s" in sql else []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    tenant = backend.create_tenant("acme", "Acme Corp")
+
+    assert tenant == Tenant(
+        id="acme",
+        name="Acme Corp",
+        is_active=True,
+        created_at=created,
+        updated_at=created,
+    )
+    insert_sql, insert_params = conn.executed[0]
+    assert " ".join(insert_sql.split()) == (
+        "INSERT INTO tenants (id, name, is_active, created_at, updated_at) "
+        "VALUES (%s, %s, TRUE, %s, %s) ON CONFLICT (id) DO NOTHING"
+    )
+    tenant_param, name_param, first_now, second_now = insert_params
+    assert (tenant_param, name_param) == ("acme", "Acme Corp")
+    assert first_now == second_now
+    assert isinstance(first_now, datetime)
+    assert first_now.tzinfo is None
+    select_sql, select_params = conn.executed[1]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants WHERE id = %s"
+    )
+    assert select_params == ("acme",)
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-c0d003ce", "C-edb554ee", "C-1b7a83e9")
 def test_pg_set_tenant_active_tenancy() -> None:
-    backend = _backend()
-    with pytest.raises(TenancyNotSupportedError):
+    created = datetime(2026, 1, 1)
+    row = _tenant_row("global", "Global", True, created, created)
+    conn = FakeConnection(responder=lambda sql, params: [row])
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    with pytest.raises(ProtectedTenantError):
         backend.set_tenant_active("global", False)
-    assert backend._pool is None
+
+    assert not [sql for sql, _ in conn.executed if sql.lstrip().startswith("UPDATE tenants")]
 
 
 # ---------------------------------------------------------------------------
