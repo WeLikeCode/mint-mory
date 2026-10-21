@@ -269,7 +269,7 @@ def test_category_and_entity_filters_union_with_explicit_ids(cli_db: Path) -> No
     entity_report = _report_json(by_entity.output)
     assert entity_report["memories_copied"] == 1
     assert entity_report["notes_copied"] == 0
-    assert entity_report["id_map"] == {}
+    assert list(entity_report["id_map"]) == ["w1"]
 
 
 # ---------------------------------------------------------------------------

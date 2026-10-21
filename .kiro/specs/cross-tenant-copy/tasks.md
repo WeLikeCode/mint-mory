@@ -30,7 +30,7 @@
   - Tests: R9.10 (MCP part).
   - _Requirements: 8.1, 9.10_
 
-- [ ] 5. CLI `tenant copy` (`packages/cli/.../main.py`)
+- [x] 5. CLI `tenant copy` (`packages/cli/.../main.py`)
   - Command per R8.2.
   - Tests: R9.10 (CLI part).
   - _Requirements: 8.2, 9.10_
