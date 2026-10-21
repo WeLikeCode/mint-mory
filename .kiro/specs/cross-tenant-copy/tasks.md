@@ -10,7 +10,7 @@
   - Tests: every rejection of R2.1 with type and message (R9.7).
   - _Requirements: 1.1, 2.1, 2.2, 9.7_
 
-- [ ] 2. Selection, duplicates and record copy (`transfer.py`)
+- [x] 2. Selection, duplicates and record copy (`transfer.py`)
   - R3 selection and notes expansion; R4 duplicates; R5 record mapping; one
     `store.transaction()` around everything.
   - Tests: R9.2 (records part), R9.4, R9.5 (including the in-selection duplicate
