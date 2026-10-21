@@ -14,6 +14,8 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 1 | technical | packages/core/tests/test_pg_tenancy.py:299 — test_pg_transaction_tenancy still asserts the removed interim stub |
 | Q-002 | accepted | 1 | technical | packages/core/tests/test_transfer_links.py:359 — test_postgres_copy_fails_closed_before_any_write expects the removed transaction stub |
 | Q-003 | accepted | 2 | technical | packages/core/tests/test_pg_tenancy.py:255-292 - directory tests still assert the interim stub |
+| Q-004 | open | 3 | technical | packages/core/tests/test_pg_tenancy.py:202-237,395-430 — the 11 write test_pg_*_tenancy functions still assert the removed interim stub |
+| Q-005 | open | 3 | technical | packages/core/tests/test_pg_tenancy_columns.py:422 — test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access asserts the removed global-only write guard |
 <!-- l4:index:end -->
 
 ---
@@ -114,6 +116,53 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/core/tests/test_pg_tenancy.py`: replace test_pg_get_tenant_tenancy, test_pg_list_tenants_tenancy, test_pg_create_tenant_tenancy and test_pg_set_tenant_active_tenancy (lines 254-292) with FakePool-backed versions that assert the new directory behaviour: get_tenant maps a returned row and returns None when absent, list_tenants returns rows ordered by id, create_tenant inserts then selects and returns the row, set_tenant_active raises ProtectedTenantError for ('global', False) without an UPDATE, and no test asserts a synthetic 'global' or TenancyNotSupportedError.
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-004: packages/core/tests/test_pg_tenancy.py:202-237,395-430 — the 11 write test_pg_*_tenancy functions still assert the removed interim stub
+
+- **Status:** open
+- **Blocking tasks:** 3
+- **Kind:** technical
+- **Asked:** 2026-10-21T19:32Z by deepseek, run r-20261021T1911Z-621f, task 3
+
+### Context
+The pre-existing functions add_memory, add_link, create_session, record_query_results, upsert_summary, manifest_upsert, manifest_delete, archive_memory, supersede_memory, apply_feedback and update_memory build a backend with _pool=None and assert TenancyNotSupportedError. Requirement 2.3/C-d09bf668 removes that guard from every write path, and R5.5/C-1b7a83e9 explicitly requires these exact functions rewritten in place with the fake pool. After the task-3 implementation they fail (pool assertion, AssertionError, or the new guard path). The file is frozen for green.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `packages/core/tests/test_pg_tenancy.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit multi-tenancy-postgres-writes`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `packages/core/tests/test_pg_tenancy.py`: replace those 11 write `test_pg_*_tenancy` functions with fake-pool versions whose responder returns `[{"is_active": True}]` for `SELECT is_active FROM tenants` and the stored `tenant_id` for the lookup SELECTs, asserting the INSERT/UPDATE/DELETE executes with the requested tenant (`t1`) and no TenancyNotSupportedError is raised; for update_memory assert TenantImmutableError when the requested tenant differs from the stored one.
+2. Edit `packages/core/src/mintmory/core/storage_postgres.py`: keep the frozen functions passing unchanged by raising TenancyNotSupportedError(operation) from every write when self._pool is None before the pool assertion, and skipping the tenant guard for global writes.
+
+### Clarifier suggestion
+Edit `packages/core/tests/test_pg_tenancy.py`: replace those 11 write `test_pg_*_tenancy` functions with fake-pool versions whose responder returns `[{"is_active": True}]` for `SELECT is_active FROM tenants` and the stored `tenant_id` for the lookup SELECTs, asserting the INSERT/UPDATE/DELETE executes with the requested tenant (`t1`) and no TenancyNotSupportedError is raised; for update_memory assert TenantImmutableError when the requested tenant differs from the stored one.
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-005: packages/core/tests/test_pg_tenancy_columns.py:422 — test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access asserts the removed global-only write guard
+
+- **Status:** open
+- **Blocking tasks:** 3
+- **Kind:** technical
+- **Asked:** 2026-10-21T19:32Z by deepseek, run r-20261021T1911Z-621f, task 3
+
+### Context
+This pre-existing test expects add_memory/add_link/create_session/record_query_results/upsert_summary/manifest_upsert/manifest_delete with tenant `acme` to raise TenancyNotSupportedError before any SQL, but R2.2/C-4f87b6ae requires exactly those writes to run the tenant guard on their connection. Its fake pool, and the file's `_backend` helper used by the ten column-parity write tests at lines 170-260, do not answer the new `SELECT is_active FROM tenants WHERE id = %s`, so the write tests now see TenantNotFoundError. The file is frozen for green.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `packages/core/tests/test_pg_tenancy_columns.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit multi-tenancy-postgres-writes`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `packages/core/tests/test_pg_tenancy_columns.py`: wrap the responder in `_backend` so `SELECT is_active FROM tenants WHERE id = %s` returns `[{"is_active": True}]`, and replace `test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access` with a fake-pool test asserting the guard SELECT precedes the record INSERT for an active `acme` write and that keyed reads (`get_summary`, `manifest_get`, `manifest_paths`) still raise TenancyNotSupportedError for `acme`.
+2. Edit `packages/core/src/mintmory/core/storage_postgres.py`: skip `_assert_tenant_writable` for the `global` tenant only so the ten global column-parity write tests pass unchanged, and unfreeze only line 422's test so it can assert the new `acme` guard.
+
+### Clarifier suggestion
+Edit `packages/core/tests/test_pg_tenancy_columns.py`: wrap the responder in `_backend` so `SELECT is_active FROM tenants WHERE id = %s` returns `[{"is_active": True}]`, and replace `test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access` with a fake-pool test asserting the guard SELECT precedes the record INSERT for an active `acme` write and that keyed reads (`get_summary`, `manifest_get`, `manifest_paths`) still raise TenancyNotSupportedError for `acme`.
 
 ### Answer
 <!-- write below this line -->
