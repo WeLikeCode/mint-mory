@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-21T08:20:41Z",
+  "integrated_revision": "bc8df7cc8b253b845be2786229014df03114b384",
+  "merge_commit": "bc8df7cc8b253b845be2786229014df03114b384",
+  "plan_digest": "b5fa7ee7b594dc91",
+  "plan_id": "multitenancy",
+  "postcheck": "pass",
+  "pr": 46,
+  "receipt_id": "multitenancy/kiro:cross-tenant-copy/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "f4f731ba01c7f4b9a290ec6eb3c944b566e7fd51",
+  "spec_digest": "e7400cd3b8db3569",
+  "target": "staging",
+  "unit_id": "kiro:cross-tenant-copy"
+}
