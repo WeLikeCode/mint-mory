@@ -1741,3 +1741,28 @@ class PostgresBackend:
 
     def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
         raise TenancyNotSupportedError("set_tenant_active")
+
+    def _ensure_tenant_columns(self, conn: Any) -> None:
+        raise NotImplementedError
+
+
+def plan_pg_tenant_migration(
+    columns: dict[str, set[str]],
+    uniques: dict[str, list[tuple[str, tuple[str, ...]]]],
+    primary_keys: dict[str, tuple[str, tuple[str, ...]]],
+    indexes: set[str],
+) -> list[str]:
+    raise NotImplementedError
+
+
+def pg_catalog_snapshot(
+    column_rows: list[dict[str, Any]],
+    constraint_rows: list[dict[str, Any]],
+    index_rows: list[dict[str, Any]],
+) -> tuple[
+    dict[str, set[str]],
+    dict[str, list[tuple[str, tuple[str, ...]]]],
+    dict[str, tuple[str, tuple[str, ...]]],
+    set[str],
+]:
+    raise NotImplementedError
