@@ -13,7 +13,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from datetime import datetime
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from mintmory.core.ports import ManifestEntry, StorageBackend
@@ -25,13 +25,17 @@ from mintmory.core.types import (
     MemoryFilter,
     MemoryRecord,
     MemorySummary,
+    ProtectedTenantError,
     QueryResult,
     QuerySession,
     SearchAroundSpec,
     SearchRequest,
     TenancyNotSupportedError,
     Tenant,
+    TenantImmutableError,
 )
+
+from packages.core.tests.pg_fakes import FakeConnection, FakePool
 
 
 def _backend() -> PostgresBackend:
@@ -123,18 +127,21 @@ def test_pg_get_summary_tenancy() -> None:
     assert backend._pool is None
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_upsert_summary_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     summary = MemorySummary(
         concept="acme",
         summary_text="Acme summary",
         memory_count=1,
         tenant_id="t1",
     )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.upsert_summary(summary)
-    assert backend._pool is None
+
+    backend.upsert_summary(summary)
+
+    insert_sql, insert_params = _write_statement(conn, "INSERT INTO memory_summaries")
+    assert "t1" in insert_params
+    assert conn.commits == 1
 
 
 # ---------------------------------------------------------------------------
@@ -152,23 +159,25 @@ def test_pg_manifest_get_tenancy() -> None:
     assert backend._pool is None
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_manifest_upsert_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     _assert_tenant_parameter(backend.manifest_upsert, keyword_only=True, default="global")
-    manifest_upsert = cast(Callable[..., object], backend.manifest_upsert)
-    with pytest.raises(TenancyNotSupportedError):
-        manifest_upsert(
-            "/a",
-            "default",
-            size=1,
-            mtime=0.0,
-            online_only=False,
-            index_mode="content",
-            memory_ids=[],
-            tenant_id="t1",
-        )
-    assert backend._pool is None
+
+    backend.manifest_upsert(
+        "/a",
+        "default",
+        size=1,
+        mtime=0.0,
+        online_only=False,
+        index_mode="content",
+        memory_ids=[],
+        tenant_id="t1",
+    )
+
+    insert_sql, insert_params = _write_statement(conn, "INSERT INTO index_manifest")
+    assert "t1" in insert_params
+    assert conn.commits == 1
 
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873")
@@ -181,14 +190,16 @@ def test_pg_manifest_paths_tenancy() -> None:
     assert backend._pool is None
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_manifest_delete_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     _assert_tenant_parameter(backend.manifest_delete, keyword_only=True, default="global")
-    manifest_delete = cast(Callable[..., object], backend.manifest_delete)
-    with pytest.raises(TenancyNotSupportedError):
-        manifest_delete("/a", tenant_id="t1")
-    assert backend._pool is None
+
+    backend.manifest_delete("/a", tenant_id="t1")
+
+    delete_sql, delete_params = _write_statement(conn, "DELETE FROM index_manifest")
+    assert delete_params == ("/a", "t1")
+    assert conn.commits == 1
 
 
 # ---------------------------------------------------------------------------
@@ -196,52 +207,64 @@ def test_pg_manifest_delete_tenancy() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_add_memory_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     record = MemoryRecord(
         content="Alice works at Acme", category=MemoryCategory.FACT, tenant_id="t1"
     )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.add_memory(record)
-    assert backend._pool is None
+
+    backend.add_memory(record)
+
+    insert_sql, insert_params = _write_statement(conn, "INSERT INTO memories")
+    assert "t1" in insert_params
+    assert conn.commits == 1
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_add_link_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     link = ConceptLink(
         source_memory_id="m1",
         target_memory_id="m2",
         link_type=ConceptLinkType.RELATES_TO,
         tenant_id="t1",
     )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.add_link(link)
-    assert backend._pool is None
+
+    backend.add_link(link)
+
+    insert_sql, insert_params = _write_statement(conn, "INSERT INTO concept_links")
+    assert "t1" in insert_params
+    assert conn.commits == 1
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_create_session_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     session = QuerySession(query_text="who works at Acme?", tenant_id="t1")
-    with pytest.raises(TenancyNotSupportedError):
-        backend.create_session(session)
-    assert backend._pool is None
+
+    backend.create_session(session)
+
+    insert_sql, insert_params = _write_statement(conn, "INSERT INTO query_sessions")
+    assert "t1" in insert_params
+    assert conn.commits == 1
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
 def test_pg_record_query_results_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     result = QueryResult(
         session_id="s1",
         memory_id="m1",
         relevance_score=1.0,
         tenant_id="t1",
     )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.record_query_results([result])
-    assert backend._pool is None
+
+    backend.record_query_results([result])
+
+    insert_sql, insert_params = _write_statement(conn, "INSERT INTO query_results")
+    assert "t1" in insert_params
+    assert conn.commits == 1
 
 
 # ---------------------------------------------------------------------------
@@ -249,45 +272,221 @@ def test_pg_record_query_results_tenancy() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+def _tenant_row(
+    tenant_id: str,
+    name: str,
+    is_active: bool,
+    created_at: datetime,
+    updated_at: datetime,
+) -> dict[str, object]:
+    return {
+        "id": tenant_id,
+        "name": name,
+        "is_active": is_active,
+        "created_at": created_at,
+        "updated_at": updated_at,
+    }
+
+
+def _write_memory_row(memory_id: str, tenant_id: str) -> dict[str, object]:
+    stamp = datetime(2026, 1, 1)
+    return {
+        "id": memory_id,
+        "content": "Alice works at Acme",
+        "category": MemoryCategory.FACT.value,
+        "entity_ids": ["Alice"],
+        "confidence": 1.0,
+        "source": "agent",
+        "verified": False,
+        "valid_from": None,
+        "valid_until": None,
+        "usefulness_score": 0.0,
+        "staleness_score": 0.0,
+        "reinforcement_count": 0,
+        "retrieval_count": 0,
+        "is_stale": False,
+        "is_active": True,
+        "is_archived": False,
+        "superseded_by": None,
+        "flagged_for_review": False,
+        "contradicts_ids": [],
+        "is_note": False,
+        "created_at": stamp,
+        "updated_at": stamp,
+        "last_accessed_at": None,
+        "metadata": {},
+        "tenant_id": tenant_id,
+    }
+
+
+def _write_session_row(session_id: str, tenant_id: str) -> dict[str, object]:
+    return {
+        "id": session_id,
+        "query_text": "who works at Acme?",
+        "created_at": datetime(2026, 1, 1),
+        "confidence_rating": None,
+        "reasoning": None,
+        "useful_ids": [],
+        "stale_ids": [],
+        "concluded": False,
+        "tenant_id": tenant_id,
+    }
+
+
+def _write_summary_row(summary_id: str, concept: str, tenant_id: str) -> dict[str, object]:
+    return {
+        "id": summary_id,
+        "concept": concept,
+        "summary_text": "Acme summary",
+        "memory_count": 1,
+        "is_current": True,
+        "generated_at": datetime(2026, 1, 1),
+        "tenant_id": tenant_id,
+    }
+
+
+def _write_responder(tenant_id: str = "t1") -> Callable[[str, Any], list[Any]]:
+    """Answer the write guard, tenant lookups and row reads for one tenant."""
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        normalised = " ".join(sql.split())
+        if normalised.startswith("SELECT is_active FROM tenants"):
+            return [{"is_active": True}]
+        if normalised.startswith("SELECT tenant_id FROM memories WHERE id = %s"):
+            return [{"tenant_id": tenant_id}]
+        if "FROM memories WHERE id = %s" in normalised:
+            return [_write_memory_row(str(params[0]), tenant_id)]
+        if normalised.startswith("SELECT tenant_id FROM query_sessions WHERE id = %s"):
+            return [{"tenant_id": tenant_id}]
+        if "FROM query_sessions WHERE id = %s" in normalised:
+            return [_write_session_row(str(params[0]), tenant_id)]
+        if normalised.startswith(
+            "SELECT id FROM memory_summaries WHERE tenant_id = %s AND concept = %s"
+        ):
+            return [{"id": "sum1"}]
+        if "FROM memory_summaries" in normalised:
+            return [_write_summary_row("sum1", "acme", tenant_id)]
+        return []
+
+    return responder
+
+
+def _write_backend(
+    responder: Callable[[str, Any], list[Any]],
+) -> tuple[PostgresBackend, FakeConnection]:
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+    return backend, conn
+
+
+def _write_statement(conn: FakeConnection, marker: str) -> tuple[str, Any]:
+    for sql, params in conn.executed:
+        if marker in " ".join(sql.split()):
+            return " ".join(sql.split()), params
+    raise AssertionError(f"no executed statement contains {marker!r}: {conn.executed!r}")
+
+
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-1b7a83e9")
 def test_pg_get_tenant_tenancy() -> None:
-    backend = _backend()
-    global_tenant = backend.get_tenant("global")
-    assert global_tenant == Tenant(
-        id="global",
-        name="Global (default) tenant",
+    created = datetime(2026, 1, 2, 3, 4, 5)
+    row = _tenant_row("t1", "Tenant one", True, created, created)
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        return [row] if params == ("t1",) else []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    assert backend.get_tenant("t1") == Tenant(
+        id="t1",
+        name="Tenant one",
         is_active=True,
-        created_at=datetime(1970, 1, 1),
-        updated_at=datetime(1970, 1, 1),
+        created_at=created,
+        updated_at=created,
     )
-    assert backend.get_tenant("t1") is None
-    assert backend._pool is None
+    assert backend.get_tenant("missing") is None
+    select_sql, select_params = conn.executed[0]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants WHERE id = %s"
+    )
+    assert select_params == ("t1",)
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-c0d003ce", "C-be5b17eb", "C-1b7a83e9")
 def test_pg_list_tenants_tenancy() -> None:
-    backend = _backend()
+    first = _tenant_row("alpha", "Alpha", True, datetime(2026, 1, 1), datetime(2026, 1, 1))
+    second = _tenant_row("beta", "Beta", False, datetime(2026, 1, 2), datetime(2026, 1, 3))
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        return [first, second] if "ORDER BY id" in sql else []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
     tenants = backend.list_tenants()
-    assert [tenant.id for tenant in tenants] == ["global"]
-    assert tenants[0].name == "Global (default) tenant"
-    assert tenants[0].is_active is True
-    assert backend._pool is None
+
+    assert [tenant.id for tenant in tenants] == ["alpha", "beta"]
+    assert [tenant.is_active for tenant in tenants] == [True, False]
+    select_sql, select_params = conn.executed[0]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants ORDER BY id"
+    )
+    assert select_params is None
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-f55a34a6", "C-be5b17eb", "C-1b7a83e9")
 def test_pg_create_tenant_tenancy() -> None:
-    backend = _backend()
-    with pytest.raises(TenancyNotSupportedError):
-        backend.create_tenant("acme", "Acme Corp")
-    assert backend._pool is None
+    created = datetime(2026, 1, 2, 3, 4, 5)
+    row = _tenant_row("acme", "Acme Corp", True, created, created)
+
+    def responder(sql: str, params: Any) -> list[Any]:
+        return [row] if "FROM tenants WHERE id = %s" in sql else []
+
+    conn = FakeConnection(responder=responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    tenant = backend.create_tenant("acme", "Acme Corp")
+
+    assert tenant == Tenant(
+        id="acme",
+        name="Acme Corp",
+        is_active=True,
+        created_at=created,
+        updated_at=created,
+    )
+    insert_sql, insert_params = conn.executed[0]
+    assert " ".join(insert_sql.split()) == (
+        "INSERT INTO tenants (id, name, is_active, created_at, updated_at) "
+        "VALUES (%s, %s, TRUE, %s, %s) ON CONFLICT (id) DO NOTHING"
+    )
+    tenant_param, name_param, first_now, second_now = insert_params
+    assert (tenant_param, name_param) == ("acme", "Acme Corp")
+    assert first_now == second_now
+    assert isinstance(first_now, datetime)
+    assert first_now.tzinfo is None
+    select_sql, select_params = conn.executed[1]
+    assert " ".join(select_sql.split()) == (
+        "SELECT id, name, is_active, created_at, updated_at FROM tenants WHERE id = %s"
+    )
+    assert select_params == ("acme",)
 
 
-@pytest.mark.l4("C-a7f825e4", "C-0e897873")
+@pytest.mark.l4("C-c0d003ce", "C-edb554ee", "C-1b7a83e9")
 def test_pg_set_tenant_active_tenancy() -> None:
-    backend = _backend()
-    with pytest.raises(TenancyNotSupportedError):
+    created = datetime(2026, 1, 1)
+    row = _tenant_row("global", "Global", True, created, created)
+    conn = FakeConnection(responder=lambda sql, params: [row])
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    with pytest.raises(ProtectedTenantError):
         backend.set_tenant_active("global", False)
-    assert backend._pool is None
+
+    assert not [sql for sql, _ in conn.executed if sql.lstrip().startswith("UPDATE tenants")]
 
 
 # ---------------------------------------------------------------------------
@@ -295,16 +494,16 @@ def test_pg_set_tenant_active_tenancy() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-74b68113")
+@pytest.mark.l4("C-1b7a83e9")
 def test_pg_transaction_tenancy() -> None:
-    backend = _backend()
-    transaction = getattr(backend, "transaction", None)
-    assert transaction is not None, "PostgresBackend must provide an interim transaction()"
-    with pytest.raises(TenancyNotSupportedError) as excinfo, transaction():
-        pass  # pragma: no cover — the interim raises before yielding
-    assert isinstance(excinfo.value, TenancyNotSupportedError)
-    assert getattr(excinfo.value, "operation", None) == "transaction"
-    assert backend._pool is None
+    conn = FakeConnection()
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    with backend.transaction() as yielded:
+        assert yielded is conn
+
+    assert conn.commits == 1
 
 
 # ---------------------------------------------------------------------------
@@ -312,43 +511,62 @@ def test_pg_transaction_tenancy() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-3810642f")
+@pytest.mark.l4("C-3810642f", "C-1b7a83e9")
 def test_pg_archive_memory_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     _assert_tenant_parameter(backend.archive_memory, keyword_only=False, default=None)
-    archive_memory = cast(Callable[..., object], backend.archive_memory)
-    with pytest.raises(TenancyNotSupportedError):
-        archive_memory("m1", tenant_id="t1")
-    assert backend._pool is None
+
+    backend.archive_memory("m1", tenant_id="t1")
+
+    update_sql, update_params = _write_statement(conn, "UPDATE memories SET is_archived")
+    assert update_params[-1] == "m1"
+    assert conn.commits == 1
 
 
-@pytest.mark.l4("C-3810642f")
+@pytest.mark.l4("C-3810642f", "C-1b7a83e9")
 def test_pg_supersede_memory_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _write_backend(_write_responder())
     _assert_tenant_parameter(backend.supersede_memory, keyword_only=False, default=None)
-    supersede_memory = cast(Callable[..., object], backend.supersede_memory)
-    with pytest.raises(TenancyNotSupportedError):
-        supersede_memory("m1", "m2", tenant_id="t1")
-    assert backend._pool is None
+
+    backend.supersede_memory("m1", "m2", tenant_id="t1")
+
+    update_sql, update_params = _write_statement(conn, "UPDATE memories SET superseded_by")
+    assert update_params[0] == "m2"
+    assert update_params[-1] == "m1"
+    assert conn.commits == 1
 
 
-@pytest.mark.l4("C-3810642f")
+@pytest.mark.l4("C-3810642f", "C-1b7a83e9")
 def test_pg_apply_feedback_tenancy() -> None:
-    backend = _backend()
+    responder = _write_responder()
+    base = responder
+
+    def answering(sql: str, params: Any) -> list[Any]:
+        if "UPDATE memories SET" in sql:
+            return [{"id": "m1"}]
+        return base(sql, params)
+
+    backend, conn = _write_backend(answering)
     _assert_tenant_parameter(backend.apply_feedback, keyword_only=False, default=None)
-    apply_feedback = cast(Callable[..., object], backend.apply_feedback)
-    with pytest.raises(TenancyNotSupportedError):
-        apply_feedback("m1", True, False, tenant_id="t1")
-    assert backend._pool is None
+
+    backend.apply_feedback("m1", True, False, tenant_id="t1")
+
+    update_sql, _update_params = _write_statement(conn, "UPDATE memories SET usefulness_score")
+    assert conn.commits == 1
 
 
-@pytest.mark.l4("C-44a91f81")
+@pytest.mark.l4("C-44a91f81", "C-1b7a83e9")
 def test_pg_update_memory_tenancy() -> None:
-    backend = _backend()
-    update_memory = cast(Callable[..., object], backend.update_memory)
-    with pytest.raises(TenancyNotSupportedError):
-        update_memory("m1", tenant_id="t1")
-    assert backend._pool is None
+    backend, conn = _write_backend(_write_responder())
+
+    backend.update_memory("m1", content="changed", tenant_id="t1")
+
+    update_sql, update_params = _write_statement(conn, "UPDATE memories SET")
+    assert update_params[-1] == "m1"
+    assert conn.commits == 1
+
+    with pytest.raises(TenantImmutableError):
+        backend.update_memory("m1", tenant_id="global")
 
 
 # ---------------------------------------------------------------------------

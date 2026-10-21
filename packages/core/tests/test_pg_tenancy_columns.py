@@ -40,6 +40,14 @@ def _normalise(sql: str) -> str:
 
 
 def _backend(conn: FakeConnection) -> PostgresBackend:
+    responder = conn.responder
+
+    def guarded(sql: str, params: Any) -> list[Any]:
+        if sql.lstrip().startswith("SELECT is_active FROM tenants"):
+            return [{"is_active": True}]
+        return responder(sql, params)
+
+    conn.responder = guarded
     backend = PostgresBackend("postgresql://unused")
     backend._pool = FakePool(conn)
     return backend
@@ -418,75 +426,36 @@ def test_manifest_delete_filters_by_path_and_tenant() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-d4a710f6", "C-73647c35")
+@pytest.mark.l4("C-d4a710f6", "C-73647c35", "C-4f87b6ae")
 def test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access() -> None:
     conn = FakeConnection(responder=_summary_responder)
     backend = _backend(conn)
 
-    with pytest.raises(TenancyNotSupportedError):
-        backend.add_memory(
-            MemoryRecord(
-                content="Alice works at Acme",
-                category=MemoryCategory.FACT,
-                tenant_id=_TENANT,
-            )
-        )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.add_link(
-            ConceptLink(
-                source_memory_id="m1",
-                target_memory_id="m2",
-                link_type=ConceptLinkType.RELATES_TO,
-                tenant_id=_TENANT,
-            )
-        )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.create_session(QuerySession(query_text="q", tenant_id=_TENANT))
-    with pytest.raises(TenancyNotSupportedError):
-        backend.record_query_results(
-            [
-                QueryResult(
-                    session_id="s1",
-                    memory_id="m1",
-                    relevance_score=1.0,
-                    tenant_id=_TENANT,
-                )
-            ]
-        )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.upsert_summary(
-            MemorySummary(
-                concept="acme",
-                summary_text="Acme summary",
-                memory_count=1,
-                tenant_id=_TENANT,
-            )
-        )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.get_summary("acme", tenant_id=_TENANT)
-    with pytest.raises(TenancyNotSupportedError):
-        backend.manifest_get("/a", tenant_id=_TENANT)
-    with pytest.raises(TenancyNotSupportedError):
-        backend.manifest_upsert(
-            "/a",
-            "default",
-            size=1,
-            mtime=0.0,
-            online_only=False,
-            index_mode="content",
-            memory_ids=[],
+    backend.add_memory(
+        MemoryRecord(
+            content="Alice works at Acme",
+            category=MemoryCategory.FACT,
             tenant_id=_TENANT,
         )
-    with pytest.raises(TenancyNotSupportedError):
-        backend.manifest_paths("default", tenant_id=_TENANT)
-    with pytest.raises(TenancyNotSupportedError):
-        backend.manifest_delete("/a", tenant_id=_TENANT)
+    )
 
-    assert conn.executed == []
-
-    backend.add_memory(MemoryRecord(content="Alice works at Acme", category=MemoryCategory.FACT))
+    statements = [_normalise(sql) for sql, _params in conn.executed]
+    guard_prefix = "SELECT is_active FROM tenants"
+    guard_at = next(index for index, sql in enumerate(statements) if sql.startswith(guard_prefix))
+    insert_at = next(
+        index for index, sql in enumerate(statements) if sql.startswith("INSERT INTO memories")
+    )
+    assert guard_at < insert_at, "the write guard runs before the record INSERT"
     sql, _params = _find_statement(conn, "INSERT INTO memories")
     assert "tenant_id" in _insert_columns(sql)
+
+    for call in (
+        lambda: backend.get_summary("acme", tenant_id=_TENANT),
+        lambda: backend.manifest_get("/a", tenant_id=_TENANT),
+        lambda: backend.manifest_paths("default", tenant_id=_TENANT),
+    ):
+        with pytest.raises(TenancyNotSupportedError):
+            call()
 
 
 # ---------------------------------------------------------------------------

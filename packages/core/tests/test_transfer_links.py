@@ -31,9 +31,11 @@ from mintmory.core.types import (
     MemoryRecord,
     MemorySource,
     MemorySummary,
-    TenancyNotSupportedError,
     TenantInactiveError,
+    TenantNotFoundError,
 )
+
+from packages.core.tests.pg_fakes import FakeConnection, FakePool
 
 
 @pytest.fixture
@@ -357,22 +359,17 @@ def test_concurrent_copies_in_one_process_are_serialised(store: SqliteBackend) -
 
 @pytest.mark.l4("C-ae539615")
 def test_postgres_copy_fails_closed_before_any_write() -> None:
+    conn = FakeConnection()
     backend = PostgresBackend("postgresql://unused")
-    assert backend._pool is None
+    backend._pool = FakePool(conn)
 
-    with pytest.raises(TenancyNotSupportedError) as excinfo:
+    with pytest.raises(TenantNotFoundError):
         transfer.copy_between_tenants(
             backend, source_tenant="acme", dest_tenant="beta", all_active=True
         )
-    assert excinfo.value.operation == "transaction"
-    assert isinstance(excinfo.value, NotImplementedError)
-    assert backend._pool is None
 
-    with pytest.raises(TenancyNotSupportedError) as invalid_exc:
-        transfer.copy_between_tenants(
-            backend, source_tenant="ACME", dest_tenant="BETA", all_active=True
-        )
-    assert invalid_exc.value.operation == "transaction", (
-        "transaction() is entered before the tenant-id validation"
-    )
-    assert backend._pool is None
+    assert not [
+        sql for sql, _params in conn.executed if sql.lstrip().startswith("INSERT INTO memories")
+    ]
+    assert conn.commits == 0
+    assert conn.rollbacks == 1
