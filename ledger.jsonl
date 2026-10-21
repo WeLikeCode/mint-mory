@@ -130,3 +130,4 @@
 {"at":"2026-10-20T23:52:43Z","by":"harness","reason":"the cause is gone: kiro:tenant-scoped-mcp is awaiting_human","type":"plan.resumed"}
 {"at":"2026-10-20T23:52:45Z","attempt":1,"cost_usd":0.257502,"runs":2,"type":"plan.charged","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-20T23:52:45Z","run":"r-20261020T2352Z-c165","type":"unit.dispatched","unit":"kiro:tenant-scoped-mcp"}
+{"at":"2026-10-21T01:51:04Z","detail":"the repository CI is still running on the hand-off commit aedccb4435 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"aedccb4435f1b9821bb0f99bea5980149e577f9a","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:tenant-scoped-mcp"}
