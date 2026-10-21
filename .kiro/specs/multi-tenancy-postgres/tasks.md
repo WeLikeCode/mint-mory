@@ -35,6 +35,6 @@
     (updated in place where they build rows by hand; no test function deleted).
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6_
 
-- [ ] 6. Full gate
+- [x] 6. Full gate
   - `.l4/config.yaml` gates exit 0 with coverage ≥ 80%.
   - _Requirements: 6.1, 6.2_
