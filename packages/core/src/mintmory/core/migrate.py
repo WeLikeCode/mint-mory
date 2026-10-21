@@ -1070,3 +1070,12 @@ def migrate_sqlite_to_postgres(
         sqlite_conn.close()
 
     return report
+
+
+def _insert_tenants_batch(
+    conn: Any,
+    rows: list[dict[str, Any]],
+    *,
+    dry_run: bool = False,
+) -> int:
+    raise NotImplementedError
