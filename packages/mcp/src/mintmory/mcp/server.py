@@ -1026,3 +1026,14 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def tenant_copy(
+    source_tenant: str,
+    dest_tenant: str,
+    memory_ids: list[str] | None = None,
+    filter: dict[str, Any] | None = None,
+    all_active: bool = False,
+    force: bool = False,
+) -> dict[str, Any]:
+    raise NotImplementedError
