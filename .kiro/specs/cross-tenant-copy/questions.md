@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 4 | technical | packages/mcp/tests/test_mcp_tenancy_directory.py:87-115 and :257 omit tenant_copy from the frozen expected inventory |
 | Q-002 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
 | Q-003 | accepted | 5 | technical | packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy |
-| Q-004 | open | none | verdict | Criterion C-3affbf7d (Req 3.2): accept as satisfied? |
+| Q-004 | answered | none | verdict | Criterion C-3affbf7d (Req 3.2): accept as satisfied? |
 | Q-005 | open | none | verdict | Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping |
 <!-- l4:index:end -->
 
@@ -90,7 +90,7 @@ Edit `packages/cli/tests/test_cli_tenant_copy.py`: replace `assert entity_report
 
 ## Q-004: Criterion C-3affbf7d (Req 3.2): accept as satisfied?
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -116,6 +116,7 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+reject: R3.2 is not implemented. _select (packages/core/src/mintmory/core/transfer.py:72-109) never compares the remaining filter/all_active rows with COPY_MAX; the only cap check is len(plan) at :247, after duplicates are skipped, which is R3.4's rule (records to copy). test_skipped_duplicates_do_not_count_toward_copy_max (packages/core/tests/test_transfer_selection.py) encodes the wrong rule: all_active with COPY_MAX=2 over 3 active rows must raise under R3.2; keep R3.4's point there with a selection that passes R3.2 (rows <= COPY_MAX) and a duplicate skipped. WHEN all_active or a filter selects more than COPY_MAX non-superseded rows in the source tenant, even if some of them are duplicates in the destination THEN copy_between_tenants raises CopySelectionError("selection exceeds {COPY_MAX} memories") before any write and the destination is unchanged
 ---
 
 ## Q-005: Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping
