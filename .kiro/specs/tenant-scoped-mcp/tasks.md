@@ -32,7 +32,7 @@
   - Tests: R5.3; R2.2 inventory; R6.1 schema scan; R8.3.
   - _Requirements: 2.2, 5.1, 5.2, 5.3, 6.1, 8.3_
 
-- [ ] 5. Capabilities and instructions (`server.py`)
+- [x] 5. Capabilities and instructions (`server.py`)
   - The two capability keys (normal and fallback) and the `TENANCY:` sentence.
   - Tests: R7.1 for both scopes and for the fallback (monkeypatch
     `load_settings` to raise); the instruction text ends with the R7.2 sentence.

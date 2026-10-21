@@ -96,7 +96,11 @@ mcp: FastMCP[Any] = FastMCP(
         "send it back with summary_put — no separate LLM backend required. "
         "IMAGES: call image_jobs to get images needing a description, write a combined "
         "description, send it back with image_caption_put — no vision backend needed. "
-        "If MINTMORY_VISION_PROVIDER=llm is configured, call vision_run to auto-caption instead."
+        "If MINTMORY_VISION_PROVIDER=llm is configured, call vision_run to auto-caption instead. "
+        "TENANCY: this server is bound to one tenant scope for its lifetime "
+        "(see mintmory://capabilities); the global scope reads every tenant and "
+        "writes the global tenant, a named scope reads and writes only its tenant. "
+        "tenant_create and tenant_list manage the tenant directory."
     ),
 )
 
@@ -190,9 +194,15 @@ def mintmory_capabilities() -> dict[str, Any]:
             "llm_model": settings.llm.model,
             "vision_provider": settings.vision.provider.value,
             "dreaming_llm_steps": llm_enabled,
+            "tenant_scope": _scope_tenant,
+            "tenant_scoped": _scope_tenant != TENANT_GLOBAL,
         }
     except Exception:  # noqa: BLE001
-        return {"error": "settings unavailable"}
+        return {
+            "error": "settings unavailable",
+            "tenant_scope": _scope_tenant,
+            "tenant_scoped": _scope_tenant != TENANT_GLOBAL,
+        }
 
 
 # ---------------------------------------------------------------------------
