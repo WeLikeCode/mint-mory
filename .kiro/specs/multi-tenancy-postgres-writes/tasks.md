@@ -25,7 +25,7 @@
     rewritten in place (R5.5).
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 5.1, 5.3, 5.5, 5.6_
 
-- [ ] 4. References and id-only writes (`storage_postgres.py`)
+- [x] 4. References and id-only writes (`storage_postgres.py`)
   - R3.1–R3.2.
   - Tests: R5.2, R5.7 (reference errors).
   - _Requirements: 3.1, 3.2, 5.2, 5.7_
