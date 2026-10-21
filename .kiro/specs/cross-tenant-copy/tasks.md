@@ -18,7 +18,7 @@
     unchanged (R7.2).
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 9.2, 9.4, 9.5, 9.6, 9.9_
 
-- [ ] 3. Links and atomicity (`transfer.py`)
+- [x] 3. Links and atomicity (`transfer.py`)
   - R6 link copy; rollback on any exception.
   - Tests: R9.2 links, R9.3, R9.8; a link to a skipped duplicate is not created.
   - _Requirements: 6.1, 7.1, 7.3, 7.4, 9.2, 9.3, 9.8_

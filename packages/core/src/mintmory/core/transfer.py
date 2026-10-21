@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from mintmory.core.types import (
+    ConceptLink,
     MemoryFilter,
     MemoryRecord,
     TenantInactiveError,
@@ -143,6 +144,21 @@ def _copy_record(
     )
 
 
+def _copy_link(link: ConceptLink, id_map: dict[str, str], dest_tenant: str) -> ConceptLink:
+    """Build the destination link with rewritten endpoints in the destination tenant."""
+    return ConceptLink(
+        source_memory_id=id_map[link.source_memory_id],
+        target_memory_id=id_map[link.target_memory_id],
+        link_type=link.link_type,
+        entity=link.entity,
+        strength=link.strength,
+        confidence=link.confidence,
+        source=link.source,
+        verified=link.verified,
+        tenant_id=dest_tenant,
+    )
+
+
 def _count_copied(report: CopyReport, record: MemoryRecord) -> None:
     if record.is_note:
         report.notes_copied += 1
@@ -234,4 +250,17 @@ def copy_between_tenants(
         for record in plan:
             store.add_memory(record=_copy_record(record, report.id_map, source_tenant, dest_tenant))
             _count_copied(report, record)
+
+        done: set[str] = set()
+        for source_id in report.id_map:
+            for link in store.get_links(source_id, tenant_id=source_tenant):
+                if link.id in done:
+                    continue
+                done.add(link.id)
+                if (
+                    link.source_memory_id in report.id_map
+                    and link.target_memory_id in report.id_map
+                ):
+                    store.add_link(_copy_link(link, report.id_map, dest_tenant))
+                    report.links_copied += 1
     return report
