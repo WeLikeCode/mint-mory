@@ -35,7 +35,7 @@
   - Tests: R9.10 (CLI part).
   - _Requirements: 8.2, 9.10_
 
-- [ ] 6. Integration and full gate
+- [x] 6. Integration and full gate
   - `tests/integration/test_tenancy_copy.py` (R9.11); `.l4/config.yaml` gates exit
     0 with coverage ≥ 80%.
   - _Requirements: 9.1, 9.11, 10.1_
