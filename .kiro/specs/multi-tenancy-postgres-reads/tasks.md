@@ -13,7 +13,7 @@
     rewritten in place (R1.2).
   - _Requirements: 1.1, 1.2, 1.3_
 
-- [ ] 2. Search (`storage_postgres.py`)
+- [x] 2. Search (`storage_postgres.py`)
   - R2.1.
   - Tests: R2.2.
   - _Requirements: 2.1, 2.2_
