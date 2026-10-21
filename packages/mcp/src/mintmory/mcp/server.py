@@ -31,7 +31,8 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Literal
+import threading
+from typing import Any, Final, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
 try:
@@ -99,16 +100,45 @@ mcp: FastMCP[Any] = FastMCP(
     ),
 )
 
+TOOL_TENANT_SCOPE: Final[dict[str, str]] = {
+    "memory_add": "create",
+    "memory_get": "read",
+    "memory_search": "read",
+    "memory_dream": "dream",
+    "memory_stats": "read",
+    "session_feedback": "modify",
+    "memory_archive": "modify",
+    "summary_list": "read",
+    "summary_get": "read",
+    "summary_jobs": "create",
+    "summary_put": "create",
+    "memory_note": "create",
+    "notes_list": "read",
+    "docs_changed_with": "read",
+    "docs_timeline": "read",
+    "image_jobs": "create",
+    "image_caption_put": "create",
+    "vision_run": "create",
+    "tenant_create": "directory",
+    "tenant_list": "directory",
+}
+
 _store: StorageBackend | None = None
+_store_lock = threading.Lock()
 _scope_tenant: str = TENANT_GLOBAL
 
 
 def _get_store() -> StorageBackend:
     global _store
     if _store is None:
-        # build_storage() resolves path / creates parent dir / no embedder (MCP local)
-        _store = build_storage()
-        _store.initialise()
+        # Concurrent tool calls run in worker threads: build the adapter once so
+        # two callers never race two backends against the same database file.
+        with _store_lock:
+            if _store is None:
+                # build_storage() resolves path / creates parent dir / no embedder (MCP local)
+                store = build_storage()
+                store.initialise()
+                _store = store
     return _store
 
 
@@ -900,6 +930,40 @@ def vision_run(limit: int = 0, budget_mb: float = 0.0, include_all: bool = False
         tenant_id=_scope_tenant,
     )
     return report.model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Tenant directory tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def tenant_create(tenant_id: str, name: str = "") -> dict[str, Any]:
+    """Create a tenant idempotently.
+
+    Available in every scope; creating a tenant never changes this process's
+    scope. An existing id returns the existing tenant unchanged.
+
+    Args:
+        tenant_id: The tenant id to create (lowercase, validated).
+        name: Optional human-readable tenant name.
+
+    Returns:
+        The stored Tenant as a dict.
+    """
+    store = _get_store()
+    result: dict[str, Any] = store.create_tenant(tenant_id, name).model_dump(mode="json")
+    return result
+
+
+@mcp.tool()
+def tenant_list() -> list[dict[str, Any]]:
+    """List every tenant in the tenant directory (no memory data).
+
+    Available in every scope.
+    """
+    store = _get_store()
+    return [tenant.model_dump(mode="json") for tenant in store.list_tenants()]
 
 
 # ---------------------------------------------------------------------------

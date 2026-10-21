@@ -67,6 +67,8 @@ async def test_all_tools_registered(mcp_client: Client[Any]) -> None:
         "vision_run",
         "docs_changed_with",
         "docs_timeline",
+        "tenant_create",
+        "tenant_list",
     }
 
 

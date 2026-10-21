@@ -26,7 +26,7 @@
   - Tests: the write parts of R3.2 and R4.2; R2.3; R8.1; R8.2.
   - _Requirements: 2.1, 2.3, 3.1, 3.2, 4.1, 4.2, 8.1, 8.2_
 
-- [ ] 4. `tenant_create` / `tenant_list` and the inventory (`server.py`)
+- [x] 4. `tenant_create` / `tenant_list` and the inventory (`server.py`)
   - The two tools per R5; `TOOL_TENANT_SCOPE`; update
     `test_all_tools_registered`.
   - Tests: R5.3; R2.2 inventory; R6.1 schema scan; R8.3.
