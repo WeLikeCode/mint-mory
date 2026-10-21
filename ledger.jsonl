@@ -132,3 +132,4 @@
 {"at":"2026-10-20T23:52:45Z","run":"r-20261020T2352Z-c165","type":"unit.dispatched","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-21T01:51:04Z","detail":"the repository CI is still running on the hand-off commit aedccb4435 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"aedccb4435f1b9821bb0f99bea5980149e577f9a","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-21T01:59:19Z","by":"harness","reason":"the cause is gone: the merge of kiro:tenant-scoped-mcp can go on","type":"plan.resumed"}
+{"at":"2026-10-21T01:59:23Z","head":"aedccb4435f1b9821bb0f99bea5980149e577f9a","pr":45,"target_before":"14bde5a778bc68a9a0d08404c16e119a3215417d","type":"unit.merge_requested","unit":"kiro:tenant-scoped-mcp"}
