@@ -7,7 +7,7 @@
 > Postgres, Docker or a network service; add no skip, skipif or xfail marker and
 > no `pytest.skip(` call.
 
-- [ ] 1. Connection binding and `transaction()` (`storage_postgres.py`)
+- [x] 1. Connection binding and `transaction()` (`storage_postgres.py`)
   - `_tx_conn`, `_conn()`, `transaction()`; every method of R4.2 (reads and
     writes) moved to `_conn()`.
   - Tests: R4.5; `test_pg_transaction_tenancy` rewritten in place (R5.5).

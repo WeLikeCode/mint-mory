@@ -33,6 +33,8 @@ from mintmory.core.types import (
     Tenant,
 )
 
+from packages.core.tests.pg_fakes import FakeConnection, FakePool
+
 
 def _backend() -> PostgresBackend:
     backend = PostgresBackend("postgresql://unused")
@@ -295,16 +297,16 @@ def test_pg_set_tenant_active_tenancy() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.l4("C-74b68113")
+@pytest.mark.l4("C-1b7a83e9")
 def test_pg_transaction_tenancy() -> None:
-    backend = _backend()
-    transaction = getattr(backend, "transaction", None)
-    assert transaction is not None, "PostgresBackend must provide an interim transaction()"
-    with pytest.raises(TenancyNotSupportedError) as excinfo, transaction():
-        pass  # pragma: no cover — the interim raises before yielding
-    assert isinstance(excinfo.value, TenancyNotSupportedError)
-    assert getattr(excinfo.value, "operation", None) == "transaction"
-    assert backend._pool is None
+    conn = FakeConnection()
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+
+    with backend.transaction() as yielded:
+        assert yielded is conn
+
+    assert conn.commits == 1
 
 
 # ---------------------------------------------------------------------------

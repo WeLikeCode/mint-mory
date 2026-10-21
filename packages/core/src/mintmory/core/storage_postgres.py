@@ -29,6 +29,7 @@ import re
 from collections import Counter
 from collections.abc import Generator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -231,6 +232,9 @@ class PostgresBackend:
         self._pool_min = pool_min
         self._pool_max = pool_max
         self._pool: Any = None  # psycopg_pool.ConnectionPool, lazy init
+        self._tx_conn: ContextVar[Any | None] = ContextVar(
+            f"mintmory_pg_tx_{id(self)}", default=None
+        )
         self._vec_available: bool = False
         self._trgm_available: bool = False
         # Lazy-resolved scoring knobs (same pattern as SqliteBackend)
@@ -366,15 +370,40 @@ class PostgresBackend:
             return False
 
     @contextmanager
-    def transaction(self) -> Generator[Any, None, None]:
-        """Interim stub: transaction composition is not available on Postgres yet.
+    def _conn(self) -> Generator[Any, None, None]:
+        """Yield the transaction's connection, or a pooled one that commits."""
+        bound = self._tx_conn.get()
+        if bound is not None:
+            yield bound
+            return
+        assert self._pool is not None
+        with self._pool.connection() as conn:
+            self._register_adapters(conn)
+            yield conn
+            conn.commit()
 
-        Raises ``TenancyNotSupportedError`` before yielding (the real
-        implementation arrives with ``multi-tenancy-postgres-writes``), so no
-        pool access ever happens.
+    @contextmanager
+    def transaction(self) -> Generator[Any, None, None]:
+        """Re-entrant transaction: nested blocks join the outermost one.
+
+        The outermost block takes a pool connection, binds it in the current
+        context, commits on success and unbinds it in ``finally``.  On an
+        exception the pool's connection context rolls it back (once); the
+        backend never calls ``rollback()`` itself.
         """
-        raise TenancyNotSupportedError("transaction")
-        yield  # unreachable — keeps the generator a usable context-manager factory
+        bound = self._tx_conn.get()
+        if bound is not None:
+            yield bound
+            return
+        assert self._pool is not None
+        with self._pool.connection() as conn:
+            self._register_adapters(conn)
+            token = self._tx_conn.set(conn)
+            try:
+                yield conn
+                conn.commit()
+            finally:
+                self._tx_conn.reset(token)
 
     # ------------------------------------------------------------------
     # Test-isolation helper (not part of Protocol; called from conftest)
@@ -404,13 +433,12 @@ class PostgresBackend:
 
         assert self._pool is not None
         wrong_dim_emb = np.zeros(dim, dtype=np.float32)
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             self._register_adapters(conn)
             conn.execute(
                 "UPDATE memories SET embedding = %s WHERE id = %s",
                 (wrong_dim_emb, memory_id),
             )
-            conn.commit()
 
     # ------------------------------------------------------------------
     # Embedding helpers
@@ -484,7 +512,7 @@ class PostgresBackend:
         embedding = self._embed(record.content)
 
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             self._register_adapters(conn)
             conn.execute(
                 """
@@ -533,13 +561,12 @@ class PostgresBackend:
                     record.tenant_id,
                 ),
             )
-            conn.commit()
         return record
 
     def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         self._require_global_tenant(tenant_id, "get_memory")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             row = _execute_dict(
                 conn,
                 f"SELECT {_SELECT_MEMORY} FROM memories WHERE id = %s",
@@ -635,10 +662,9 @@ class PostgresBackend:
         sql = f"UPDATE memories SET {', '.join(sets)} WHERE id = %s"
 
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             self._register_adapters(conn)
             conn.execute(sql, params)
-            conn.commit()
 
         result = self.get_memory(memory_id)
         assert result is not None
@@ -647,24 +673,22 @@ class PostgresBackend:
     def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
         self._require_global_tenant(tenant_id, "archive_memory")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE memories SET is_archived = TRUE, is_active = FALSE, "
                 "updated_at = %s WHERE id = %s",
                 (_utcnow(), memory_id),
             )
-            conn.commit()
 
     def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
         self._require_global_tenant(tenant_id, "supersede_memory")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE memories SET superseded_by = %s, is_active = FALSE, "
                 "is_archived = TRUE, updated_at = %s WHERE id = %s",
                 (by_id, _utcnow(), memory_id),
             )
-            conn.commit()
 
     # ------------------------------------------------------------------
     # Index manifest
@@ -673,7 +697,7 @@ class PostgresBackend:
     def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
         self._require_global_tenant(tenant_id, "manifest_get")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             row = _execute_dict(
                 conn,
                 "SELECT path, collection, size, mtime, content_hash, index_mode, "
@@ -711,7 +735,7 @@ class PostgresBackend:
     ) -> None:
         self._require_global_tenant(tenant_id, "manifest_upsert")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO index_manifest
@@ -741,12 +765,11 @@ class PostgresBackend:
                     tenant_id,
                 ),
             )
-            conn.commit()
 
     def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
         self._require_global_tenant(tenant_id, "manifest_paths")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT path FROM index_manifest WHERE collection = %s AND tenant_id = %s",
                 (collection, tenant_id),
@@ -756,12 +779,11 @@ class PostgresBackend:
     def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
         self._require_global_tenant(tenant_id, "manifest_delete")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 "DELETE FROM index_manifest WHERE path = %s AND tenant_id = %s",
                 (path, tenant_id),
             )
-            conn.commit()
 
     # ------------------------------------------------------------------
     # Feedback — ATOMIC server-side (design §6.3)
@@ -779,7 +801,7 @@ class PostgresBackend:
         """
         self._require_global_tenant(tenant_id, "apply_feedback")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             result = conn.execute(
                 """
                 UPDATE memories SET
@@ -813,9 +835,7 @@ class PostgresBackend:
                 },
             ).fetchone()
             if result is None:
-                conn.rollback()
                 raise KeyError(f"memory {memory_id!r} not found")
-            conn.commit()
 
     # ------------------------------------------------------------------
     # Score providers (backend-specific; called from search / anchor_candidates)
@@ -828,7 +848,7 @@ class PostgresBackend:
             return {}
         assert self._pool is not None
         try:
-            with self._pool.connection() as conn:
+            with self._conn() as conn:
                 rows = conn.execute(
                     """
                     SELECT id, ts_rank(content_tsv, to_tsquery('english', %s)) AS rank
@@ -870,7 +890,7 @@ class PostgresBackend:
             return {}
         assert self._pool is not None
         try:
-            with self._pool.connection() as conn:
+            with self._conn() as conn:
                 score_exprs: list[str] = []
                 where_clauses: list[str] = []
                 params: list[Any] = []
@@ -930,7 +950,7 @@ class PostgresBackend:
             return {}
         assert self._pool is not None
         try:
-            with self._pool.connection() as conn:
+            with self._conn() as conn:
                 self._register_adapters(conn)
                 rows = conn.execute(
                     """
@@ -956,7 +976,7 @@ class PostgresBackend:
             return []
         assert self._pool is not None
         placeholders = ", ".join("%s" for _ in ids)
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 f"SELECT {_SELECT_MEMORY} FROM memories WHERE id IN ({placeholders})",
@@ -969,13 +989,12 @@ class PostgresBackend:
             return
         assert self._pool is not None
         placeholders = ", ".join("%s" for _ in ids)
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 f"UPDATE memories SET retrieval_count = retrieval_count + 1, "
                 f"last_accessed_at = %s WHERE id IN ({placeholders})",
                 [now, *ids],
             )
-            conn.commit()
 
     # ------------------------------------------------------------------
     # Lazy config resolvers
@@ -1075,7 +1094,7 @@ class PostgresBackend:
                 f"(source_memory_id IN ({placeholders}) "
                 f" OR target_memory_id IN ({placeholders}))"
             )
-            with self._pool.connection() as conn:
+            with self._conn() as conn:
                 rows = conn.execute(sql, params_list).fetchall()
 
             next_frontier: set[str] = set()
@@ -1105,7 +1124,7 @@ class PostgresBackend:
         if cap <= 0:
             return []
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 """
@@ -1133,7 +1152,7 @@ class PostgresBackend:
         if cap <= 0:
             return []
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 """
@@ -1160,7 +1179,7 @@ class PostgresBackend:
     ) -> MemoryRecord | None:
         self._require_global_tenant(tenant_id, "find_image_file_record")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             row = _execute_dict(
                 conn,
                 f"""
@@ -1198,7 +1217,7 @@ class PostgresBackend:
     def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         self._require_global_tenant(tenant_id, "list_image_file_records")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 f"""
@@ -1214,7 +1233,7 @@ class PostgresBackend:
     def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
         self._require_global_tenant(tenant_id, "memory_exists_with_content")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             row = conn.execute(
                 "SELECT 1 FROM memories WHERE content = %s LIMIT 1", (content,)
             ).fetchone()
@@ -1255,7 +1274,7 @@ class PostgresBackend:
         sql += " LIMIT %s"
         params.append(limit)
 
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(conn, sql, params).fetchall()
         records = [self._row_to_memory(r) for r in rows]
 
@@ -1287,7 +1306,7 @@ class PostgresBackend:
     def add_link(self, link: ConceptLink) -> ConceptLink:
         self._require_global_tenant(link.tenant_id, "add_link")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO concept_links
@@ -1313,7 +1332,6 @@ class PostgresBackend:
                     link.tenant_id,
                 ),
             )
-            conn.commit()
         return link
 
     def get_links(
@@ -1334,7 +1352,7 @@ class PostgresBackend:
         if link_type is not None:
             sql += " AND link_type = %s"
             params.append(link_type.value)
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(conn, sql, params).fetchall()
         return [self._row_to_link(r) for r in rows]
 
@@ -1361,7 +1379,7 @@ class PostgresBackend:
     def create_session(self, session: QuerySession) -> QuerySession:
         self._require_global_tenant(session.tenant_id, "create_session")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO query_sessions
@@ -1381,13 +1399,12 @@ class PostgresBackend:
                     session.tenant_id,
                 ),
             )
-            conn.commit()
         return session
 
     def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
         self._require_global_tenant(tenant_id, "get_session")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             row = _execute_dict(
                 conn,
                 "SELECT id, query_text, created_at, confidence_rating, reasoning, "
@@ -1438,10 +1455,8 @@ class PostgresBackend:
             )
             for r in results
         ]
-        with self._pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.executemany(sql, rows)
-            conn.commit()
+        with self._conn() as conn, conn.cursor() as cur:
+            cur.executemany(sql, rows)
 
     def update_session_feedback(
         self,
@@ -1454,7 +1469,7 @@ class PostgresBackend:
         useful_set = set(useful_ids)
         stale_set = set(stale_ids)
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 UPDATE query_sessions SET
@@ -1483,16 +1498,14 @@ class PostgresBackend:
                         memory_id,
                     ),
                 )
-            conn.commit()
 
     def mark_session_concluded(self, session_id: str) -> None:
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE query_sessions SET concluded = TRUE WHERE id = %s",
                 (session_id,),
             )
-            conn.commit()
 
     # ------------------------------------------------------------------
     # MemorySummary
@@ -1503,7 +1516,7 @@ class PostgresBackend:
         existing = self.get_summary(summary.concept)
         summary_id = existing.id if existing is not None else summary.id
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO memory_summaries
@@ -1525,7 +1538,6 @@ class PostgresBackend:
                     summary.tenant_id,
                 ),
             )
-            conn.commit()
         result = self.get_summary(summary.concept)
         assert result is not None
         return result
@@ -1533,7 +1545,7 @@ class PostgresBackend:
     def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
         self._require_global_tenant(tenant_id, "get_summary")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             row = _execute_dict(
                 conn,
                 "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
@@ -1556,7 +1568,7 @@ class PostgresBackend:
     def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
         self._require_global_tenant(tenant_id, "list_summaries")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
@@ -1583,7 +1595,7 @@ class PostgresBackend:
     def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
         self._require_global_tenant(tenant_id, "get_stats")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
             active = conn.execute(
                 "SELECT COUNT(*) FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
@@ -1631,7 +1643,7 @@ class PostgresBackend:
     def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         self._require_global_tenant(tenant_id, "get_flagged_memories")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 f"SELECT {_SELECT_MEMORY} FROM memories WHERE flagged_for_review = TRUE",
@@ -1643,7 +1655,7 @@ class PostgresBackend:
     ) -> list[MemoryRecord]:
         self._require_global_tenant(tenant_id, "get_never_accessed_stale")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 f"SELECT {_SELECT_MEMORY} FROM memories "
@@ -1663,7 +1675,7 @@ class PostgresBackend:
     ) -> list[MemoryRecord]:
         self._require_global_tenant(tenant_id, "get_high_staleness_useful")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = _execute_dict(
                 conn,
                 f"SELECT {_SELECT_MEMORY} FROM memories "
@@ -1680,7 +1692,7 @@ class PostgresBackend:
     ) -> list[str]:
         self._require_global_tenant(tenant_id, "get_anomaly_high_staleness_useful_ids")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT id FROM memories "
                 "WHERE staleness_score >= %s AND usefulness_score >= %s "
@@ -1695,7 +1707,7 @@ class PostgresBackend:
     ) -> list[str]:
         self._require_global_tenant(tenant_id, "get_anomaly_never_accessed_ids")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT id FROM memories "
                 "WHERE retrieval_count = 0 AND created_at < %s "
@@ -1708,7 +1720,7 @@ class PostgresBackend:
     def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
         self._require_global_tenant(tenant_id, "get_anomaly_flagged_ids")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT id FROM memories WHERE flagged_for_review = TRUE ORDER BY id"
             ).fetchall()
@@ -1722,7 +1734,7 @@ class PostgresBackend:
         sql = "SELECT id FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
         if ordered:
             sql += " ORDER BY id"
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(sql).fetchall()
         return [r[0] for r in rows]
 
@@ -1731,7 +1743,7 @@ class PostgresBackend:
     ) -> list[str]:
         self._require_global_tenant(tenant_id, "get_stale_archivable_ids")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT id FROM memories "
                 "WHERE is_stale = TRUE AND staleness_score >= %s AND is_archived = FALSE "
@@ -1747,7 +1759,7 @@ class PostgresBackend:
     ) -> list[tuple[str, float]]:
         self._require_global_tenant(tenant_id, "get_rehabilitable_rows")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT id, staleness_score FROM memories "
                 "WHERE is_stale = TRUE AND usefulness_score > staleness_score "
@@ -1761,7 +1773,7 @@ class PostgresBackend:
     def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
         self._require_global_tenant(tenant_id, "get_existing_relates_to_pairs")
         assert self._pool is not None
-        with self._pool.connection() as conn:
+        with self._conn() as conn:
             rows = conn.execute(
                 "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = %s",
                 (ConceptLinkType.RELATES_TO.value,),
