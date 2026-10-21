@@ -59,3 +59,6 @@
 {"ts": "2026-10-21T07:37:53.139085Z", "run_id": "r-20261021T0729Z-ec22", "unit": "kiro:cross-tenant-copy", "seq": 59, "type": "budget.cost", "usd": 0.009537828, "profile": "deepseek", "task": "1.1", "fix_unit": "cross-tenant-copy-fix-1"}
 {"ts": "2026-10-21T07:37:53.163628Z", "run_id": "r-20261021T0729Z-ec22", "unit": "kiro:cross-tenant-copy", "seq": 60, "type": "step.timed", "phase": "red", "task": "1.1", "attempt": 2, "seconds": 58.0, "fix_unit": "cross-tenant-copy-fix-1"}
 {"ts": "2026-10-21T07:37:53.165855Z", "run_id": "r-20261021T0729Z-ec22", "unit": "kiro:cross-tenant-copy", "seq": 61, "type": "question.raised", "id": "Q-001", "task": "1.1", "kind": "ambiguous", "title": "Conflicting frozen test blocks the R3.2 fix", "fix_unit": "cross-tenant-copy-fix-1"}
+{"ts": "2026-10-21T07:37:56.541304Z", "run_id": "r-20261021T0729Z-ec22", "unit": "kiro:cross-tenant-copy", "seq": 62, "type": "pr.labels", "number": 46, "labels": ["l4:fixing", "l4:needs-answers"]}
+{"ts": "2026-10-21T07:37:57.770536Z", "run_id": "r-20261021T0729Z-ec22", "unit": "kiro:cross-tenant-copy", "seq": 63, "type": "lock.released"}
+{"ts": "2026-10-21T07:37:57.771445Z", "run_id": "r-20261021T0729Z-ec22", "unit": "kiro:cross-tenant-copy", "seq": 64, "type": "run.finished", "exit_code": 11}
