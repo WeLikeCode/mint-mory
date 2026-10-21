@@ -162,3 +162,4 @@
 {"at":"2026-10-21T08:07:46Z","detail":"the repository CI is still running on the hand-off commit f4f731ba01 (no CI of the repository is listed for it yet, and it was handed off less than 10 minutes ago): the plan merges when it is green","head":"f4f731ba01c7f4b9a290ec6eb3c944b566e7fd51","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:cross-tenant-copy"}
 {"at":"2026-10-21T08:18:07Z","by":"harness","reason":"the cause is gone: the merge of kiro:cross-tenant-copy can go on","type":"plan.resumed"}
 {"at":"2026-10-21T08:18:14Z","head":"f4f731ba01c7f4b9a290ec6eb3c944b566e7fd51","pr":46,"target_before":"146d99b529fb4619ee641f4ccaa174a3f488e9b0","type":"unit.merge_requested","unit":"kiro:cross-tenant-copy"}
+{"at":"2026-10-21T08:18:20Z","ci":"green","head":"f4f731ba01c7f4b9a290ec6eb3c944b566e7fd51","merge_commit":"bc8df7cc8b253b845be2786229014df03114b384","method":"squash","pr":46,"raced":false,"type":"unit.merged","unit":"kiro:cross-tenant-copy"}
