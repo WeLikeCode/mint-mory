@@ -58,6 +58,7 @@ from mintmory.core.types import (
     SearchResponse,
     TenancyNotSupportedError,
     Tenant,
+    TenantMigrationError,
 )
 
 if TYPE_CHECKING:
@@ -67,6 +68,36 @@ if TYPE_CHECKING:
 # Advisory lock ID — prevents N-replica DDL races in initialise()
 # ---------------------------------------------------------------------------
 _ADVISORY_LOCK_ID = 0x4D494E544D4F5259  # "MINTMORY" hex as int64
+
+# Tables that carry a tenant_id column, in the order of schema_postgres.sql.
+_TENANT_TABLES: tuple[str, ...] = (
+    "memories",
+    "concept_links",
+    "memory_summaries",
+    "index_manifest",
+    "query_sessions",
+    "query_results",
+)
+
+# Tenant indexes added by the in-place migration (schema_postgres.sql omits
+# them on purpose, so a fresh database gets them from the migration path).
+_TENANT_INDEX_STATEMENTS: tuple[tuple[str, str], ...] = (
+    (
+        "idx_memories_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_memories_tenant "
+        "ON memories (tenant_id, is_active, is_archived)",
+    ),
+    (
+        "idx_links_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_links_tenant "
+        "ON concept_links (tenant_id, source_memory_id, link_type)",
+    ),
+    (
+        "idx_sessions_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_tenant "
+        "ON query_sessions (tenant_id, concluded, created_at)",
+    ),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +284,10 @@ class PostgresBackend:
             self._register_adapters(conn)
             conn.execute(f"SELECT pg_advisory_xact_lock({_ADVISORY_LOCK_ID})")
             self._create_schema(conn)
+            try:
+                self._ensure_tenant_columns(conn)
+            except Exception as exc:
+                raise TenantMigrationError(str(exc)) from exc
             conn.commit()
 
         self._probe_capabilities()
@@ -1743,7 +1778,42 @@ class PostgresBackend:
         raise TenancyNotSupportedError("set_tenant_active")
 
     def _ensure_tenant_columns(self, conn: Any) -> None:
-        raise NotImplementedError
+        """Read the catalog and apply the tenant migration plan on *conn*."""
+        tables = list(_TENANT_TABLES)
+        column_rows = _execute_dict(
+            conn,
+            """
+            SELECT table_name::text AS table_name, column_name::text AS column_name
+              FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = ANY(%s)
+            """,
+            (tables,),
+        ).fetchall()
+        constraint_rows = _execute_dict(
+            conn,
+            """
+            SELECT r.relname::text AS table_name, c.conname::text AS conname,
+                   c.contype::text AS contype,
+                   array_agg(a.attname::text ORDER BY k.ord)::text[] AS columns
+              FROM pg_constraint c
+              JOIN pg_class r ON r.oid = c.conrelid
+              JOIN pg_namespace n ON n.oid = r.relnamespace AND n.nspname = current_schema()
+              CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+             WHERE c.contype IN ('u', 'p') AND r.relname = ANY(%s)
+             GROUP BY r.relname, c.conname, c.contype
+            """,
+            (tables,),
+        ).fetchall()
+        index_rows = _execute_dict(
+            conn,
+            "SELECT indexname::text AS indexname FROM pg_indexes "
+            "WHERE schemaname = current_schema()",
+        ).fetchall()
+
+        snapshot = pg_catalog_snapshot(column_rows, constraint_rows, index_rows)
+        for statement in plan_pg_tenant_migration(*snapshot):
+            conn.execute(statement)
 
 
 def plan_pg_tenant_migration(
@@ -1752,7 +1822,50 @@ def plan_pg_tenant_migration(
     primary_keys: dict[str, tuple[str, tuple[str, ...]]],
     indexes: set[str],
 ) -> list[str]:
-    raise NotImplementedError
+    """Build the ordered statements that give a Postgres schema tenant parity."""
+    statements: list[str] = []
+
+    for table in _TENANT_TABLES:
+        if "tenant_id" not in columns.get(table, set()):
+            statements.append(
+                f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL "
+                "DEFAULT 'global' REFERENCES tenants(id)"
+            )
+
+    link_key = ("tenant_id", "source_memory_id", "target_memory_id", "link_type")
+    link_uniques = uniques.get("concept_links", [])
+    if not any(cols == link_key for _name, cols in link_uniques):
+        old_link_key = ("source_memory_id", "target_memory_id", "link_type")
+        for name, cols in link_uniques:
+            if cols == old_link_key:
+                statements.append(f'ALTER TABLE concept_links DROP CONSTRAINT "{name}"')
+        statements.append(
+            "ALTER TABLE concept_links ADD CONSTRAINT concept_links_tenant_unique "
+            "UNIQUE (tenant_id, source_memory_id, target_memory_id, link_type)"
+        )
+
+    summary_key = ("tenant_id", "concept")
+    summary_uniques = uniques.get("memory_summaries", [])
+    if not any(cols == summary_key for _name, cols in summary_uniques):
+        for name, cols in summary_uniques:
+            if cols == ("concept",):
+                statements.append(f'ALTER TABLE memory_summaries DROP CONSTRAINT "{name}"')
+        statements.append(
+            "ALTER TABLE memory_summaries ADD CONSTRAINT memory_summaries_tenant_concept_key "
+            "UNIQUE (tenant_id, concept)"
+        )
+
+    manifest_pk = primary_keys.get("index_manifest")
+    if manifest_pk is None or manifest_pk[1] != ("tenant_id", "path"):
+        if manifest_pk is not None:
+            statements.append(f'ALTER TABLE index_manifest DROP CONSTRAINT "{manifest_pk[0]}"')
+        statements.append("ALTER TABLE index_manifest ADD PRIMARY KEY (tenant_id, path)")
+
+    for name, statement in _TENANT_INDEX_STATEMENTS:
+        if name not in indexes:
+            statements.append(statement)
+
+    return statements
 
 
 def pg_catalog_snapshot(
@@ -1765,4 +1878,20 @@ def pg_catalog_snapshot(
     dict[str, tuple[str, tuple[str, ...]]],
     set[str],
 ]:
-    raise NotImplementedError
+    """Turn catalog rows into the four inputs of ``plan_pg_tenant_migration``."""
+    columns: dict[str, set[str]] = {}
+    for row in column_rows:
+        columns.setdefault(row["table_name"], set()).add(row["column_name"])
+
+    uniques: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
+    primary_keys: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for row in constraint_rows:
+        table = row["table_name"]
+        entry = (row["conname"], tuple(row["columns"]))
+        if row["contype"] == "u":
+            uniques.setdefault(table, []).append(entry)
+        elif row["contype"] == "p":
+            primary_keys[table] = entry
+
+    indexes = {row["indexname"] for row in index_rows}
+    return columns, uniques, primary_keys, indexes

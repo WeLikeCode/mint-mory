@@ -15,7 +15,7 @@
   - Tests: the text checks of R1.5.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-- [ ] 3. In-place migration (`storage_postgres.py`)
+- [x] 3. In-place migration (`storage_postgres.py`)
   - `plan_pg_tenant_migration`, `pg_catalog_snapshot`, `_ensure_tenant_columns`
     with the catalog reads, the call in `initialise()` inside the pool block,
     `TenantMigrationError` on failure.
