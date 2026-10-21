@@ -188,3 +188,4 @@
 {"at":"2026-10-21T18:02:53Z","attempt":1,"cost_usd":1.817323,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T18:03:52Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres-writes"}
 {"at":"2026-10-21T18:03:52Z","run":"r-20261021T1803Z-808e","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres-writes"}
+{"at":"2026-10-21T18:30:43Z","detail":"awaiting_human: no new answers (open: Q-001, Q-002)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:multi-tenancy-postgres-writes"}
