@@ -5,7 +5,7 @@
 > the touched packages after each; full `.l4/config.yaml` gates before the PR. No
 > test needs Postgres, Docker or a network service.
 
-- [ ] 1. Report, errors and validation (`transfer.py`)
+- [x] 1. Report, errors and validation (`transfer.py`)
   - `COPY_MAX`, `CopySelectionError`, `CopyReport`, the validation of R2 in order.
   - Tests: every rejection of R2.1 with type and message (R9.7).
   - _Requirements: 1.1, 2.1, 2.2, 9.7_
