@@ -30,7 +30,7 @@
   - Tests: R5.2, R5.7 (reference errors).
   - _Requirements: 3.1, 3.2, 5.2, 5.7_
 
-- [ ] 5. Conformance tests (`packages/core/tests/conformance/test_conformance_tenancy_writes.py`)
+- [x] 5. Conformance tests (`packages/core/tests/conformance/test_conformance_tenancy_writes.py`)
   - R7.1 through the existing `backend` fixture.
   - _Requirements: 7.1_
 
