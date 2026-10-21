@@ -74,3 +74,8 @@
 {"ts": "2026-10-21T06:37:56.853276Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 74, "type": "budget.cost", "usd": 0.024648233999999998, "profile": "deepseek", "task": "5"}
 {"ts": "2026-10-21T06:37:56.879403Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 75, "type": "step.timed", "phase": "green", "task": "5", "attempt": 1, "seconds": 465.5}
 {"ts": "2026-10-21T06:37:56.884396Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 76, "type": "question.raised", "id": "Q-003", "task": "5", "kind": "technical", "title": "packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy"}
+{"ts": "2026-10-21T06:37:59.853515Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 77, "type": "pr.labels", "number": 46, "labels": ["l4:implementing", "l4:needs-answers"]}
+{"ts": "2026-10-21T06:37:59.860516Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 78, "type": "phase.changed", "from": "implementing", "to": "awaiting_human", "trigger": "questions_blocking", "exit_code": 11, "questions": ["Q-003"], "task": "5"}
+{"ts": "2026-10-21T06:38:02.045268Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 79, "type": "pr.labels", "number": 46, "labels": ["l4:awaiting_human", "l4:needs-answers"]}
+{"ts": "2026-10-21T06:38:03.016492Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 80, "type": "lock.released"}
+{"ts": "2026-10-21T06:38:03.017185Z", "run_id": "r-20261021T0612Z-645f", "unit": "kiro:cross-tenant-copy", "seq": 81, "type": "run.finished", "exit_code": 11}
