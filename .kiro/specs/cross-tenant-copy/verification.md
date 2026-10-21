@@ -1,4 +1,4 @@
-# Verification: kiro:cross-tenant-copy: NEEDS_HUMAN (round 1)
+# Verification: kiro:cross-tenant-copy: FAIL (round 2)
 
 traceability: 35/35 criteria covered by a discriminating test
 
@@ -14,17 +14,17 @@ traceability: 35/35 criteria covered by a discriminating test
 
 | Step | Name | Status | Seconds | Note |
 |---|---|---|---|---|
-| 0 | preconditions | ok | 0.0 | base merged: staging@146d99b529 as e8ce98629c (1 commit) |
-| 1 | integrity | ok | 252.4 | 10 sub-checks (+1 unfrozen by human answers); scope: 18 changed file(s) |
-| 2 | build | ok | 6.7 |  |
-| 3 | tests | ok | 118.3 |  |
-| 4 | traceability | ok | 0.2 | 35/35 criteria covered |
+| 0 | preconditions | reused | 0.0 | reused (round 1) |
+| 1 | integrity | reused | 0.0 | reused (round 1) |
+| 2 | build | reused | 0.0 | reused (round 1) |
+| 3 | tests | reused | 0.0 | reused (round 1) |
+| 4 | traceability | reused | 0.0 | reused (round 1) |
 | 4a | audit sampling | not_run | 0.0 | roles.verifier_agent is empty |
 | 5 | ui test generation | not_run | 0.0 | verifier.playwright.enabled is off |
-| 6 | quality | ok | 0.0 | diff coverage not measured: pytest-cov is active; two coverage measurements would corrupt each other |
-| 8 | s1 judge | ok | 2.8 | 32/35 criteria judged by jev; the state does not fit 450 tokens even without the excerpt |
-| 9 | judge | ok | 80.5 | 2 call(s) |
-| 10 | aggregation | ok | 0.0 | NEEDS_HUMAN |
+| 6 | quality | reused | 0.0 | reused (round 1) |
+| 8 | s1 judge | reused | 0.0 | reused (round 1) |
+| 9 | judge | reused | 0.0 | reused (round 1) |
+| 10 | aggregation | ok | 0.0 | FAIL |
 
 ## Gates
 
@@ -183,6 +183,11 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-86c2ff91 | ok | 0.900 | jev-1.13.0 | jev | evidence cut to fit the budget |
 | C-00790979 | ok | 0.870 | jev-1.13.0 | jev | evidence cut to fit the budget |
 
+## Human verdicts
+
+- Q-004 reject C-3affbf7d by human: R3.2 is not implemented. _select (packages/core/src/mintmory/core/transfer.py:72-109) never compares the remaining filter/all_active rows with COPY_MAX; the only cap check is len(plan) at :247, after duplicates are skipped, which is R3.4's rule (records to copy). test_skipped_duplicates_do_not_count...
+- Q-005 reject F-37e92031 by human: confirmed against the code: _select (transfer.py:72-109) has no R3.2 check on the remaining filter/all_active rows; only len(plan) is checked at :247 after duplicate skipping (R3.4). Add the R3.2 check in _select after superseded rows are dropped. WHEN all_active or a filter selects more than COPY_M...
+
 ## Criteria
 
 | Id | Criterion | Judge | Result | Reason |
@@ -191,7 +196,7 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 | C-21e82523 | Req 2.1 | pass | pass | the judge passed it and a discriminating test passes |
 | C-18841969 | Req 2.2 | pass | pass | the judge passed it and a discriminating test passes |
 | C-0380775d | Req 3.1 | pass | pass | the judge passed it and a discriminating test passes |
-| C-3affbf7d | Req 3.2 | fail | needs_human | judge fail counted as insufficient_evidence: counterexample unexecuted (not executed in M0: the verifier worktree is M1 (verifier 1.5)) |
+| C-3affbf7d | Req 3.2 | fail | fail | rejected by human: R3.2 is not implemented. _select (packages/core/src/mintmory/core/transfer.py:72-109) never compares the remaining filter/all_active rows with COPY_MAX; the only cap check is len(plan) at :247, after duplicates are skipped, which is R3.4's rule (records to copy). test_skipped_dupl... |
 | C-d9e27376 | Req 3.3 | pass | pass | the judge passed it and a discriminating test passes |
 | C-93dcf70e | Req 3.4 | pass | pass | the judge passed it and a discriminating test passes |
 | C-7c07d4ec | Req 4.1 | pass | pass | the judge passed it and a discriminating test passes |
@@ -226,7 +231,12 @@ Skipped in files the unit did not touch: `packages.core.tests.conformance.test_b
 
 ## Findings
 
-- [major, judge] R3.2 cap on filter/all_active rows is not enforced before duplicate skipping (criterion C-3affbf7d): _select never compares the remaining filter or all_active rows against COPY_MAX. Only len(plan) is checked, after duplicates are skipped. test_skipped_duplicates_do_not_count_toward_copy_max encodes this behaviour, which contradicts R3.2.
+- [major, human] R3.2 cap on filter/all_active rows is not enforced before duplicate skipping (criterion C-3affbf7d): _select never compares the remaining filter or all_active rows against COPY_MAX. Only len(plan) is checked, after duplicates are skipped. test_skipped_duplicates_do_not_count_toward_copy_max encodes this behaviour, which contradicts R3.2. [rejected by human (confirmed against the code: _select (transfer.py:72-109) has no R3.2 check on the remaining filter/all_active rows; only len(plan) is checked at :247 after duplicate skipping (R3.4). Add the R3.2 check in _select after superseded rows are dropped. WHEN all_active or a filter selects more than COPY_MAX non-superseded rows in the source tena...
+
+## Fix unit
+
+Fix unit 1 is created for these tasks:
+- F-37e92031 R3.2 cap on filter/all_active rows is not enforced before duplicate skipping
 
 ## New tests (red then green, `task.red_ok` in the ledger)
 
