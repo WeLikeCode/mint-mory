@@ -140,3 +140,5 @@
 {"at":"2026-10-21T02:01:44Z","attempt":1,"cost_usd":1.800906,"runs":2,"type":"plan.charged","unit":"kiro:tenant-scoped-mcp"}
 {"at":"2026-10-21T02:02:33Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:cross-tenant-copy"}
 {"at":"2026-10-21T02:02:33Z","run":"r-20261021T0202Z-9e81","type":"unit.dispatched","unit":"kiro:cross-tenant-copy"}
+{"at":"2026-10-21T03:51:35Z","attempt":1,"cost_usd":0.106927,"runs":1,"type":"plan.charged","unit":"kiro:cross-tenant-copy"}
+{"at":"2026-10-21T03:51:35Z","detail":"task 2: max_task_attempts (3) reached in red on glm (3), deepseek (2); last failure: vacuous: C-02945d2c (none of its tests fails by assertion: packages.core.tests.test_transfer_selection::test_duplicate_contents_inside_one_selection_copy_once, packages.core.tests.test_transfer_selection::test_inact","reason":"unit_halted","type":"plan.stopped","unit":"kiro:cross-tenant-copy"}

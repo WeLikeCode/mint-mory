@@ -2,11 +2,11 @@
 
 - Status: stopped
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at 7ae2320de153d99a3aef4d11ef87be3d8b8e4aac
+- Target: staging at db0436bc5abf44f807c3129b90040fb5de13b97b
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-20T20:38:37Z
-- Stopped: unit_halted (kiro:multi-tenancy-cli): task 1.1: max_task_attempts (3) reached in single; last failure: new failing tests added in green: packages.cli.tests.test_cli_help_no_colour::test_help_resets_forced_colour_and_documents_tenant_option
+- Written: 2026-10-21T03:51:35Z
+- Stopped: unit_halted (kiro:cross-tenant-copy): task 2: max_task_attempts (3) reached in red on glm (3), deepseek (2); last failure: vacuous: C-02945d2c (none of its tests fails by assertion: packages.core.tests.test_transfer_selection::test_duplicate_contents_inside_one_selection_copy_once, packages.core.tests.test_transfer_selection::test_inact
 
 ## Units
 
@@ -39,25 +39,25 @@
 - Usage: $2.01, 5 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-cli
-- Result: not integrated
-- Pull request: <forge>/WeLikeCode/mint-mory/pull/44
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $5.78, 8 run(s), 1 attempt(s)
+- Result: integrated at 14bde5a778bc68a9a0d08404c16e119a3215417d
+- Pull request: 44
+- Merge commit: 14bde5a778bc68a9a0d08404c16e119a3215417d
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $8.92, 10 run(s), 1 attempt(s)
 
 ### kiro:tenant-scoped-mcp
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at db0436bc5abf44f807c3129b90040fb5de13b97b
+- Pull request: 45
+- Merge commit: db0436bc5abf44f807c3129b90040fb5de13b97b
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.80, 2 run(s), 1 attempt(s)
 
 ### kiro:cross-tenant-copy
 - Result: not integrated
-- Pull request: none
+- Pull request: <forge>/WeLikeCode/mint-mory/pull/46
 - Merge commit: none
 - Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Usage: $0.11, 1 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-postgres
 - Result: not integrated
@@ -88,6 +88,6 @@
 
 ## Usage
 
-- Cost: $16.76
+- Cost: $21.81
 - Of which the readiness review: $3.64
-- Runs that dispatched a unit: 23
+- Runs that dispatched a unit: 28
