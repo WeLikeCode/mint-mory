@@ -13,6 +13,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 |----|--------|----------|------|----------|
 | Q-001 | accepted | 4 | technical | packages/mcp/tests/test_mcp_tenancy_directory.py:87-115 and :257 omit tenant_copy from the frozen expected inventory |
 | Q-002 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
+| Q-003 | open | 5 | technical | packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy |
 <!-- l4:index:end -->
 
 ---
@@ -56,6 +57,29 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/mcp/tests/test_tools.py`: add `"tenant_copy",` after `"tenant_list",` in the expected names set of test_all_tools_registered.
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-003: packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy
+
+- **Status:** open
+- **Blocking tasks:** 5
+- **Kind:** technical
+- **Asked:** 2026-10-21T06:37Z by deepseek, run r-20261021T0612Z-645f, task 5
+
+### Context
+The test copies one memory (`w1`, `memories_copied == 1`) via `--entity Widget` and then asserts `entity_report["id_map"] == {}`. Requirement 1 defines `id_map` as source id -> new id, Requirement 5.1 assigns the new id while planning before any write, and R9.2/R9.10/MCP tests assert the copied ids appear in `id_map`. An empty `id_map` with `memories_copied == 1` is impossible under the spec and design, so the test is wrong.
+
+Harness note: the red tests and test-support files of this task are frozen. To let the next green change `packages/cli/tests/test_cli_tenant_copy.py`, set **Status** to `accepted` or `answered` to take option 1, which names the file, or write an answer that names its path or run `l4 questions accept Q-NNN --unit cross-tenant-copy`, then commit and push. An ignore file is never unfrozen by an answer, whatever it says. An answer that does not name the file leaves it frozen, and an answer edited after a run has used it counts as an override and unfreezes nothing.
+
+### Options
+1. Edit `packages/cli/tests/test_cli_tenant_copy.py`: replace `assert entity_report["id_map"] == {}` with `assert list(entity_report["id_map"]) == ["w1"]`
+
+### Clarifier suggestion
+Edit `packages/cli/tests/test_cli_tenant_copy.py`: replace `assert entity_report["id_map"] == {}` with `assert list(entity_report["id_map"]) == ["w1"]`
 
 ### Answer
 <!-- write below this line -->
