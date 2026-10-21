@@ -19,7 +19,7 @@
     functions rewritten in place (R5.5).
   - _Requirements: 1.1, 1.2, 1.3, 5.4, 5.5, 5.7_
 
-- [ ] 3. Write guard (`storage_postgres.py`)
+- [x] 3. Write guard (`storage_postgres.py`)
   - R2.1–R2.4 with the private lookup helpers.
   - Tests: R5.1, R5.3, R5.6; the write `test_pg_<method>_tenancy` functions
     rewritten in place (R5.5).

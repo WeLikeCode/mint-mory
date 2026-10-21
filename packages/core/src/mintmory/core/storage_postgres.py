@@ -49,6 +49,7 @@ from mintmory.core.types import (
     TENANT_GLOBAL,
     ConceptLink,
     ConceptLinkType,
+    CrossTenantLinkError,
     MemoryFilter,
     MemoryRecord,
     MemoryStats,
@@ -61,6 +62,8 @@ from mintmory.core.types import (
     SearchResponse,
     TenancyNotSupportedError,
     Tenant,
+    TenantImmutableError,
+    TenantInactiveError,
     TenantMigrationError,
     TenantNotFoundError,
     validate_tenant_id,
@@ -509,7 +512,6 @@ class PostgresBackend:
     ) -> MemoryRecord:
         if record is None:
             record = MemoryRecord(**fields)
-        self._require_global_tenant(record.tenant_id, "add_memory")
         if not record.entity_ids:
             record.entity_ids = extract_entities(record.content)
 
@@ -518,6 +520,16 @@ class PostgresBackend:
         assert self._pool is not None
         with self._conn() as conn:
             self._register_adapters(conn)
+            if record.superseded_by is not None:
+                target_tenant = self._stored_tenant(conn, record.superseded_by)
+                if target_tenant is not None and target_tenant != record.tenant_id:
+                    raise CrossTenantLinkError(
+                        record.id,
+                        record.tenant_id,
+                        record.superseded_by,
+                        target_tenant,
+                    )
+            self._assert_tenant_writable(conn, record.tenant_id)
             conn.execute(
                 """
                 INSERT INTO memories (
@@ -589,110 +601,154 @@ class PostgresBackend:
         ``reinforcement_count``, ``retrieval_count`` are EXCLUDED from the UPDATE
         unless the caller explicitly includes them in ``fields``.
         """
-        if "tenant_id" in fields:
-            requested_tenant = fields.pop("tenant_id")
-            self._require_global_tenant(
-                None if requested_tenant is None else str(requested_tenant),
-                "update_memory",
-            )
-
-        existing = self.get_memory(memory_id)
-        if existing is None:
-            raise KeyError(f"memory {memory_id!r} not found")
-
-        data = existing.model_dump()
-        data.update(fields)
-        updated = MemoryRecord(**data)
-        updated.updated_at = _utcnow()
-
-        content_changed = "content" in fields and fields["content"] != existing.content
-        if content_changed and "entity_ids" not in fields:
-            updated.entity_ids = extract_entities(updated.content)
-
-        embedding: np.ndarray | None = self._embed(updated.content) if content_changed else None
-
-        sets: list[str] = [
-            "content = %s",
-            "category = %s",
-            "entity_ids = %s::jsonb",
-            "confidence = %s",
-            "source = %s",
-            "verified = %s",
-            "valid_from = %s",
-            "valid_until = %s",
-            "is_stale = %s",
-            "is_active = %s",
-            "is_archived = %s",
-            "superseded_by = %s",
-            "flagged_for_review = %s",
-            "contradicts_ids = %s::jsonb",
-            "is_note = %s",
-            "updated_at = %s",
-            "last_accessed_at = %s",
-            "metadata = %s::jsonb",
-        ]
-        params: list[Any] = [
-            updated.content,
-            updated.category.value,
-            json.dumps(updated.entity_ids),
-            updated.confidence,
-            updated.source.value,
-            updated.verified,
-            updated.valid_from,
-            updated.valid_until,
-            updated.is_stale,
-            updated.is_active,
-            updated.is_archived,
-            updated.superseded_by,
-            updated.flagged_for_review,
-            json.dumps(updated.contradicts_ids),
-            updated.is_note,
-            updated.updated_at,
-            updated.last_accessed_at,
-            json.dumps(updated.metadata),
-        ]
-
-        # Include counter columns only when explicitly provided by caller
-        for col in sorted(_COUNTER_COLS):
-            if col in fields:
-                sets.append(f"{col} = %s")
-                params.append(getattr(updated, col))
-
-        if content_changed:
-            sets.append("embedding = %s")
-            params.append(embedding)
-
-        params.append(memory_id)
-        sql = f"UPDATE memories SET {', '.join(sets)} WHERE id = %s"
-
         assert self._pool is not None
         with self._conn() as conn:
             self._register_adapters(conn)
-            conn.execute(sql, params)
+            row = _execute_dict(
+                conn,
+                f"SELECT {_SELECT_MEMORY} FROM memories WHERE id = %s",
+                (memory_id,),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"memory {memory_id!r} not found")
+            existing = self._row_to_memory(row)
 
-        result = self.get_memory(memory_id)
-        assert result is not None
-        return result
+            if "tenant_id" in fields:
+                requested_tenant = fields.pop("tenant_id")
+                if requested_tenant != existing.tenant_id:
+                    raise TenantImmutableError(memory_id, existing.tenant_id, str(requested_tenant))
+
+            data = existing.model_dump()
+            data.update(fields)
+            updated = MemoryRecord(**data)
+            updated.updated_at = _utcnow()
+
+            content_changed = "content" in fields and fields["content"] != existing.content
+            if content_changed and "entity_ids" not in fields:
+                updated.entity_ids = extract_entities(updated.content)
+
+            embedding: np.ndarray | None = self._embed(updated.content) if content_changed else None
+
+            sets: list[str] = [
+                "content = %s",
+                "category = %s",
+                "entity_ids = %s::jsonb",
+                "confidence = %s",
+                "source = %s",
+                "verified = %s",
+                "valid_from = %s",
+                "valid_until = %s",
+                "is_stale = %s",
+                "is_active = %s",
+                "is_archived = %s",
+                "superseded_by = %s",
+                "flagged_for_review = %s",
+                "contradicts_ids = %s::jsonb",
+                "is_note = %s",
+                "updated_at = %s",
+                "last_accessed_at = %s",
+                "metadata = %s::jsonb",
+            ]
+            params: list[Any] = [
+                updated.content,
+                updated.category.value,
+                json.dumps(updated.entity_ids),
+                updated.confidence,
+                updated.source.value,
+                updated.verified,
+                updated.valid_from,
+                updated.valid_until,
+                updated.is_stale,
+                updated.is_active,
+                updated.is_archived,
+                updated.superseded_by,
+                updated.flagged_for_review,
+                json.dumps(updated.contradicts_ids),
+                updated.is_note,
+                updated.updated_at,
+                updated.last_accessed_at,
+                json.dumps(updated.metadata),
+            ]
+
+            # Include counter columns only when explicitly provided by caller
+            for col in sorted(_COUNTER_COLS):
+                if col in fields:
+                    sets.append(f"{col} = %s")
+                    params.append(getattr(updated, col))
+
+            if content_changed:
+                sets.append("embedding = %s")
+                params.append(embedding)
+
+            params.append(memory_id)
+            sql = f"UPDATE memories SET {', '.join(sets)} WHERE id = %s"
+
+            superseded_by = fields.get("superseded_by")
+            if superseded_by is not None:
+                target_tenant = self._stored_tenant(conn, str(superseded_by))
+                if target_tenant is not None and target_tenant != existing.tenant_id:
+                    raise CrossTenantLinkError(
+                        memory_id,
+                        existing.tenant_id,
+                        str(superseded_by),
+                        target_tenant,
+                    )
+
+            self._assert_tenant_writable(conn, existing.tenant_id)
+            conn.execute(sql, params)
+            result_row = _execute_dict(
+                conn,
+                f"SELECT {_SELECT_MEMORY} FROM memories WHERE id = %s",
+                (memory_id,),
+            ).fetchone()
+
+        assert result_row is not None
+        return self._row_to_memory(result_row)
 
     def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
-        self._require_global_tenant(tenant_id, "archive_memory")
         assert self._pool is not None
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE memories SET is_archived = TRUE, is_active = FALSE, "
-                "updated_at = %s WHERE id = %s",
-                (_utcnow(), memory_id),
-            )
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if tenant_id is not None and stored_tenant != tenant_id:
+                raise KeyError(f"memory {memory_id!r} not found")
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
+                conn.execute(
+                    "UPDATE memories SET is_archived = TRUE, is_active = FALSE, "
+                    "updated_at = %s WHERE id = %s",
+                    (_utcnow(), memory_id),
+                )
 
     def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
-        self._require_global_tenant(tenant_id, "supersede_memory")
         assert self._pool is not None
         with self._conn() as conn:
-            conn.execute(
-                "UPDATE memories SET superseded_by = %s, is_active = FALSE, "
-                "is_archived = TRUE, updated_at = %s WHERE id = %s",
-                (by_id, _utcnow(), memory_id),
-            )
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if tenant_id is not None:
+                if stored_tenant != tenant_id:
+                    raise KeyError(f"memory {memory_id!r} not found")
+                if self._stored_tenant(conn, by_id) != tenant_id:
+                    raise KeyError(f"memory {by_id!r} not found")
+                self._assert_tenant_writable(conn, tenant_id)
+                conn.execute(
+                    "UPDATE memories SET superseded_by = %s, is_active = FALSE, "
+                    "is_archived = TRUE, updated_at = %s WHERE id = %s",
+                    (by_id, _utcnow(), memory_id),
+                )
+            elif stored_tenant is not None:
+                by_tenant = self._stored_tenant(conn, by_id)
+                if by_tenant is not None and by_tenant != stored_tenant:
+                    raise CrossTenantLinkError(
+                        memory_id,
+                        stored_tenant,
+                        by_id,
+                        by_tenant,
+                    )
+                self._assert_tenant_writable(conn, stored_tenant)
+                conn.execute(
+                    "UPDATE memories SET superseded_by = %s, is_active = FALSE, "
+                    "is_archived = TRUE, updated_at = %s WHERE id = %s",
+                    (by_id, _utcnow(), memory_id),
+                )
 
     # ------------------------------------------------------------------
     # Index manifest
@@ -737,9 +793,9 @@ class PostgresBackend:
         content_hash: str | None = None,
         tenant_id: str = "global",
     ) -> None:
-        self._require_global_tenant(tenant_id, "manifest_upsert")
         assert self._pool is not None
         with self._conn() as conn:
+            self._assert_tenant_writable(conn, tenant_id)
             conn.execute(
                 """
                 INSERT INTO index_manifest
@@ -781,9 +837,9 @@ class PostgresBackend:
         return {row[0] for row in rows}
 
     def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
-        self._require_global_tenant(tenant_id, "manifest_delete")
         assert self._pool is not None
         with self._conn() as conn:
+            self._assert_tenant_writable(conn, tenant_id)
             conn.execute(
                 "DELETE FROM index_manifest WHERE path = %s AND tenant_id = %s",
                 (path, tenant_id),
@@ -803,9 +859,12 @@ class PostgresBackend:
         Non-notes: stale vote increments staleness_score; exceeding
         STALENESS_THRESHOLD triggers is_stale.
         """
-        self._require_global_tenant(tenant_id, "apply_feedback")
         assert self._pool is not None
         with self._conn() as conn:
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if stored_tenant is None or (tenant_id is not None and stored_tenant != tenant_id):
+                raise KeyError(f"memory {memory_id!r} not found")
+            self._assert_tenant_writable(conn, stored_tenant)
             result = conn.execute(
                 """
                 UPDATE memories SET
@@ -996,7 +1055,8 @@ class PostgresBackend:
         with self._conn() as conn:
             conn.execute(
                 f"UPDATE memories SET retrieval_count = retrieval_count + 1, "
-                f"last_accessed_at = %s WHERE id IN ({placeholders})",
+                f"last_accessed_at = %s WHERE id IN ({placeholders}) "
+                f"AND tenant_id IN (SELECT id FROM tenants WHERE is_active)",
                 [now, *ids],
             )
 
@@ -1308,9 +1368,26 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def add_link(self, link: ConceptLink) -> ConceptLink:
-        self._require_global_tenant(link.tenant_id, "add_link")
         assert self._pool is not None
         with self._conn() as conn:
+            source_tenant = self._stored_tenant(conn, link.source_memory_id)
+            target_tenant = self._stored_tenant(conn, link.target_memory_id)
+            if source_tenant is not None and target_tenant is not None:
+                if source_tenant != target_tenant:
+                    raise CrossTenantLinkError(
+                        link.source_memory_id,
+                        source_tenant,
+                        link.target_memory_id,
+                        target_tenant,
+                    )
+                if link.tenant_id != source_tenant:
+                    raise CrossTenantLinkError(
+                        link.source_memory_id,
+                        source_tenant,
+                        link.target_memory_id,
+                        link.tenant_id,
+                    )
+            self._assert_tenant_writable(conn, link.tenant_id)
             conn.execute(
                 """
                 INSERT INTO concept_links
@@ -1381,9 +1458,9 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def create_session(self, session: QuerySession) -> QuerySession:
-        self._require_global_tenant(session.tenant_id, "create_session")
         assert self._pool is not None
         with self._conn() as conn:
+            self._assert_tenant_writable(conn, session.tenant_id)
             conn.execute(
                 """
                 INSERT INTO query_sessions
@@ -1433,8 +1510,6 @@ class PostgresBackend:
     def record_query_results(self, results: list[QueryResult]) -> None:
         if not results:
             return
-        for result in results:
-            self._require_global_tenant(result.tenant_id, "record_query_results")
         assert self._pool is not None
         sql = """
             INSERT INTO query_results
@@ -1459,8 +1534,30 @@ class PostgresBackend:
             )
             for r in results
         ]
-        with self._conn() as conn, conn.cursor() as cur:
-            cur.executemany(sql, rows)
+        with self._conn() as conn:
+            for result in results:
+                session_tenant = self._session_tenant(conn, result.session_id)
+                memory_tenant = self._stored_tenant(conn, result.memory_id)
+                if session_tenant is None or memory_tenant is None:
+                    continue
+                if result.tenant_id != session_tenant:
+                    raise CrossTenantLinkError(
+                        result.session_id,
+                        session_tenant,
+                        result.memory_id,
+                        result.tenant_id,
+                    )
+                if session_tenant != TENANT_GLOBAL and memory_tenant != session_tenant:
+                    raise CrossTenantLinkError(
+                        result.session_id,
+                        session_tenant,
+                        result.memory_id,
+                        memory_tenant,
+                    )
+            for result in results:
+                self._assert_tenant_writable(conn, result.tenant_id)
+            with conn.cursor() as cur:
+                cur.executemany(sql, rows)
 
     def update_session_feedback(
         self,
@@ -1474,6 +1571,9 @@ class PostgresBackend:
         stale_set = set(stale_ids)
         assert self._pool is not None
         with self._conn() as conn:
+            stored_tenant = self._session_tenant(conn, session_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 """
                 UPDATE query_sessions SET
@@ -1506,6 +1606,9 @@ class PostgresBackend:
     def mark_session_concluded(self, session_id: str) -> None:
         assert self._pool is not None
         with self._conn() as conn:
+            stored_tenant = self._session_tenant(conn, session_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 "UPDATE query_sessions SET concluded = TRUE WHERE id = %s",
                 (session_id,),
@@ -1516,11 +1619,11 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def upsert_summary(self, summary: MemorySummary) -> MemorySummary:
-        self._require_global_tenant(summary.tenant_id, "upsert_summary")
-        existing = self.get_summary(summary.concept)
-        summary_id = existing.id if existing is not None else summary.id
         assert self._pool is not None
         with self._conn() as conn:
+            existing_id = self._summary_id(conn, summary.tenant_id, summary.concept)
+            summary_id = existing_id if existing_id is not None else summary.id
+            self._assert_tenant_writable(conn, summary.tenant_id)
             conn.execute(
                 """
                 INSERT INTO memory_summaries
@@ -1542,9 +1645,22 @@ class PostgresBackend:
                     summary.tenant_id,
                 ),
             )
-        result = self.get_summary(summary.concept)
-        assert result is not None
-        return result
+            row = _execute_dict(
+                conn,
+                "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
+                "tenant_id FROM memory_summaries WHERE concept = %s AND tenant_id = %s",
+                (summary.concept, summary.tenant_id),
+            ).fetchone()
+        assert row is not None
+        return MemorySummary(
+            id=row["id"],
+            concept=row["concept"],
+            summary_text=row["summary_text"],
+            memory_count=int(row["memory_count"]),
+            is_current=bool(row["is_current"]),
+            generated_at=_from_pg_dt(row["generated_at"]) or _utcnow(),
+            tenant_id=row["tenant_id"],
+        )
 
     def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
         self._require_global_tenant(tenant_id, "get_summary")
@@ -1903,16 +2019,43 @@ class PostgresBackend:
             conn.execute(statement)
 
     def _assert_tenant_writable(self, conn: Any, tenant_id: str) -> None:
-        raise NotImplementedError
+        """Raise unless ``tenant_id`` exists and is active."""
+        row = _execute_dict(
+            conn,
+            "SELECT is_active FROM tenants WHERE id = %s",
+            (tenant_id,),
+        ).fetchone()
+        if row is None:
+            raise TenantNotFoundError(tenant_id)
+        if not row["is_active"]:
+            raise TenantInactiveError(tenant_id)
 
     def _stored_tenant(self, conn: Any, memory_id: str) -> str | None:
-        raise NotImplementedError
+        """Stored tenant of a memory row, or ``None`` when the row is missing."""
+        row = _execute_dict(
+            conn,
+            "SELECT tenant_id FROM memories WHERE id = %s",
+            (memory_id,),
+        ).fetchone()
+        return None if row is None else str(row["tenant_id"])
 
     def _session_tenant(self, conn: Any, session_id: str) -> str | None:
-        raise NotImplementedError
+        """Stored tenant of a session row, or ``None`` when the row is missing."""
+        row = _execute_dict(
+            conn,
+            "SELECT tenant_id FROM query_sessions WHERE id = %s",
+            (session_id,),
+        ).fetchone()
+        return None if row is None else str(row["tenant_id"])
 
     def _summary_id(self, conn: Any, tenant_id: str, concept: str) -> str | None:
-        raise NotImplementedError
+        """Stored id of a ``(tenant_id, concept)`` summary row, or ``None``."""
+        row = _execute_dict(
+            conn,
+            "SELECT id FROM memory_summaries WHERE tenant_id = %s AND concept = %s",
+            (tenant_id, concept),
+        ).fetchone()
+        return None if row is None else str(row["id"])
 
 
 def plan_pg_tenant_migration(
