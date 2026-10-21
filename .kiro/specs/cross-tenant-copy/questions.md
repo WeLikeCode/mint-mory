@@ -14,6 +14,8 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 4 | technical | packages/mcp/tests/test_mcp_tenancy_directory.py:87-115 and :257 omit tenant_copy from the frozen expected inventory |
 | Q-002 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
 | Q-003 | accepted | 5 | technical | packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy |
+| Q-004 | open | none | verdict | Criterion C-3affbf7d (Req 3.2): accept as satisfied? |
+| Q-005 | open | none | verdict | Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping |
 <!-- l4:index:end -->
 
 ---
@@ -80,6 +82,62 @@ Harness note: the red tests and test-support files of this task are frozen. To l
 
 ### Clarifier suggestion
 Edit `packages/cli/tests/test_cli_tenant_copy.py`: replace `assert entity_report["id_map"] == {}` with `assert list(entity_report["id_map"]) == ["w1"]`
+
+### Answer
+<!-- write below this line -->
+
+---
+
+## Q-004: Criterion C-3affbf7d (Req 3.2): accept as satisfied?
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+- **Criteria:** C-3affbf7d (Req 3.2)
+
+### Context
+Criterion C-3affbf7d (Req 3.2) is needs human after round 1.
+
+Scenario:
+`filter`: `list_memories(filter.model_copy(update={"active_only": True}), tenant_id=source_tenant)` (no limit); `all_active`: the same with `MemoryFilter(exclude_stale=False)` (every active, non-archived memory, stale ones included). Rows with `superseded_by` set are then dropped (a superseded row is not always archived: `update_memory(id, superseded_by=X)` leaves it active), and only then, more than `COPY_MAX` remaining rows → `CopySelectionError(f"selection exceeds {COPY_MAX} memories")`. Dropped rows are counted nowhere.
+
+Why: judge fail counted as insufficient_evidence: counterexample unexecuted (not executed in M0: the verifier worktree is M1 (verifier 1.5))
+Judge: fail
+Tracing tests: packages.core.tests.test_transfer_selection::test_all_active_cap_applies_after_superseded_rows_are_dropped (passed, red_assertion); packages.core.tests.test_transfer_selection::test_all_active_includes_stale_rows_and_drops_superseded (passed, red_assertion); packages.core.tests.test_transfer_selection::test_filter_selects_matching_rows_and_drops_superseded (passed, red_assertion); packages.core.tests.test_transfer_selection::test_filter_with_exclude_stale_false_keeps_stale_rows (passed, red_assertion)
+Ignored tests: none
+
+Answer `accept` if the criterion is satisfied as it stands, or `reject` and say why.
+To set the check the fix must pass, end the reason with one sentence WHEN <the situation> THEN <the behaviour you expect>, with WHEN and THEN in capitals: it becomes a scenario of the fix unit. Without one, the fix is checked against the scenario above as it is written.
+
+### Options
+1. accept
+2. reject: <reason>, then WHEN ... THEN ... to set the check
+
+### Answer
+<!-- write below this line -->
+---
+
+## Q-005: Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping
+
+- **Status:** open
+- **Blocking tasks:** none
+- **Kind:** verdict
+- **Asked:** round 1, verifier
+
+### Context
+The judge raised a major finding in round 1, and no deterministic check confirms it (criterion C-3affbf7d).
+
+Title: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping
+Detail: _select never compares the remaining filter or all_active rows against COPY_MAX. Only len(plan) is checked, after duplicates are skipped. test_skipped_duplicates_do_not_count_toward_copy_max encodes this behaviour, which contradicts R3.2.
+Suggested fix: Raise CopySelectionError in _select when the non-superseded filter rows exceed COPY_MAX.
+
+Answer `accept` to waive the finding, or `reject` and say why: a rejected finding is fixed by a fix unit, and your reason comes first in it.
+To set the check the fix must pass, end the reason with one sentence WHEN <the situation> THEN <the behaviour you expect>, with WHEN and THEN in capitals: it becomes a scenario of the fix unit. Without one, the fix is checked against criterion C-3affbf7d as it is written.
+
+### Options
+1. accept
+2. reject: <reason>, then WHEN ... THEN ... to set the check
 
 ### Answer
 <!-- write below this line -->
