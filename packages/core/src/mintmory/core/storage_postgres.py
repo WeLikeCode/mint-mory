@@ -37,7 +37,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import telemetry
 from mintmory.core.entities import extract_entities
-from mintmory.core.hybrid_search import collect_scores, fuse_and_rank, fuse_and_search
+from mintmory.core.hybrid_search import (
+    _passes_filter,
+    collect_scores,
+    fuse_and_rank,
+    fuse_and_search,
+)
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.scoring import (
     STALE_INCREMENT,
@@ -60,7 +65,6 @@ from mintmory.core.types import (
     SearchAroundSpec,
     SearchRequest,
     SearchResponse,
-    TenancyNotSupportedError,
     Tenant,
     TenantImmutableError,
     TenantInactiveError,
@@ -580,14 +584,14 @@ class PostgresBackend:
         return record
 
     def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
-        self._require_global_tenant(tenant_id, "get_memory")
         assert self._pool is not None
+        sql = f"SELECT {_SELECT_MEMORY} FROM memories WHERE id = %s"
+        params: list[Any] = [memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            row = _execute_dict(
-                conn,
-                f"SELECT {_SELECT_MEMORY} FROM memories WHERE id = %s",
-                (memory_id,),
-            ).fetchone()
+            row = _execute_dict(conn, sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
@@ -755,7 +759,6 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
-        self._require_global_tenant(tenant_id, "manifest_get")
         assert self._pool is not None
         with self._conn() as conn:
             row = _execute_dict(
@@ -827,7 +830,6 @@ class PostgresBackend:
             )
 
     def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
-        self._require_global_tenant(tenant_id, "manifest_paths")
         assert self._pool is not None
         with self._conn() as conn:
             rows = conn.execute(
@@ -906,24 +908,24 @@ class PostgresBackend:
 
     def _fts_scores(self, query: str, limit: int, tenant_id: str | None = None) -> dict[str, float]:
         """tsvector FTS: ts_rank on the generated ``content_tsv`` column."""
-        if tenant_id is not None:
-            raise NotImplementedError
         tsquery = _sanitise_fts_query_pg(query)
         if not tsquery:
             return {}
         assert self._pool is not None
         try:
             with self._conn() as conn:
-                rows = conn.execute(
-                    """
-                    SELECT id, ts_rank(content_tsv, to_tsquery('english', %s)) AS rank
-                    FROM memories
-                    WHERE content_tsv @@ to_tsquery('english', %s)
-                    ORDER BY rank DESC
-                    LIMIT %s
-                    """,
-                    (tsquery, tsquery, limit),
-                ).fetchall()
+                sql = (
+                    "SELECT id, ts_rank(content_tsv, to_tsquery('english', %s)) AS rank "
+                    "FROM memories "
+                    "WHERE content_tsv @@ to_tsquery('english', %s)"
+                )
+                params: list[Any] = [tsquery, tsquery]
+                if tenant_id is not None:
+                    sql += " AND tenant_id = %s"
+                    params.append(tenant_id)
+                sql += " ORDER BY rank DESC LIMIT %s"
+                params.append(limit)
+                rows = conn.execute(sql, params).fetchall()
             return {row[0]: float(row[1]) for row in rows}
         except Exception:  # noqa: BLE001
             return {}
@@ -949,8 +951,6 @@ class PostgresBackend:
         present as a whole in the full-query similarity (i.e. when the query is
         short enough that individual token matching adds signal).
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         if not self._trgm_available:
             return {}
         tokens = _sanitise_trgm_tokens(query)
@@ -982,10 +982,14 @@ class PostgresBackend:
                 if not score_exprs:
                     return {}
 
+                where_clause = " OR ".join(where_clauses)
+                if tenant_id is not None:
+                    where_clause = f"({where_clause}) AND tenant_id = %s"
+                    params.append(tenant_id)
                 sql = (
                     f"SELECT id, GREATEST({', '.join(score_exprs)}) AS sim "
                     f"FROM memories "
-                    f"WHERE {' OR '.join(where_clauses)} "
+                    f"WHERE {where_clause} "
                     f"ORDER BY sim DESC "
                     f"LIMIT %s"
                 )
@@ -1009,8 +1013,6 @@ class PostgresBackend:
         mismatched-dimension rows silently (design §6.2).
         Returns ``{id: -distance}`` (higher = better match).
         """
-        if tenant_id is not None:
-            raise NotImplementedError
         if not self.vector_search_available():
             return {}
         emb: np.ndarray | None
@@ -1024,17 +1026,17 @@ class PostgresBackend:
         try:
             with self._conn() as conn:
                 self._register_adapters(conn)
-                rows = conn.execute(
-                    """
-                    SELECT id, (embedding <=> %s) AS dist
-                    FROM memories
-                    WHERE embedding IS NOT NULL
-                      AND vector_dims(embedding) = %s
-                    ORDER BY dist ASC
-                    LIMIT %s
-                    """,
-                    (emb, int(emb.shape[0]), limit),
-                ).fetchall()
+                sql = (
+                    "SELECT id, (embedding <=> %s) AS dist FROM memories "
+                    "WHERE embedding IS NOT NULL AND vector_dims(embedding) = %s"
+                )
+                params: list[Any] = [emb, int(emb.shape[0])]
+                if tenant_id is not None:
+                    sql += " AND tenant_id = %s"
+                    params.append(tenant_id)
+                sql += " ORDER BY dist ASC LIMIT %s"
+                params.append(limit)
+                rows = conn.execute(sql, params).fetchall()
             return {row[0]: -float(row[1]) for row in rows}
         except Exception:  # noqa: BLE001
             return {}
@@ -1044,18 +1046,17 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def _load_memories(self, ids: list[str], tenant_id: str | None = None) -> list[MemoryRecord]:
-        if tenant_id is not None:
-            raise NotImplementedError
         if not ids:
             return []
         assert self._pool is not None
         placeholders = ", ".join("%s" for _ in ids)
+        sql = f"SELECT {_SELECT_MEMORY} FROM memories WHERE id IN ({placeholders})"
+        params: list[Any] = list(ids)
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            rows = _execute_dict(
-                conn,
-                f"SELECT {_SELECT_MEMORY} FROM memories WHERE id IN ({placeholders})",
-                ids,
-            ).fetchall()
+            rows = _execute_dict(conn, sql, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def _bump_retrieval(self, ids: list[str], now: datetime) -> None:
@@ -1110,28 +1111,61 @@ class PostgresBackend:
         tenant_id: str | None = None,
     ) -> SearchResponse:
         """Hybrid search: FTS + trigram + vector via shared fuse_and_search."""
-        self._require_global_tenant(tenant_id, "search")
         pool_size = max(request.limit * 5, 50)
+
+        def _fts() -> dict[str, float]:
+            if tenant_id is None:
+                return self._fts_scores(request.query, pool_size)
+            return self._fts_scores(request.query, pool_size, tenant_id)
+
+        def _trigram() -> dict[str, float]:
+            if tenant_id is None:
+                return self._trigram_scores(request.query, pool_size)
+            return self._trigram_scores(request.query, pool_size, tenant_id)
+
+        def _vector() -> dict[str, float]:
+            if tenant_id is None:
+                return self._vector_scores(request.query, query_embedding, pool_size)
+            return self._vector_scores(request.query, query_embedding, pool_size, tenant_id)
+
+        def _load(ids: list[str]) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self._load_memories(ids)
+            return self._load_memories(ids, tenant_id)
+
+        def _around(anchors: list[str], spec: SearchAroundSpec) -> list[str]:
+            if tenant_id is None:
+                return self.search_around(anchors, spec)
+            return self.search_around(anchors, spec, tenant_id)
+
+        def _notes(memory_id: str, cap: int) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self.get_annotating_notes(memory_id, cap)
+            return self.get_annotating_notes(memory_id, cap, tenant_id)
+
         fts_scores, trigram_scores, vec_scores = collect_scores(
-            fts_fn=lambda: self._fts_scores(request.query, pool_size),
-            trigram_fn=lambda: self._trigram_scores(request.query, pool_size),
-            vector_fn=lambda: self._vector_scores(request.query, query_embedding, pool_size),
+            fts_fn=_fts,
+            trigram_fn=_trigram,
+            vector_fn=_vector,
         )
+        tenant = self.get_tenant(tenant_id) if tenant_id is not None else None
         return fuse_and_search(
             request=request,
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=_load,
             bump_retrieval_fn=self._bump_retrieval,
             create_session_fn=self.create_session,
             record_query_results_fn=self.record_query_results,
-            get_annotating_notes_fn=self.get_annotating_notes,
-            search_around_fn=self.search_around,
+            get_annotating_notes_fn=_notes,
+            search_around_fn=_around,
             note_bonus=self._resolve_note_bonus(),
             auto_include_cap=self._resolve_auto_include_cap(),
             now=_utcnow(),
+            tenant_id=tenant_id,
+            record_session=tenant_id is None or (tenant is not None and tenant.is_active),
         )
 
     @telemetry.traced("mintmory.search_around")
@@ -1143,7 +1177,6 @@ class PostgresBackend:
         tenant_id: str | None = None,
     ) -> list[str]:
         """BFS over concept_links up to spec.depth (mirrors SqliteBackend logic)."""
-        self._require_global_tenant(tenant_id, "search_around")
         if not anchor_ids:
             return []
         assert self._pool is not None
@@ -1169,6 +1202,9 @@ class PostgresBackend:
                 f"(source_memory_id IN ({placeholders}) "
                 f" OR target_memory_id IN ({placeholders}))"
             )
+            if tenant_id is not None:
+                sql += " AND tenant_id = %s"
+                params_list.append(tenant_id)
             with self._conn() as conn:
                 rows = conn.execute(sql, params_list).fetchall()
 
@@ -1195,7 +1231,6 @@ class PostgresBackend:
     def get_annotating_notes(
         self, memory_id: str, cap: int, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "get_annotating_notes")
         if cap <= 0:
             return []
         assert self._pool is not None
@@ -1213,17 +1248,24 @@ class PostgresBackend:
                 JOIN memories m ON m.id = l.source_memory_id
                 WHERE l.target_memory_id = %s AND l.link_type = %s
                   AND m.is_note = TRUE AND m.is_archived = FALSE
+                """
+                + (" AND m.tenant_id = %s" if tenant_id is not None else "")
+                + """
                 ORDER BY l.strength DESC, m.created_at DESC
                 LIMIT %s
                 """,
-                (memory_id, ConceptLinkType.ANNOTATES.value, cap),
+                (
+                    memory_id,
+                    ConceptLinkType.ANNOTATES.value,
+                    *(() if tenant_id is None else (tenant_id,)),
+                    cap,
+                ),
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def get_annotating_descriptions(
         self, memory_id: str, cap: int, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "get_annotating_descriptions")
         if cap <= 0:
             return []
         assert self._pool is not None
@@ -1242,22 +1284,26 @@ class PostgresBackend:
                 WHERE l.target_memory_id = %s AND l.link_type = %s
                   AND m.is_note = FALSE AND m.is_archived = FALSE
                   AND (m.metadata->>'kind') = 'image_description'
+                """
+                + (" AND m.tenant_id = %s" if tenant_id is not None else "")
+                + """
                 ORDER BY m.created_at DESC
                 LIMIT %s
                 """,
-                (memory_id, ConceptLinkType.ANNOTATES.value, cap),
+                (
+                    memory_id,
+                    ConceptLinkType.ANNOTATES.value,
+                    *(() if tenant_id is None else (tenant_id,)),
+                    cap,
+                ),
             ).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def find_image_file_record(
         self, path_or_rel: str, tenant_id: str | None = None
     ) -> MemoryRecord | None:
-        self._require_global_tenant(tenant_id, "find_image_file_record")
         assert self._pool is not None
-        with self._conn() as conn:
-            row = _execute_dict(
-                conn,
-                f"""
+        sql = f"""
                 SELECT {_SELECT_MEMORY} FROM memories
                 WHERE is_archived = FALSE
                   AND (metadata->>'kind') IS NULL
@@ -1265,11 +1311,14 @@ class PostgresBackend:
                   AND lower(metadata->>'ext') IN (
                       '.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg'
                   )
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (path_or_rel, path_or_rel),
-            ).fetchone()
+                """
+        params: list[Any] = [path_or_rel, path_or_rel]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY created_at DESC LIMIT 1"
+        with self._conn() as conn:
+            row = _execute_dict(conn, sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
@@ -1278,40 +1327,43 @@ class PostgresBackend:
         self, about: str, limit: int = 5, tenant_id: str | None = None
     ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring."""
-        self._require_global_tenant(tenant_id, "anchor_candidates")
         pool_size = max(limit * 5, 50)
         return fuse_and_rank(
-            fts_scores=self._fts_scores(about, pool_size),
-            trigram_scores=self._trigram_scores(about, pool_size),
-            vector_scores=self._vector_scores(about, None, pool_size),
+            fts_scores=self._fts_scores(about, pool_size, tenant_id),
+            trigram_scores=self._trigram_scores(about, pool_size, tenant_id),
+            vector_scores=self._vector_scores(about, None, pool_size, tenant_id),
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=lambda ids: self._load_memories(ids, tenant_id),
             limit=limit,
         )
 
     def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "list_image_file_records")
         assert self._pool is not None
-        with self._conn() as conn:
-            rows = _execute_dict(
-                conn,
-                f"""
+        sql = f"""
                 SELECT {_SELECT_MEMORY} FROM memories
                 WHERE is_archived = FALSE
                   AND (metadata->>'kind') IS NULL
                   AND (metadata->>'ext') IS NOT NULL
-                ORDER BY metadata->>'rel', id
-                """,
-            ).fetchall()
+                """
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY metadata->>'rel', id"
+        with self._conn() as conn:
+            rows = _execute_dict(conn, sql, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
-        self._require_global_tenant(tenant_id, "memory_exists_with_content")
         assert self._pool is not None
+        sql = "SELECT 1 FROM memories WHERE content = %s"
+        params: list[Any] = [content]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " LIMIT 1"
         with self._conn() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM memories WHERE content = %s LIMIT 1", (content,)
-            ).fetchone()
+            row = conn.execute(sql, params).fetchone()
         return row is not None
 
     def list_notes(
@@ -1326,11 +1378,13 @@ class PostgresBackend:
         now: datetime | None = None,
         tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "list_notes")
         effective_now = now or _utcnow()
         assert self._pool is not None
         params: list[Any] = []
         sql = f"SELECT {_SELECT_MEMORY} FROM memories WHERE is_note = TRUE"
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
 
         if upcoming:
             sql += " AND valid_from > %s ORDER BY valid_from ASC"
@@ -1371,8 +1425,26 @@ class PostgresBackend:
         tenant_id: str | None = None,
         limit: int | None = None,
     ) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "list_memories")
-        raise TenancyNotSupportedError("list_memories")
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be >= 0")
+        assert self._pool is not None
+        sql = f"SELECT {_SELECT_MEMORY} FROM memories WHERE is_archived = FALSE"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY created_at, id"
+        with self._conn() as conn:
+            rows = _execute_dict(conn, sql, params).fetchall()
+        records = [self._row_to_memory(r) for r in rows]
+        matching = [
+            mem
+            for mem in records
+            if _passes_filter(mem, filter or MemoryFilter(), include_archived=False)
+        ]
+        if limit is None:
+            return matching
+        return matching[:limit]
 
     # ------------------------------------------------------------------
     # ConceptLink
@@ -1432,7 +1504,6 @@ class PostgresBackend:
         link_type: ConceptLinkType | None = None,
         tenant_id: str | None = None,
     ) -> list[ConceptLink]:
-        self._require_global_tenant(tenant_id, "get_links")
         assert self._pool is not None
         sql = (
             "SELECT id, source_memory_id, target_memory_id, link_type, entity, "
@@ -1441,6 +1512,9 @@ class PostgresBackend:
             "WHERE (source_memory_id = %s OR target_memory_id = %s)"
         )
         params: list[Any] = [memory_id, memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         if link_type is not None:
             sql += " AND link_type = %s"
             params.append(link_type.value)
@@ -1494,16 +1568,18 @@ class PostgresBackend:
         return session
 
     def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
-        self._require_global_tenant(tenant_id, "get_session")
         assert self._pool is not None
+        sql = (
+            "SELECT id, query_text, created_at, confidence_rating, reasoning, "
+            "useful_ids, stale_ids, concluded, tenant_id "
+            "FROM query_sessions WHERE id = %s"
+        )
+        params: list[Any] = [session_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            row = _execute_dict(
-                conn,
-                "SELECT id, query_text, created_at, confidence_rating, reasoning, "
-                "useful_ids, stale_ids, concluded, tenant_id "
-                "FROM query_sessions WHERE id = %s",
-                (session_id,),
-            ).fetchone()
+            row = _execute_dict(conn, sql, params).fetchone()
         if row is None:
             return None
         return QuerySession(
@@ -1674,7 +1750,6 @@ class PostgresBackend:
         )
 
     def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
-        self._require_global_tenant(tenant_id, "get_summary")
         assert self._pool is not None
         with self._conn() as conn:
             row = _execute_dict(
@@ -1697,15 +1772,19 @@ class PostgresBackend:
         )
 
     def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
-        self._require_global_tenant(tenant_id, "list_summaries")
         assert self._pool is not None
+        sql = (
+            "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
+            "tenant_id "
+            "FROM memory_summaries"
+        )
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " WHERE tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY concept"
         with self._conn() as conn:
-            rows = _execute_dict(
-                conn,
-                "SELECT id, concept, summary_text, memory_count, is_current, generated_at, "
-                "tenant_id "
-                "FROM memory_summaries ORDER BY concept",
-            ).fetchall()
+            rows = _execute_dict(conn, sql, params).fetchall()
         return [
             MemorySummary(
                 id=r["id"],
@@ -1724,29 +1803,44 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
-        self._require_global_tenant(tenant_id, "get_stats")
         assert self._pool is not None
+        tenant_where = "" if tenant_id is None else " WHERE tenant_id = %s"
+        tenant_and = "" if tenant_id is None else " AND tenant_id = %s"
+        tenant_params: tuple[Any, ...] = () if tenant_id is None else (tenant_id,)
         with self._conn() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+            total = conn.execute(
+                "SELECT COUNT(*) FROM memories" + tenant_where, tenant_params
+            ).fetchone()[0]
             active = conn.execute(
                 "SELECT COUNT(*) FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
+                + tenant_and,
+                tenant_params,
             ).fetchone()[0]
-            stale = conn.execute("SELECT COUNT(*) FROM memories WHERE is_stale = TRUE").fetchone()[
-                0
-            ]
+            stale = conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE is_stale = TRUE" + tenant_and,
+                tenant_params,
+            ).fetchone()[0]
             archived = conn.execute(
-                "SELECT COUNT(*) FROM memories WHERE is_archived = TRUE"
+                "SELECT COUNT(*) FROM memories WHERE is_archived = TRUE" + tenant_and,
+                tenant_params,
             ).fetchone()[0]
-            links = conn.execute("SELECT COUNT(*) FROM concept_links").fetchone()[0]
-            summaries = conn.execute("SELECT COUNT(*) FROM memory_summaries").fetchone()[0]
+            links = conn.execute(
+                "SELECT COUNT(*) FROM concept_links" + tenant_where, tenant_params
+            ).fetchone()[0]
+            summaries = conn.execute(
+                "SELECT COUNT(*) FROM memory_summaries" + tenant_where, tenant_params
+            ).fetchone()[0]
             avg_row = conn.execute(
                 "SELECT AVG(usefulness_score), AVG(staleness_score) "
-                "FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
+                "FROM memories WHERE is_active = TRUE AND is_archived = FALSE" + tenant_and,
+                tenant_params,
             ).fetchone()
             avg_use = float(avg_row[0]) if avg_row and avg_row[0] is not None else 0.0
             avg_stale = float(avg_row[1]) if avg_row and avg_row[1] is not None else 0.0
             entity_rows = conn.execute(
                 "SELECT entity_ids FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
+                + tenant_and,
+                tenant_params,
             ).fetchall()
 
         counter: Counter[str] = Counter()
@@ -1772,30 +1866,33 @@ class PostgresBackend:
     # ------------------------------------------------------------------
 
     def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "get_flagged_memories")
         assert self._pool is not None
+        sql = f"SELECT {_SELECT_MEMORY} FROM memories WHERE flagged_for_review = TRUE"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            rows = _execute_dict(
-                conn,
-                f"SELECT {_SELECT_MEMORY} FROM memories WHERE flagged_for_review = TRUE",
-            ).fetchall()
+            rows = _execute_dict(conn, sql, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def get_never_accessed_stale(
         self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "get_never_accessed_stale")
         assert self._pool is not None
+        sql = (
+            f"SELECT {_SELECT_MEMORY} FROM memories "
+            f"WHERE last_accessed_at IS NULL "
+            f"  AND staleness_score >= %s "
+            f"  AND is_archived = FALSE "
+            f"  AND is_note = FALSE"
+        )
+        params: list[Any] = [min_staleness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            rows = _execute_dict(
-                conn,
-                f"SELECT {_SELECT_MEMORY} FROM memories "
-                f"WHERE last_accessed_at IS NULL "
-                f"  AND staleness_score >= %s "
-                f"  AND is_archived = FALSE "
-                f"  AND is_note = FALSE",
-                (min_staleness,),
-            ).fetchall()
+            rows = _execute_dict(conn, sql, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def get_high_staleness_useful(
@@ -1804,117 +1901,133 @@ class PostgresBackend:
         min_usefulness: float = 3.0,
         tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
-        self._require_global_tenant(tenant_id, "get_high_staleness_useful")
         assert self._pool is not None
+        sql = (
+            f"SELECT {_SELECT_MEMORY} FROM memories "
+            f"WHERE staleness_score >= %s "
+            f"  AND usefulness_score >= %s "
+            f"  AND is_archived = FALSE "
+            f"  AND is_note = FALSE"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            rows = _execute_dict(
-                conn,
-                f"SELECT {_SELECT_MEMORY} FROM memories "
-                f"WHERE staleness_score >= %s "
-                f"  AND usefulness_score >= %s "
-                f"  AND is_archived = FALSE "
-                f"  AND is_note = FALSE",
-                (min_staleness, min_usefulness),
-            ).fetchall()
+            rows = _execute_dict(conn, sql, params).fetchall()
         return [self._row_to_memory(r) for r in rows]
 
     def get_anomaly_high_staleness_useful_ids(
         self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
-        self._require_global_tenant(tenant_id, "get_anomaly_high_staleness_useful_ids")
         assert self._pool is not None
+        sql = (
+            "SELECT id FROM memories "
+            "WHERE staleness_score >= %s AND usefulness_score >= %s "
+            "  AND is_archived = FALSE AND is_note = FALSE"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT id FROM memories "
-                "WHERE staleness_score >= %s AND usefulness_score >= %s "
-                "  AND is_archived = FALSE AND is_note = FALSE "
-                "ORDER BY id",
-                (min_staleness, min_usefulness),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [r[0] for r in rows]
 
     def get_anomaly_never_accessed_ids(
         self, cutoff_iso: str, tenant_id: str | None = None
     ) -> list[str]:
-        self._require_global_tenant(tenant_id, "get_anomaly_never_accessed_ids")
         assert self._pool is not None
+        sql = (
+            "SELECT id FROM memories "
+            "WHERE retrieval_count = 0 AND created_at < %s "
+            "  AND is_active = TRUE AND is_archived = FALSE AND is_note = FALSE"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT id FROM memories "
-                "WHERE retrieval_count = 0 AND created_at < %s "
-                "  AND is_active = TRUE AND is_archived = FALSE AND is_note = FALSE "
-                "ORDER BY id",
-                (cutoff_iso,),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [r[0] for r in rows]
 
     def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
-        self._require_global_tenant(tenant_id, "get_anomaly_flagged_ids")
         assert self._pool is not None
+        sql = "SELECT id FROM memories WHERE flagged_for_review = TRUE"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT id FROM memories WHERE flagged_for_review = TRUE ORDER BY id"
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [r[0] for r in rows]
 
     def list_active_memory_ids(
         self, *, ordered: bool = False, tenant_id: str | None = None
     ) -> list[str]:
-        self._require_global_tenant(tenant_id, "list_active_memory_ids")
         assert self._pool is not None
         sql = "SELECT id FROM memories WHERE is_active = TRUE AND is_archived = FALSE"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         if ordered:
             sql += " ORDER BY id"
         with self._conn() as conn:
-            rows = conn.execute(sql).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [r[0] for r in rows]
 
     def get_stale_archivable_ids(
         self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
     ) -> list[str]:
-        self._require_global_tenant(tenant_id, "get_stale_archivable_ids")
         assert self._pool is not None
+        sql = (
+            "SELECT id FROM memories "
+            "WHERE is_stale = TRUE AND staleness_score >= %s AND is_archived = FALSE "
+            "  AND is_note = FALSE "
+            "  AND (last_accessed_at IS NULL OR last_accessed_at < %s)"
+        )
+        params: list[Any] = [min_staleness, cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT id FROM memories "
-                "WHERE is_stale = TRUE AND staleness_score >= %s AND is_archived = FALSE "
-                "  AND is_note = FALSE "
-                "  AND (last_accessed_at IS NULL OR last_accessed_at < %s) "
-                "ORDER BY id",
-                (min_staleness, cutoff_iso),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [r[0] for r in rows]
 
     def get_rehabilitable_rows(
         self, cutoff_iso: str, tenant_id: str | None = None
     ) -> list[tuple[str, float]]:
-        self._require_global_tenant(tenant_id, "get_rehabilitable_rows")
         assert self._pool is not None
+        sql = (
+            "SELECT id, staleness_score FROM memories "
+            "WHERE is_stale = TRUE AND usefulness_score > staleness_score "
+            "  AND is_archived = FALSE "
+            "  AND last_accessed_at IS NOT NULL AND last_accessed_at >= %s"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT id, staleness_score FROM memories "
-                "WHERE is_stale = TRUE AND usefulness_score > staleness_score "
-                "  AND is_archived = FALSE "
-                "  AND last_accessed_at IS NOT NULL AND last_accessed_at >= %s "
-                "ORDER BY id",
-                (cutoff_iso,),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return [(r[0], float(r[1])) for r in rows]
 
     def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
-        self._require_global_tenant(tenant_id, "get_existing_relates_to_pairs")
         assert self._pool is not None
+        sql = "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = %s"
+        params: list[Any] = [ConceptLinkType.RELATES_TO.value]
+        if tenant_id is not None:
+            sql += " AND tenant_id = %s"
+            params.append(tenant_id)
         with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = %s",
-                (ConceptLinkType.RELATES_TO.value,),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return {frozenset({r[0], r[1]}) for r in rows}
-
-    @staticmethod
-    def _require_global_tenant(tenant_id: str | None, operation: str) -> None:
-        if tenant_id is not None and tenant_id != "global":
-            raise TenancyNotSupportedError(operation)
 
     @staticmethod
     def _row_to_tenant(row: dict[str, Any]) -> Tenant:

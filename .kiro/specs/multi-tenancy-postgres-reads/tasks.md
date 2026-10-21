@@ -7,7 +7,7 @@
 > Postgres, Docker or a network service; add no skip, skipif or xfail marker and
 > no `pytest.skip(` call.
 
-- [ ] 1. Tenant predicate on every read (`storage_postgres.py`)
+- [x] 1. Tenant predicate on every read (`storage_postgres.py`)
   - R1.1; remove `_require_global_tenant` from reads and delete it (R1.2).
   - Tests: R1.3 for every method; the read `test_pg_<method>_tenancy` functions
     rewritten in place (R1.2).

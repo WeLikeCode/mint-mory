@@ -65,7 +65,7 @@ def _call_without_guard(call: Callable[[], object]) -> None:
 @dataclass(frozen=True)
 class ReadCase:
     name: str
-    invoke: Callable[[PostgresBackend], object]
+    invoke: Callable[[PostgresBackend, str | None], object]
     none_params: tuple[Any, ...]
     tenant_params: tuple[Any, ...]
 
@@ -74,139 +74,147 @@ def _read_cases() -> list[ReadCase]:
     return [
         ReadCase(
             "get_memory",
-            lambda backend: backend.get_memory("m1"),
+            lambda backend, tenant: backend.get_memory("m1", tenant_id=tenant),
             ("m1",),
             ("m1", _TENANT),
         ),
         ReadCase(
             "search_around",
-            lambda backend: backend.search_around(["a1"], SearchAroundSpec()),
+            lambda backend, tenant: backend.search_around(
+                ["a1"], SearchAroundSpec(), tenant_id=tenant
+            ),
             (0.0, "a1", "a1"),
             (0.0, "a1", "a1", _TENANT),
         ),
         ReadCase(
             "get_links",
-            lambda backend: backend.get_links("m1"),
+            lambda backend, tenant: backend.get_links("m1", tenant_id=tenant),
             ("m1", "m1"),
             ("m1", "m1", _TENANT),
         ),
         ReadCase(
             "get_annotating_notes",
-            lambda backend: backend.get_annotating_notes("m1", 3),
+            lambda backend, tenant: backend.get_annotating_notes("m1", 3, tenant_id=tenant),
             ("m1", "annotates", 3),
             ("m1", "annotates", _TENANT, 3),
         ),
         ReadCase(
             "get_annotating_descriptions",
-            lambda backend: backend.get_annotating_descriptions("m1", 3),
+            lambda backend, tenant: backend.get_annotating_descriptions("m1", 3, tenant_id=tenant),
             ("m1", "annotates", 3),
             ("m1", "annotates", _TENANT, 3),
         ),
         ReadCase(
             "find_image_file_record",
-            lambda backend: backend.find_image_file_record("/x.png"),
+            lambda backend, tenant: backend.find_image_file_record("/x.png", tenant_id=tenant),
             ("/x.png", "/x.png"),
             ("/x.png", "/x.png", _TENANT),
         ),
         ReadCase(
             "anchor_candidates",
-            lambda backend: backend.anchor_candidates("Alice"),
+            lambda backend, tenant: backend.anchor_candidates("Alice", tenant_id=tenant),
             ("alice:*", "alice:*", 50),
             ("alice:*", "alice:*", _TENANT, 50),
         ),
         ReadCase(
             "list_image_file_records",
-            lambda backend: backend.list_image_file_records(),
+            lambda backend, tenant: backend.list_image_file_records(tenant_id=tenant),
             (),
             (_TENANT,),
         ),
         ReadCase(
             "list_notes",
-            lambda backend: backend.list_notes(),
+            lambda backend, tenant: backend.list_notes(tenant_id=tenant),
             (50,),
             (_TENANT, 50),
         ),
         ReadCase(
             "list_summaries",
-            lambda backend: backend.list_summaries(),
+            lambda backend, tenant: backend.list_summaries(tenant_id=tenant),
             (),
             (_TENANT,),
         ),
         ReadCase(
             "get_session",
-            lambda backend: backend.get_session("s1"),
+            lambda backend, tenant: backend.get_session("s1", tenant_id=tenant),
             ("s1",),
             ("s1", _TENANT),
         ),
         ReadCase(
             "get_stats",
-            lambda backend: backend.get_stats(),
+            lambda backend, tenant: backend.get_stats(tenant_id=tenant),
             (),
             (_TENANT,),
         ),
         ReadCase(
             "memory_exists_with_content",
-            lambda backend: backend.memory_exists_with_content("Alice"),
+            lambda backend, tenant: backend.memory_exists_with_content("Alice", tenant_id=tenant),
             ("Alice",),
             ("Alice", _TENANT),
         ),
         ReadCase(
             "get_flagged_memories",
-            lambda backend: backend.get_flagged_memories(),
+            lambda backend, tenant: backend.get_flagged_memories(tenant_id=tenant),
             (),
             (_TENANT,),
         ),
         ReadCase(
             "get_never_accessed_stale",
-            lambda backend: backend.get_never_accessed_stale(),
+            lambda backend, tenant: backend.get_never_accessed_stale(tenant_id=tenant),
             (3.0,),
             (3.0, _TENANT),
         ),
         ReadCase(
             "get_high_staleness_useful",
-            lambda backend: backend.get_high_staleness_useful(),
+            lambda backend, tenant: backend.get_high_staleness_useful(tenant_id=tenant),
             (5.0, 3.0),
             (5.0, 3.0, _TENANT),
         ),
         ReadCase(
             "get_anomaly_high_staleness_useful_ids",
-            lambda backend: backend.get_anomaly_high_staleness_useful_ids(5.0, 3.0),
+            lambda backend, tenant: backend.get_anomaly_high_staleness_useful_ids(
+                5.0, 3.0, tenant_id=tenant
+            ),
             (5.0, 3.0),
             (5.0, 3.0, _TENANT),
         ),
         ReadCase(
             "get_anomaly_never_accessed_ids",
-            lambda backend: backend.get_anomaly_never_accessed_ids(_CUTOFF),
+            lambda backend, tenant: backend.get_anomaly_never_accessed_ids(
+                _CUTOFF, tenant_id=tenant
+            ),
             (_CUTOFF,),
             (_CUTOFF, _TENANT),
         ),
         ReadCase(
             "get_anomaly_flagged_ids",
-            lambda backend: backend.get_anomaly_flagged_ids(),
+            lambda backend, tenant: backend.get_anomaly_flagged_ids(tenant_id=tenant),
             (),
             (_TENANT,),
         ),
         ReadCase(
             "list_active_memory_ids",
-            lambda backend: backend.list_active_memory_ids(),
+            lambda backend, tenant: backend.list_active_memory_ids(tenant_id=tenant),
             (),
             (_TENANT,),
         ),
         ReadCase(
             "get_stale_archivable_ids",
-            lambda backend: backend.get_stale_archivable_ids(5.0, _CUTOFF),
+            lambda backend, tenant: backend.get_stale_archivable_ids(
+                5.0, _CUTOFF, tenant_id=tenant
+            ),
             (5.0, _CUTOFF),
             (5.0, _CUTOFF, _TENANT),
         ),
         ReadCase(
             "get_rehabilitable_rows",
-            lambda backend: backend.get_rehabilitable_rows(_CUTOFF),
+            lambda backend, tenant: backend.get_rehabilitable_rows(_CUTOFF, tenant_id=tenant),
             (_CUTOFF,),
             (_CUTOFF, _TENANT),
         ),
         ReadCase(
             "get_existing_relates_to_pairs",
-            lambda backend: backend.get_existing_relates_to_pairs(),
+            lambda backend, tenant: backend.get_existing_relates_to_pairs(tenant_id=tenant),
             ("relates_to",),
             ("relates_to", _TENANT),
         ),
@@ -219,7 +227,7 @@ def test_pg_read_adds_tenant_predicate_and_keeps_none_sql(case: ReadCase) -> Non
     backend, conn = _backend()
 
     conn.executed.clear()
-    _call_without_guard(lambda: case.invoke(backend))
+    _call_without_guard(lambda: case.invoke(backend, _TENANT))
     scoped = _statements(conn)
     assert scoped, f"{case.name} executed no SELECT for tenant {_TENANT!r}"
     for sql, params in scoped:
@@ -229,7 +237,7 @@ def test_pg_read_adds_tenant_predicate_and_keeps_none_sql(case: ReadCase) -> Non
         assert params == case.tenant_params, f"{case.name} scoped parameters: {params}"
 
     conn.executed.clear()
-    case.invoke(backend)
+    case.invoke(backend, None)
     unscoped = _statements(conn)
     assert len(unscoped) == len(scoped), f"{case.name} changed its statement count"
     for sql, params in unscoped:
