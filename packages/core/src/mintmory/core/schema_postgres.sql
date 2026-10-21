@@ -19,10 +19,27 @@
 -- (RDS/CloudSQL) where the app role lacks CREATE privilege.
 
 -- ---------------------------------------------------------------------------
+-- tenants — the tenant directory (created first: the other tables' tenant_id
+-- foreign key targets this table, so it must exist before any insert)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tenants (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMP NOT NULL,
+    updated_at  TIMESTAMP NOT NULL
+);
+
+INSERT INTO tenants (id, name, is_active, created_at, updated_at)
+VALUES ('global', 'Global (default) tenant', TRUE, '1970-01-01 00:00:00', '1970-01-01 00:00:00')
+ON CONFLICT (id) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
 -- memories — primary object store
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS memories (
     id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
     content             TEXT NOT NULL CHECK (length(content) >= 1 AND length(content) <= 10000),
     category            TEXT NOT NULL CHECK (category IN (
                             'identity','preference','skill','context',
@@ -102,6 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_memories_note
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS concept_links (
     id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
     source_memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     target_memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     link_type           TEXT NOT NULL CHECK (link_type IN (
@@ -120,7 +138,8 @@ CREATE TABLE IF NOT EXISTS concept_links (
     created_at          TIMESTAMP NOT NULL,
     updated_at          TIMESTAMP NOT NULL,
 
-    UNIQUE (source_memory_id, target_memory_id, link_type)
+    CONSTRAINT concept_links_tenant_unique
+        UNIQUE (tenant_id, source_memory_id, target_memory_id, link_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_links_source
@@ -141,18 +160,22 @@ CREATE INDEX IF NOT EXISTS idx_links_entity
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS memory_summaries (
     id              TEXT PRIMARY KEY,
-    concept         TEXT NOT NULL UNIQUE,
+    tenant_id       TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+    concept         TEXT NOT NULL,
     summary_text    TEXT NOT NULL,
     memory_count    INTEGER NOT NULL DEFAULT 0,
     is_current      BOOLEAN NOT NULL DEFAULT TRUE,
-    generated_at    TIMESTAMP NOT NULL
+    generated_at    TIMESTAMP NOT NULL,
+
+    CONSTRAINT memory_summaries_tenant_concept_key UNIQUE (tenant_id, concept)
 );
 
 -- ---------------------------------------------------------------------------
 -- index_manifest — per-path state for recurrent tree indexing
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS index_manifest (
-    path          TEXT PRIMARY KEY,
+    path          TEXT NOT NULL,
+    tenant_id     TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
     collection    TEXT NOT NULL,
     size          INTEGER NOT NULL,
     mtime         FLOAT NOT NULL,
@@ -161,7 +184,9 @@ CREATE TABLE IF NOT EXISTS index_manifest (
                       CHECK (index_mode IN ('metadata','content','vision')),
     memory_ids    TEXT NOT NULL DEFAULT '[]',   -- TEXT JSON (Protocol: memory_ids: str)
     online_only   BOOLEAN NOT NULL DEFAULT FALSE,
-    last_seen     TEXT NOT NULL                  -- ISO-8601 UTC string
+    last_seen     TEXT NOT NULL,                 -- ISO-8601 UTC string
+
+    PRIMARY KEY (tenant_id, path)
 );
 
 CREATE INDEX IF NOT EXISTS idx_manifest_collection
@@ -172,6 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_manifest_collection
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS query_sessions (
     id                  TEXT PRIMARY KEY,
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
     query_text          TEXT NOT NULL,
     created_at          TIMESTAMP NOT NULL,
 
@@ -190,6 +216,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_concluded
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS query_results (
     session_id          TEXT NOT NULL REFERENCES query_sessions(id) ON DELETE CASCADE,
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
     memory_id           TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
     relevance_score     FLOAT NOT NULL DEFAULT 0.0,
     was_accessed        BOOLEAN NOT NULL DEFAULT FALSE,

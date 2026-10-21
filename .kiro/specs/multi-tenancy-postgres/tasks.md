@@ -10,7 +10,7 @@
   - `FakePool`, `FakeConnection`, `FakeCursor` per R5.1, with a self-test.
   - _Requirements: 5.1_
 
-- [ ] 2. Fresh DDL (`schema_postgres.sql`)
+- [x] 2. Fresh DDL (`schema_postgres.sql`)
   - R1.1–R1.4.
   - Tests: the text checks of R1.5.
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
