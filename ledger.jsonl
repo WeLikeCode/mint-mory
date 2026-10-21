@@ -186,3 +186,5 @@
 {"at":"2026-10-21T18:02:53Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"558990c6aefef6e02b37ab7a728a139487b7c319","status":"pass","type":"unit.postcheck","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T18:02:53Z","revision":"558990c6aefef6e02b37ab7a728a139487b7c319","type":"unit.integrated","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T18:02:53Z","attempt":1,"cost_usd":1.817323,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres"}
+{"at":"2026-10-21T18:03:52Z","attempt":1,"cost_usd":0.0,"runs":1,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres-writes"}
+{"at":"2026-10-21T18:03:52Z","run":"r-20261021T1803Z-808e","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres-writes"}
