@@ -154,3 +154,4 @@
 {"at":"2026-10-21T06:41:33Z","attempt":1,"cost_usd":0.449383,"runs":4,"type":"plan.charged","unit":"kiro:cross-tenant-copy"}
 {"at":"2026-10-21T06:41:33Z","run":"r-20261021T0641Z-9d5b","type":"unit.dispatched","unit":"kiro:cross-tenant-copy"}
 {"at":"2026-10-21T07:25:44Z","detail":"awaiting_human: no new answers (verdicts open: Q-004, Q-005)","reason":"unit_awaiting_human","type":"plan.waiting","unit":"kiro:cross-tenant-copy"}
+{"at":"2026-10-21T07:29:05Z","by":"harness","reason":"the cause is gone: kiro:cross-tenant-copy is awaiting_human","type":"plan.resumed"}
