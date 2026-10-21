@@ -14,7 +14,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-001 | accepted | 1 | technical | packages/core/tests/test_pg_tenancy.py:299 — test_pg_transaction_tenancy still asserts the removed interim stub |
 | Q-002 | accepted | 1 | technical | packages/core/tests/test_transfer_links.py:359 — test_postgres_copy_fails_closed_before_any_write expects the removed transaction stub |
 | Q-003 | accepted | 2 | technical | packages/core/tests/test_pg_tenancy.py:255-292 - directory tests still assert the interim stub |
-| Q-004 | open | 3 | technical | packages/core/tests/test_pg_tenancy.py:202-237,395-430 — the 11 write test_pg_*_tenancy functions still assert the removed interim stub |
+| Q-004 | accepted | 3 | technical | packages/core/tests/test_pg_tenancy.py:202-237,395-430 — the 11 write test_pg_*_tenancy functions still assert the removed interim stub |
 | Q-005 | open | 3 | technical | packages/core/tests/test_pg_tenancy_columns.py:422 — test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access asserts the removed global-only write guard |
 <!-- l4:index:end -->
 
@@ -124,7 +124,7 @@ Edit `packages/core/tests/test_pg_tenancy.py`: replace test_pg_get_tenant_tenanc
 
 ## Q-004: packages/core/tests/test_pg_tenancy.py:202-237,395-430 — the 11 write test_pg_*_tenancy functions still assert the removed interim stub
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 3
 - **Kind:** technical
 - **Asked:** 2026-10-21T19:32Z by deepseek, run r-20261021T1911Z-621f, task 3
