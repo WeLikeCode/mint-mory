@@ -180,3 +180,4 @@
 {"at":"2026-10-21T16:11:35Z","run":"r-20261021T1611Z-9810","type":"unit.dispatched","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T17:50:17Z","detail":"the repository CI is still running on the hand-off commit 789f4683df (unfinished: ci.yml / (workflow run), ci.yml / PG conformance \u00b7 golden recall \u00b7 soak, ci.yml / helm lint \u00b7 template \u00b7 dry-run \u00b7 docker build, ci.yml / lint \u00b7 types \u00b7 tests): the plan merges when it is green","head":"789f4683dfb870872217ea72be3cab3064180f37","reason":"merge_not_ready","type":"plan.waiting","unit":"kiro:multi-tenancy-postgres"}
 {"at":"2026-10-21T18:00:35Z","by":"harness","reason":"the cause is gone: the merge of kiro:multi-tenancy-postgres can go on","type":"plan.resumed"}
+{"at":"2026-10-21T18:00:42Z","head":"789f4683dfb870872217ea72be3cab3064180f37","pr":47,"target_before":"bc8df7cc8b253b845be2786229014df03114b384","type":"unit.merge_requested","unit":"kiro:multi-tenancy-postgres"}
