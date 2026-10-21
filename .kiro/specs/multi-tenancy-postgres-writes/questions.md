@@ -11,7 +11,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 <!-- l4:index:start -->
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
-| Q-001 | open | 1 | technical | packages/core/tests/test_pg_tenancy.py:299 — test_pg_transaction_tenancy still asserts the removed interim stub |
+| Q-001 | accepted | 1 | technical | packages/core/tests/test_pg_tenancy.py:299 — test_pg_transaction_tenancy still asserts the removed interim stub |
 | Q-002 | open | 1 | technical | packages/core/tests/test_transfer_links.py:359 — test_postgres_copy_fails_closed_before_any_write expects the removed transaction stub |
 <!-- l4:index:end -->
 
@@ -19,7 +19,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 
 ## Q-001: packages/core/tests/test_pg_tenancy.py:299 — test_pg_transaction_tenancy still asserts the removed interim stub
 
-- **Status:** open
+- **Status:** accepted
 - **Blocking tasks:** 1
 - **Kind:** technical
 - **Asked:** 2026-10-21T18:29Z by deepseek, run r-20261021T1803Z-808e, task 1
