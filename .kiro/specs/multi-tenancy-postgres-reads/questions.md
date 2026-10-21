@@ -12,8 +12,8 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | ID | Status | Blocking | Kind | Question |
 |----|--------|----------|------|----------|
 | Q-001 | answered | 1 | technical | packages/core/tests/test_pg_tenancy_reads.py:222 scoped invocation does not pass a tenant |
-| Q-002 | open | 1 | technical | packages/core/tests/test_pg_tenancy.py:641 read tests still require the interim guard |
-| Q-003 | open | 1 | technical | packages/core/tests/test_pg_tenancy_columns.py:456 keyed reads still require the interim guard |
+| Q-002 | answered | 1 | technical | packages/core/tests/test_pg_tenancy.py:641 read tests still require the interim guard |
+| Q-003 | answered | 1 | technical | packages/core/tests/test_pg_tenancy_columns.py:456 keyed reads still require the interim guard |
 <!-- l4:index:end -->
 
 ---
@@ -45,7 +45,7 @@ Option 1, with the tenant passed by keyword: for task 1 edit packages/core/tests
 
 ## Q-002: packages/core/tests/test_pg_tenancy.py:641 read tests still require the interim guard
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1
 - **Kind:** technical
 - **Asked:** 2026-10-21T21:48Z by deepseek, run r-20261021T2131Z-5a19, task 1
@@ -64,11 +64,12 @@ Edit `packages/core/tests/test_pg_tenancy.py`: delete `test_pg_require_global_te
 
 ### Answer
 <!-- write below this line -->
+Option 1, except that no test function is deleted (R1.2: "None is deleted"): for task 1 edit packages/core/tests/test_pg_tenancy.py. Rewrite test_pg_require_global_tenant_tenancy in place (same name, same l4 markers) to assert that PostgresBackend no longer has `_require_global_tenant` and that TenancyNotSupportedError is still importable from mintmory.core.types; rewrite test_pg_get_summary_tenancy, test_pg_manifest_get_tenancy and test_pg_manifest_paths_tenancy to assert that get_summary("c", tenant_id="t1"), manifest_get("/a", tenant_id="t1") and manifest_paths("c", tenant_id="t1") execute a SELECT containing `tenant_id = %s` with "t1" among its parameters and raise nothing; rewrite _assert_read_rejects_tenant and every read test_pg_<method>_tenancy (same names) to drive each read through FakePool and assert R1.3 (tenant predicate and parameter position for "t1", today's SQL and parameters for None). Change no other file under packages/core/tests except as other answers say. (Answered by the owner's delegate on the owner's explicit instruction, 2026-10-22.)
 ---
 
 ## Q-003: packages/core/tests/test_pg_tenancy_columns.py:456 keyed reads still require the interim guard
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** 1
 - **Kind:** technical
 - **Asked:** 2026-10-21T21:48Z by deepseek, run r-20261021T2131Z-5a19, task 1
@@ -87,3 +88,4 @@ Edit `packages/core/tests/test_pg_tenancy_columns.py`: in `test_guards_stay_on_r
 
 ### Answer
 <!-- write below this line -->
+Option 1 (accepted by the owner's delegate on the owner's explicit instruction, 2026-10-22): edit packages/core/tests/test_pg_tenancy_columns.py for task 1 as the suggestion says.
