@@ -904,8 +904,10 @@ class PostgresBackend:
     # Score providers (backend-specific; called from search / anchor_candidates)
     # ------------------------------------------------------------------
 
-    def _fts_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _fts_scores(self, query: str, limit: int, tenant_id: str | None = None) -> dict[str, float]:
         """tsvector FTS: ts_rank on the generated ``content_tsv`` column."""
+        if tenant_id is not None:
+            raise NotImplementedError
         tsquery = _sanitise_fts_query_pg(query)
         if not tsquery:
             return {}
@@ -926,7 +928,9 @@ class PostgresBackend:
         except Exception:  # noqa: BLE001
             return {}
 
-    def _trigram_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _trigram_scores(
+        self, query: str, limit: int, tenant_id: str | None = None
+    ) -> dict[str, float]:
         """
         pg_trgm scoring: two strategies combined via GREATEST.
 
@@ -945,6 +949,8 @@ class PostgresBackend:
         present as a whole in the full-query similarity (i.e. when the query is
         short enough that individual token matching adds signal).
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         if not self._trgm_available:
             return {}
         tokens = _sanitise_trgm_tokens(query)
@@ -994,6 +1000,7 @@ class PostgresBackend:
         query: str,
         query_embedding: np.ndarray | None,
         limit: int,
+        tenant_id: str | None = None,
     ) -> dict[str, float]:
         """
         pgvector cosine exact scan.
@@ -1002,6 +1009,8 @@ class PostgresBackend:
         mismatched-dimension rows silently (design §6.2).
         Returns ``{id: -distance}`` (higher = better match).
         """
+        if tenant_id is not None:
+            raise NotImplementedError
         if not self.vector_search_available():
             return {}
         emb: np.ndarray | None
@@ -1034,7 +1043,9 @@ class PostgresBackend:
     # Internal data-access callables (passed to hybrid_search pipeline)
     # ------------------------------------------------------------------
 
-    def _load_memories(self, ids: list[str]) -> list[MemoryRecord]:
+    def _load_memories(self, ids: list[str], tenant_id: str | None = None) -> list[MemoryRecord]:
+        if tenant_id is not None:
+            raise NotImplementedError
         if not ids:
             return []
         assert self._pool is not None
