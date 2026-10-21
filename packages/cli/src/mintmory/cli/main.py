@@ -43,6 +43,7 @@ from mintmory.core.types import (
     validate_tenant_id,
 )
 from numpy.typing import NDArray
+from rich import box
 from rich.console import Console
 from rich.table import Table
 
@@ -200,6 +201,65 @@ def tenant_list(
         table.add_row(t.id, t.name, "true" if t.is_active else "false", t.created_at.isoformat())
     console.print(table)
     console.print(f"[dim]{len(tenants)} tenant(s)[/dim]")
+
+
+@tenant_app.command("copy")
+def tenant_copy(
+    source: str = typer.Argument(..., help="Source tenant id"),
+    dest: str = typer.Argument(..., help="Destination tenant id"),
+    memory_ids: list[str] = typer.Option([], "--id", help="Source memory id to copy (repeatable)"),
+    category: str | None = typer.Option(None, "--category", help="Filter by category"),
+    entity: str | None = typer.Option(None, "--entity", help="Filter by entity"),
+    all_active: bool = typer.Option(False, "--all-active", help="Copy every active memory"),
+    force: bool = typer.Option(False, "--force", help="Copy records already in the destination"),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table"),
+) -> None:
+    """Copy memories, their attached notes and their links between two tenants.
+
+    Global scope only: a named root ``--tenant`` refuses the command before
+    touching the store. The source is never modified.
+    """
+    from mintmory.core.transfer import CopyReport, CopySelectionError, copy_between_tenants
+    from mintmory.core.types import MemoryFilter, ScopeRequiredError
+
+    with _tenant_errors():
+        scope = _read_tenant()
+        if scope is not None:
+            raise ScopeRequiredError("tenant copy", scope)
+
+        mem_filter: MemoryFilter | None = None
+        if category is not None or entity is not None:
+            mem_filter = MemoryFilter(
+                category=_parse_category(category) if category is not None else None,
+                entity=entity,
+            )
+
+        store = _get_store()
+        try:
+            report = copy_between_tenants(
+                store,
+                source_tenant=source,
+                dest_tenant=dest,
+                memory_ids=memory_ids or None,
+                filter=mem_filter,
+                all_active=all_active,
+                force=force,
+            )
+        except CopySelectionError as exc:
+            _fail(exc)
+
+    if as_json:
+        typer.echo(report.model_dump_json())
+        return
+
+    table = Table(title=f"Copy report ({source} -> {dest})", box=box.SIMPLE)
+    table.add_column("metric", style="cyan")
+    table.add_column("value", justify="right", style="green")
+    for name in CopyReport.model_fields:
+        if name in ("source_tenant", "dest_tenant", "id_map"):
+            continue
+        table.add_row(name, str(getattr(report, name)))
+    console.print(table)
 
 
 def _parse_category(category: str) -> MemoryCategory:

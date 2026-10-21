@@ -105,13 +105,14 @@ async def test_tool_inventory_matches_declared_tenant_scope(
         "vision_run": "create",
         "tenant_create": "directory",
         "tenant_list": "directory",
+        "tenant_copy": "copy",
     }
     declared = _declared_scope()
     names = {tool.name for tool in await directory_client.list_tools()}
 
     assert names == set(declared)
     assert declared == expected
-    assert set(declared.values()) == {"read", "create", "modify", "dream", "directory"}
+    assert set(declared.values()) == {"read", "create", "modify", "dream", "directory", "copy"}
     assert {"tenant_create", "tenant_list"} <= names
 
 
@@ -254,7 +255,10 @@ async def test_no_tool_exposes_a_tenant_selector(directory_client: Client[Any]) 
         if selected:
             tenant_properties[tool.name] = selected
 
-    assert tenant_properties == {"tenant_create": {"tenant_id"}}
+    assert tenant_properties == {
+        "tenant_create": {"tenant_id"},
+        "tenant_copy": {"source_tenant", "dest_tenant"},
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ from mintmory.core.ports import StorageBackend
 from mintmory.core.storage import SqliteBackend
 from mintmory.core.storage_factory import build_storage
 from mintmory.core.telemetry import init_telemetry
+from mintmory.core.transfer import copy_between_tenants
 from mintmory.core.types import (
     TENANT_GLOBAL,
     CaptionRunReport,
@@ -63,6 +64,7 @@ from mintmory.core.types import (
     MemoryFilter,
     MemoryRecord,
     MemorySource,
+    ScopeRequiredError,
     SearchAroundSpec,
     SearchRequest,
     TenantError,
@@ -125,6 +127,7 @@ TOOL_TENANT_SCOPE: Final[dict[str, str]] = {
     "vision_run": "create",
     "tenant_create": "directory",
     "tenant_list": "directory",
+    "tenant_copy": "copy",
 }
 
 _store: StorageBackend | None = None
@@ -974,6 +977,48 @@ def tenant_list() -> list[dict[str, Any]]:
     """
     store = _get_store()
     return [tenant.model_dump(mode="json") for tenant in store.list_tenants()]
+
+
+@mcp.tool()
+def tenant_copy(
+    source_tenant: str,
+    dest_tenant: str,
+    memory_ids: list[str] | None = None,
+    filter: dict[str, Any] | None = None,
+    all_active: bool = False,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Copy memories, their notes and their links between two tenants.
+
+    Global scope only: a named-scope server refuses this before reading
+    anything. The source is never modified. Returns a CopyReport as a dict.
+
+    Args:
+        source_tenant: Tenant to copy from.
+        dest_tenant: Tenant to copy into.
+        memory_ids: Explicit source memory ids to copy.
+        filter: MemoryFilter fields selecting the source records.
+        all_active: Copy every active, non-archived source memory.
+        force: Copy records whose content already exists in the destination.
+    """
+    if _scope_tenant != TENANT_GLOBAL:
+        raise ScopeRequiredError("tenant_copy", _scope_tenant)
+    if filter is not None:
+        unknown = set(filter) - set(MemoryFilter.model_fields)
+        if unknown:
+            raise ValueError(f"unknown filter key(s): {sorted(unknown)}")
+        parsed_filter: MemoryFilter | None = MemoryFilter.model_validate(filter)
+    else:
+        parsed_filter = None
+    return copy_between_tenants(
+        _get_store(),
+        source_tenant=source_tenant,
+        dest_tenant=dest_tenant,
+        memory_ids=memory_ids,
+        filter=parsed_filter,
+        all_active=all_active,
+        force=force,
+    ).model_dump(mode="json")
 
 
 # ---------------------------------------------------------------------------

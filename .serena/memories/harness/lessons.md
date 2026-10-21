@@ -1,5 +1,11 @@
 <!-- l4:lessons v1 — harness-owned; propose changes via .serena/memories/inbox/ -->
 
+## L-14f2b739 · Guard rule repeated: pre-existing test
+- **Source:** 3 runs
+- **Dedupe key:** guard-violation-pre-existing-test
+- **Reinforced:** 1 · 2026-10-21
+The guard rule `pre-existing test` was triggered in 3 separate runs. Do not touch the files it protects; the harness reverts the change and the run loses time.
+
 ## L-c96adcf5 · Guard rule repeated: frozen test
 - **Source:** 2 runs
 - **Dedupe key:** guard-violation-frozen-test
