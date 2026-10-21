@@ -15,7 +15,7 @@ Do not change question IDs. Commit and push to the l4/… branch to resume the r
 | Q-002 | accepted | 4 | technical | packages/mcp/tests/test_tools.py:51-72 omits tenant_copy from the frozen registered-tool names |
 | Q-003 | accepted | 5 | technical | packages/cli/tests/test_cli_tenant_copy.py:272 asserts an empty id_map after a successful copy |
 | Q-004 | answered | none | verdict | Criterion C-3affbf7d (Req 3.2): accept as satisfied? |
-| Q-005 | open | none | verdict | Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping |
+| Q-005 | answered | none | verdict | Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping |
 <!-- l4:index:end -->
 
 ---
@@ -121,7 +121,7 @@ reject: R3.2 is not implemented. _select (packages/core/src/mintmory/core/transf
 
 ## Q-005: Finding F-37e92031: R3.2 cap on filter/all_active rows is not enforced before duplicate skipping
 
-- **Status:** open
+- **Status:** answered
 - **Blocking tasks:** none
 - **Kind:** verdict
 - **Asked:** round 1, verifier
@@ -142,3 +142,4 @@ To set the check the fix must pass, end the reason with one sentence WHEN <the s
 
 ### Answer
 <!-- write below this line -->
+reject: confirmed against the code: _select (transfer.py:72-109) has no R3.2 check on the remaining filter/all_active rows; only len(plan) is checked at :247 after duplicate skipping (R3.4). Add the R3.2 check in _select after superseded rows are dropped. WHEN all_active or a filter selects more than COPY_MAX non-superseded rows in the source tenant, even if some of them are duplicates in the destination THEN copy_between_tenants raises CopySelectionError("selection exceeds {COPY_MAX} memories") before any write and the destination is unchanged
