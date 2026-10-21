@@ -18,7 +18,7 @@
   - Tests: R2.2.
   - _Requirements: 2.1, 2.2_
 
-- [ ] 3. `list_memories` (`storage_postgres.py`)
+- [x] 3. `list_memories` (`storage_postgres.py`)
   - R3.1.
   - Tests: R3.2.
   - _Requirements: 3.1, 3.2_
