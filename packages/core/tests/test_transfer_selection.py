@@ -499,18 +499,28 @@ def test_skipped_duplicates_do_not_count_toward_copy_max(
     store.create_tenant("beta")
     _add(store, "dup", "Already there")
     _add(store, "m2", "Second fact")
-    _add(store, "m3", "Third fact")
+    _add(
+        store,
+        "n2",
+        "Note on the second fact",
+        category=MemoryCategory.EPISODIC,
+        is_note=True,
+        metadata={"anchor_memory_id": "m2"},
+    )
     _add(store, "b-dup", "Already there", tenant="beta")
+    _link(store, "n2", "m2", ConceptLinkType.ANNOTATES)
     monkeypatch.setattr(transfer, "COPY_MAX", 2)
 
-    report = _copy(store, source_tenant="acme", dest_tenant="beta", all_active=True)
+    report = _copy(store, source_tenant="acme", dest_tenant="beta", memory_ids=["dup", "m2"])
 
-    assert report.memories_copied == 2
+    assert report.memories_copied == 1
+    assert report.notes_copied == 1
     assert report.memories_skipped_duplicate == 1
-    assert "b-dup" not in report.id_map
+    assert "dup" not in report.id_map
     contents = _contents(store, "beta")
+    assert contents.count("Already there") == 1
     assert contents.count("Second fact") == 1
-    assert contents.count("Third fact") == 1
+    assert contents.count("Note on the second fact") == 1
 
 
 # ---------------------------------------------------------------------------

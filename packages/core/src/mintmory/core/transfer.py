@@ -105,7 +105,10 @@ def _select(
         )
     else:
         rows = []
-    selected.extend(row for row in rows if row.superseded_by is None)
+    remaining = [row for row in rows if row.superseded_by is None]
+    if len(remaining) > COPY_MAX:
+        raise CopySelectionError(f"selection exceeds {COPY_MAX} memories")
+    selected.extend(remaining)
     return selected
 
 
