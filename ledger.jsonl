@@ -223,3 +223,6 @@
 {"at":"2026-10-22T00:27:46Z","head":"7b3d61e4eb7aa49592c421ae94269d37e84d941c","pr":49,"target_before":"3fce39cca0b6bfa066a0589f0aba92dbaf13050e","type":"unit.merge_requested","unit":"kiro:multi-tenancy-postgres-reads"}
 {"at":"2026-10-22T00:27:51Z","ci":"green","head":"7b3d61e4eb7aa49592c421ae94269d37e84d941c","merge_commit":"f51ba159d91c23be06950be9820680300336aec9","method":"squash","pr":49,"raced":false,"type":"unit.merged","unit":"kiro:multi-tenancy-postgres-reads"}
 {"at":"2026-10-22T00:27:54Z","branch":"l4/kiro/multi-tenancy-postgres-reads","head":"7b3d61e4eb7aa49592c421ae94269d37e84d941c","type":"unit.branch_deleted","unit":"kiro:multi-tenancy-postgres-reads"}
+{"at":"2026-10-22T00:30:13Z","detail":"5 gate(s) passed; skipped (not configured): build, e2e","profile":"all","revision":"f51ba159d91c23be06950be9820680300336aec9","status":"pass","type":"unit.postcheck","unit":"kiro:multi-tenancy-postgres-reads"}
+{"at":"2026-10-22T00:30:13Z","revision":"f51ba159d91c23be06950be9820680300336aec9","type":"unit.integrated","unit":"kiro:multi-tenancy-postgres-reads"}
+{"at":"2026-10-22T00:30:13Z","attempt":1,"cost_usd":2.057919,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres-reads"}

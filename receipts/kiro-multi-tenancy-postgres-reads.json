@@ -1,0 +1,15 @@
+{
+  "confirmed_at": "2026-10-22T00:30:13Z",
+  "integrated_revision": "f51ba159d91c23be06950be9820680300336aec9",
+  "merge_commit": "f51ba159d91c23be06950be9820680300336aec9",
+  "plan_digest": "b5fa7ee7b594dc91",
+  "plan_id": "multitenancy",
+  "postcheck": "pass",
+  "pr": 49,
+  "receipt_id": "multitenancy/kiro:multi-tenancy-postgres-reads/1",
+  "repository": "https://github.com/WeLikeCode/mint-mory",
+  "reviewed_head": "7b3d61e4eb7aa49592c421ae94269d37e84d941c",
+  "spec_digest": "d223430e5275ca84",
+  "target": "staging",
+  "unit_id": "kiro:multi-tenancy-postgres-reads"
+}
