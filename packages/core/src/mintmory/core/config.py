@@ -22,10 +22,19 @@ properties.
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
+from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_OTEL_LOGGER = logging.getLogger("mintmory.telemetry")
+
+# Every spelling pydantic's boolean parser accepted when ``OTelSettings.enabled`` was a plain
+# ``bool``: true-ish and false-ish, case-insensitively, mapped to the string ``"true"``/``"false"``.
+_TRUE_SPELLINGS = frozenset({"1", "true", "t", "yes", "y", "on"})
+_FALSE_SPELLINGS = frozenset({"0", "false", "f", "no", "n", "off"})
 
 
 def _csv_set(value: str) -> frozenset[str]:
@@ -199,11 +208,63 @@ class ConversionSettings(BaseSettings):
 # OpenTelemetry (MINTMORY_OTEL_*) — off by default, no-op shim when disabled.
 # ---------------------------------------------------------------------------
 class OTelSettings(BaseSettings):
+    """OpenTelemetry knobs (``MINTMORY_OTEL_*``).
+
+    Constructing this object NEVER raises for a bad value: each invalid variable logs one
+    WARNING on ``mintmory.telemetry`` naming itself and falls back to its default. Booleans
+    and case are normalised so ``True``, ``"TRUE"`` and ``"true"`` all mean ``"true"``.
+    """
+
     model_config = SettingsConfigDict(env_prefix="MINTMORY_OTEL_", extra="ignore")
 
-    enabled: bool = False
-    exporter: str = "console"  # "console" | "otlp"
-    service_name: str = "mintmory"
+    enabled: Literal["auto", "true", "false"] | bool = "auto"
+    exporter: str = "otlp"  # "otlp" | "console" | "none"
+    service_name: str | None = None
+    export_timeout_s: float = 3.0
+
+    @field_validator("enabled", mode="before")
+    @classmethod
+    def _normalise_enabled(cls, value: object) -> object:
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if value is None:
+            return value
+        normalised = str(value).strip().lower()
+        if normalised == "auto":
+            return "auto"
+        if normalised in _TRUE_SPELLINGS:
+            return "true"
+        if normalised in _FALSE_SPELLINGS:
+            return "false"
+        _OTEL_LOGGER.warning("MINTMORY_OTEL_ENABLED=%r is invalid; falling back to 'auto'", value)
+        return "auto"
+
+    @field_validator("exporter", mode="before")
+    @classmethod
+    def _normalise_exporter(cls, value: object) -> object:
+        if value is None:
+            return value
+        normalised = str(value).strip().lower()
+        if normalised in ("otlp", "console", "none"):
+            return normalised
+        _OTEL_LOGGER.warning("MINTMORY_OTEL_EXPORTER=%r is invalid; falling back to 'otlp'", value)
+        return "otlp"
+
+    @field_validator("export_timeout_s", mode="before")
+    @classmethod
+    def _normalise_export_timeout(cls, value: object) -> object:
+        if value is None:
+            return value
+        try:
+            timeout = float(str(value))
+        except ValueError:
+            timeout = 0.0
+        if timeout > 0:
+            return timeout
+        _OTEL_LOGGER.warning(
+            "MINTMORY_OTEL_EXPORT_TIMEOUT_S=%r is invalid; falling back to 3.0", value
+        )
+        return 3.0
 
 
 # ---------------------------------------------------------------------------
@@ -212,11 +273,23 @@ class OTelSettings(BaseSettings):
 # applies to is_note=1; auto_include only adds ANNOTATES-linked notes).
 # ---------------------------------------------------------------------------
 class NoteSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MINTMORY_NOTE_", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="MINTMORY_NOTE_", extra="ignore", populate_by_name=True
+    )
 
     # Additive authority boost in effective_score for is_note rows. Same scale as
     # the recency bonus (DECAY_BONUS_MAX = 0.1); a tie-breaker, not a hammer.
-    note_bonus: float = Field(default=0.05, ge=0.0, le=1.0)
+    # Accepts the documented MINTMORY_NOTE_BONUS first, then the legacy
+    # MINTMORY_NOTE_NOTE_BONUS (from the env prefix); the documented name wins.
+    note_bonus: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        validation_alias=AliasChoices(
+            "MINTMORY_NOTE_BONUS",  # documented name
+            "MINTMORY_NOTE_NOTE_BONUS",  # legacy alias
+        ),
+    )
     # Max annotating notes auto-included per search result (reverse ANNOTATES
     # traversal). 0 disables auto-include.
     auto_include_cap: int = Field(default=3, ge=0, le=20)
@@ -413,6 +486,18 @@ class StorageSettings(BaseSettings):
     dsn: str | None = None
     pool_min: int = Field(default=1, ge=1)
     pool_max: int = Field(default=10, ge=1)
+
+
+class McpSettings(BaseSettings):
+    """MCP transport settings (``MINTMORY_MCP_*``).
+
+    ``tenant`` is the default scope for a ``mintmory-mcp`` process; an empty
+    string means the global scope. ``--tenant`` on the command line overrides it.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="MINTMORY_MCP_", extra="ignore")
+
+    tenant: str = ""
 
 
 class Settings(BaseSettings):

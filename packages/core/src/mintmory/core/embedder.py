@@ -42,6 +42,7 @@ import urllib.request
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import numpy as np
+from mintmory.core import telemetry
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
@@ -123,6 +124,7 @@ class HashingEmbedder:
     """
 
     MODEL_ID = "hashing-tfidf-v1"
+    provider = "hashing"
 
     def __init__(
         self,
@@ -198,9 +200,11 @@ class HashingEmbedder:
         return idf.get(feature, self._idf_floor)
 
     # -- public API ---------------------------------------------------------
+    @telemetry.embed_span
     def embed(self, text: str) -> NDArray[np.float32]:
         return self.embed_batch([text])[0]
 
+    @telemetry.embed_span
     def embed_batch(
         self, texts: list[str], idf: dict[str, float] | None = None
     ) -> list[NDArray[np.float32]]:
@@ -225,6 +229,7 @@ class LocalEmbedder:
     """
 
     MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
+    provider = "local"
     _DIMENSIONS = 384
 
     def __init__(self, device: str = "cpu", cache_dir: str | None = None) -> None:
@@ -246,6 +251,7 @@ class LocalEmbedder:
     def model_name(self) -> str:
         return self.MODEL_ID
 
+    @telemetry.embed_span
     def embed(self, text: str) -> NDArray[np.float32]:
         try:
             vec = self._model.encode(text, normalize_embeddings=True, convert_to_numpy=True)
@@ -253,6 +259,7 @@ class LocalEmbedder:
             raise EmbeddingError(f"LocalEmbedder.embed failed: {exc}") from exc
         return _l2_normalise(np.asarray(vec, dtype=np.float32))
 
+    @telemetry.embed_span
     def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         try:
             vecs = self._model.encode(
@@ -276,6 +283,7 @@ class OllamaEmbedder:
     """
 
     MODEL_ID = "nomic-embed-text"
+    provider = "ollama"
     _DEFAULT_BASE_URL = "http://localhost:11434/v1"
     _DEFAULT_DIM = 768
 
@@ -308,6 +316,8 @@ class OllamaEmbedder:
             headers={"content-type": "application/json"},
             method="POST",
         )
+        for header, value in telemetry.inject_trace_headers({}).items():
+            req.add_header(header, value)
         try:
             with urllib.request.urlopen(  # noqa: S310 - local OpenAI-compatible endpoint
                 req, timeout=self._timeout_s
@@ -317,9 +327,11 @@ class OllamaEmbedder:
             raise EmbeddingError(f"OllamaEmbedder request failed: {exc}") from exc
         return result
 
+    @telemetry.embed_span
     def embed(self, text: str) -> NDArray[np.float32]:
         return self.embed_batch([text])[0]
 
+    @telemetry.embed_span
     def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         if not texts:
             return []
@@ -340,6 +352,7 @@ class OpenAIEmbedder:
     """
 
     MODEL_ID = "text-embedding-3-small"
+    provider = "openai"
     _DIMENSIONS = 1536
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None) -> None:
@@ -361,17 +374,27 @@ class OpenAIEmbedder:
     def model_name(self) -> str:
         return self.MODEL_ID
 
+    @telemetry.embed_span
     def embed(self, text: str) -> NDArray[np.float32]:
         try:
-            resp = self._client.embeddings.create(input=[text], model=self.MODEL_ID)
+            resp = self._client.embeddings.create(
+                input=[text],
+                model=self.MODEL_ID,
+                extra_headers=telemetry.inject_trace_headers({}),
+            )
         except Exception as exc:  # pragma: no cover - requires network
             raise EmbeddingError(f"OpenAIEmbedder.embed failed: {exc}") from exc
         vec = np.asarray(resp.data[0].embedding, dtype=np.float32)
         return _l2_normalise(vec)
 
+    @telemetry.embed_span
     def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         try:
-            resp = self._client.embeddings.create(input=texts, model=self.MODEL_ID)
+            resp = self._client.embeddings.create(
+                input=texts,
+                model=self.MODEL_ID,
+                extra_headers=telemetry.inject_trace_headers({}),
+            )
         except Exception as exc:  # pragma: no cover - requires network
             raise EmbeddingError(f"OpenAIEmbedder.embed_batch failed: {exc}") from exc
         ordered = sorted(resp.data, key=lambda d: d.index)
@@ -394,6 +417,7 @@ class FakeEmbedder:
     """
 
     MODEL_ID = "fake-hash-embedder"
+    provider = "fake"
 
     def __init__(self, dim: int = 384) -> None:
         if dim <= 0:
@@ -408,6 +432,7 @@ class FakeEmbedder:
     def model_name(self) -> str:
         return self.MODEL_ID
 
+    @telemetry.embed_span
     def embed(self, text: str) -> NDArray[np.float32]:
         vec = np.zeros(self._dim, dtype=np.float32)
         tokens = text.lower().split()
@@ -421,6 +446,7 @@ class FakeEmbedder:
             vec[bucket] += np.float32(weight)
         return _l2_normalise(vec)
 
+    @telemetry.embed_span
     def embed_batch(self, texts: list[str]) -> list[NDArray[np.float32]]:
         return [self.embed(text) for text in texts]
 

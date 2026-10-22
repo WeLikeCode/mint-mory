@@ -8,8 +8,10 @@ inside the functions that need it, so importing this module never requires the
 extra and tests can inject a fake ``markitdown`` into ``sys.modules``.
 
 The ``clean_markdown`` pass is conservative and idempotent: it normalises line
-endings and blank runs and strips HTML comments, but never reflows prose, touches
-fenced-code indentation, or alters table pipes.
+endings and blank runs and strips HTML comments, but never reflows prose or
+alters table pipes. Backtick and tilde fenced code blocks are copied
+byte-identical, so comments, trailing whitespace and blank lines inside them
+survive.
 """
 
 from __future__ import annotations
@@ -57,8 +59,6 @@ DEFAULT_MAX_OUTPUT_MB: float = 50.0
 
 # HTML comments, including multi-line ones, matched non-greedily.
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-# Three or more consecutive blank lines (lines empty after trailing-ws strip).
-_BLANK_RUN_RE = re.compile(r"\n{3,}")
 
 
 class ConversionError(RuntimeError):
@@ -100,18 +100,20 @@ def is_convertible(path: str | Path) -> bool:
 
 
 def clean_markdown(text: str) -> str:
-    """Conservative formatting normaliser — see design §3. Pure, total, idempotent."""
+    """Conservative formatting normaliser — see design §3. Pure, total, idempotent.
+
+    Fenced code blocks survive each pass byte-identical (after line-ending
+    normalisation); the prose around them is cleaned as before. The pass is
+    repeated, re-identifying fences on each pass's input, until a fixed point,
+    so the result satisfies ``clean_markdown(out) == out``.
+    """
     # 1. Normalise line endings: \r\n and \r -> \n.
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    # 5. Remove HTML comments (multi-line, non-greedy) before blank-run collapse,
-    #    so the gaps a removed comment leaves are normalised below.
-    text = _HTML_COMMENT_RE.sub("", text)
-    # 2. Strip trailing whitespace from each line.
-    text = "\n".join(line.rstrip() for line in text.split("\n"))
-    # 3. Collapse 3+ consecutive blank lines to exactly one blank line.
-    text = _BLANK_RUN_RE.sub("\n\n", text)
-    # 4. Strip leading and trailing blank lines (no trailing newline).
-    return text.strip("\n")
+    while True:
+        cleaned = _clean_pass(text)
+        if cleaned == text:
+            return cleaned
+        text = cleaned
 
 
 def _convert_with_timeout(path: Path, *, enable_plugins: bool, timeout_s: float | None) -> Any:
@@ -205,3 +207,104 @@ def extract_markdown(
         method="text",
         path=p,
     )
+
+
+def _clean_pass(text: str) -> str:
+    """One cleanup pass: fenced lines copied verbatim, prose cleaned as before.
+
+    Fences are identified on this pass's input (design D1). Leading and trailing
+    blank lines are stripped only where they are outside a fence (design D3), so
+    an unterminated fence keeps its trailing blank lines.
+    """
+    lines = text.split("\n")
+    mask = _fenced_line_mask(lines)
+    out: list[str] = []
+    fenced_out: list[bool] = []
+    i = 0
+    while i < len(lines):
+        j = i
+        while j < len(lines) and mask[j] == mask[i]:
+            j += 1
+        if mask[i]:
+            out.extend(lines[i:j])
+            fenced_out.extend([True] * (j - i))
+        else:
+            cleaned = _clean_run_lines(lines[i:j])
+            out.extend(cleaned)
+            fenced_out.extend([False] * len(cleaned))
+        i = j
+    while out and not fenced_out[0] and out[0] == "":
+        out.pop(0)
+        fenced_out.pop(0)
+    while out and not fenced_out[-1] and out[-1] == "":
+        out.pop()
+        fenced_out.pop()
+    return "\n".join(out)
+
+
+# A fence opens on at most 3 spaces then a run of 3+ backticks or 3+ tildes.
+_FENCE_OPEN_RE = re.compile(r"^( {0,3})(`{3,}|~{3,})(.*)$")
+# A fence closes on at most 3 spaces, the same char run, nothing but spaces/tabs.
+_FENCE_CLOSE_RE = re.compile(r"^( {0,3})(`+|~+)[ \t]*$")
+
+
+def _opening_fence(line: str) -> tuple[str, int] | None:
+    """``(char, run-length)`` if ``line`` opens a fence, else ``None``.
+
+    A backtick fence's info string may not contain a backtick (CommonMark).
+    """
+    m = _FENCE_OPEN_RE.match(line)
+    if m is None:
+        return None
+    fence, info = m.group(2), m.group(3)
+    if fence[0] == "`" and "`" in info:
+        return None
+    return fence[0], len(fence)
+
+
+def _closes_fence(line: str, char: str, min_len: int) -> bool:
+    """True iff ``line`` closes a fence opened with ``char`` repeated ``min_len``+."""
+    m = _FENCE_CLOSE_RE.match(line)
+    if m is None:
+        return False
+    run = m.group(2)
+    return run[0] == char and len(run) >= min_len
+
+
+def _fenced_line_mask(lines: list[str]) -> list[bool]:
+    """True for every line from an opener through its closer (or end of text)."""
+    mask = [False] * len(lines)
+    i = 0
+    while i < len(lines):
+        opener = _opening_fence(lines[i])
+        if opener is None:
+            i += 1
+            continue
+        char, length = opener
+        j = i + 1
+        while j < len(lines) and not _closes_fence(lines[j], char, length):
+            j += 1
+        end = j if j < len(lines) else len(lines) - 1
+        for k in range(i, end + 1):
+            mask[k] = True
+        i = end + 1
+    return mask
+
+
+def _clean_run_lines(lines: list[str]) -> list[str]:
+    """Clean a maximal run of non-fenced lines: comments, trailing ws, blank runs."""
+    text = _HTML_COMMENT_RE.sub("", "\n".join(lines))
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+    out: list[str] = []
+    blanks = 0
+    for line in text.split("\n"):
+        if line == "":
+            blanks += 1
+            continue
+        if blanks:
+            out.append("")
+            blanks = 0
+        out.append(line)
+    if blanks:
+        out.append("")
+    return out

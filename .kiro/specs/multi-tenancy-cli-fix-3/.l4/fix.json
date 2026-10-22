@@ -1,0 +1,16 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "kiro:multi-tenancy-cli",
+  "round": 3,
+  "findings": [
+    "F-250a0697"
+  ],
+  "chores": [
+    "F-250a0697"
+  ],
+  "test_chores": [
+    "F-250a0697"
+  ],
+  "refactors": [],
+  "retakes": []
+}

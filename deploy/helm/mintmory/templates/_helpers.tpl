@@ -78,6 +78,17 @@ Name of the oauth2-proxy workload/Service/Secret.
 {{- end -}}
 
 {{/*
+Selector labels for oauth2-proxy. The name label is deliberately distinct from
+the application's so the application Service, Deployment and PDB never select
+oauth2-proxy pods (and application traffic never reaches port 4180).
+*/}}
+{{- define "mintmory.oauth2ProxySelectorLabels" -}}
+app.kubernetes.io/name: {{ printf "%s-oauth2-proxy" (include "mintmory.name" .) | trunc 63 | trimSuffix "-" }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+app.kubernetes.io/component: oauth2-proxy
+{{- end -}}
+
+{{/*
 Image reference (tag falls back to the chart appVersion).
 */}}
 {{- define "mintmory.image" -}}

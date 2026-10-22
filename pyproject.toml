@@ -19,6 +19,7 @@ dev-dependencies = [
 ]
 
 [tool.pytest.ini_options]
+markers = ["l4(*ids): the acceptance criteria (C-xxxxxxxx) this test checks"]
 asyncio_mode = "auto"
 testpaths = [
     "packages/core/tests",

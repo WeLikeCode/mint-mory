@@ -184,8 +184,6 @@ existing image-understanding endpoints/tools (`image_jobs`, `image_caption_put`,
 - **THEN** the response is 422 with a clear "ocr is not implemented" message (not a
   500).
 
-## MODIFIED Requirements
-
 ### Requirement: Vision provider seam (llm implemented; ocr stub in v1)
 The system SHALL provide a `Captioner` protocol (`describe(image: ImageInput) ->
 ImageDescription`) and a single factory `captioner_from_settings(settings) ->
@@ -223,3 +221,9 @@ path SHALL add NO new required dependency — it reuses the stdlib-`urllib`
   `MINTMORY_VISION_PROVIDER=ocr`
 - **THEN** it raises `NotImplementedError` with a message directing the operator to
   use `MINTMORY_VISION_PROVIDER=agent`.
+
+## REMOVED Requirements
+
+### Requirement: Vision provider seam (agent only in v1)
+**Reason**: Replaced by "Vision provider seam (llm implemented; ocr stub in v1)" above. The `llm` provider is now implemented, so the v1 statement that `llm` raises `NotImplementedError` no longer holds.
+**Migration**: Use the new seam requirement; `agent` stays the default, `llm` resolves to `LLMCaptioner`, and `ocr` still raises.

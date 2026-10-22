@@ -23,6 +23,21 @@ PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
 -- ---------------------------------------------------------------------------
+-- tenants — the tenant directory (created first: the other tables' tenant_id
+-- foreign key targets this table, so it must exist before any insert)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tenants (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO tenants (id, name, is_active, created_at, updated_at)
+VALUES ('global', 'Global (default) tenant', 1, '1970-01-01T00:00:00', '1970-01-01T00:00:00');
+
+-- ---------------------------------------------------------------------------
 -- memories — primary object store (Palantir: Object instances)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS memories (
@@ -64,7 +79,9 @@ CREATE TABLE IF NOT EXISTS memories (
     last_accessed_at    TEXT,
 
     -- Extensible metadata
-    metadata            TEXT NOT NULL DEFAULT '{}'      -- JSON object
+    metadata            TEXT NOT NULL DEFAULT '{}',     -- JSON object
+
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id)
 );
 
 -- ---------------------------------------------------------------------------
@@ -114,7 +131,9 @@ CREATE TABLE IF NOT EXISTS concept_links (
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
 
-    UNIQUE (source_memory_id, target_memory_id, link_type)
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+
+    UNIQUE (tenant_id, source_memory_id, target_memory_id, link_type)
 );
 
 -- ---------------------------------------------------------------------------
@@ -122,11 +141,15 @@ CREATE TABLE IF NOT EXISTS concept_links (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS memory_summaries (
     id              TEXT PRIMARY KEY,
-    concept         TEXT NOT NULL UNIQUE,
+    concept         TEXT NOT NULL,
     summary_text    TEXT NOT NULL,
     memory_count    INTEGER NOT NULL DEFAULT 0,
     is_current      INTEGER NOT NULL DEFAULT 1,
-    generated_at    TEXT NOT NULL
+    generated_at    TEXT NOT NULL,
+
+    tenant_id       TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+
+    UNIQUE (tenant_id, concept)
 );
 
 -- ---------------------------------------------------------------------------
@@ -134,7 +157,7 @@ CREATE TABLE IF NOT EXISTS memory_summaries (
 -- (change-detection + idempotent re-runs; openspec: add-recurrent-tree-indexing)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS index_manifest (
-    path          TEXT PRIMARY KEY,           -- absolute source file path
+    path          TEXT NOT NULL,               -- absolute source file path
     collection    TEXT NOT NULL,              -- source-root id, e.g. 'onedrive:ExampleOrg'
     size          INTEGER NOT NULL,
     mtime         REAL NOT NULL,
@@ -142,7 +165,11 @@ CREATE TABLE IF NOT EXISTS index_manifest (
     index_mode    TEXT NOT NULL DEFAULT 'metadata' CHECK (index_mode IN ('metadata','content','vision')),
     memory_ids    TEXT NOT NULL DEFAULT '[]',  -- JSON array of memory ids for this path
     online_only   INTEGER NOT NULL DEFAULT 0,
-    last_seen     TEXT NOT NULL                -- ISO-8601 UTC of the last run that saw this path
+    last_seen     TEXT NOT NULL,               -- ISO-8601 UTC of the last run that saw this path
+
+    tenant_id     TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+
+    PRIMARY KEY (tenant_id, path)
 );
 
 CREATE INDEX IF NOT EXISTS idx_manifest_collection
@@ -161,7 +188,9 @@ CREATE TABLE IF NOT EXISTS query_sessions (
     reasoning           TEXT,
     useful_ids          TEXT NOT NULL DEFAULT '[]',  -- JSON array
     stale_ids           TEXT NOT NULL DEFAULT '[]',  -- JSON array
-    concluded           INTEGER NOT NULL DEFAULT 0
+    concluded           INTEGER NOT NULL DEFAULT 0,
+
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id)
 );
 
 -- ---------------------------------------------------------------------------
@@ -174,6 +203,8 @@ CREATE TABLE IF NOT EXISTS query_results (
     was_accessed        INTEGER NOT NULL DEFAULT 0,
     was_useful          INTEGER NOT NULL DEFAULT 0,
     was_stale           INTEGER NOT NULL DEFAULT 0,
+
+    tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
 
     PRIMARY KEY (session_id, memory_id)
 );

@@ -30,7 +30,9 @@ Every tool returns a JSON-safe dict (or list of dicts) produced via
 from __future__ import annotations
 
 import os
-from typing import Any, Literal, cast
+import sys
+import threading
+from typing import Any, Final, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
 try:
@@ -40,14 +42,21 @@ except ImportError as e:
 
 from mintmory.core import notes as notes_mod
 from mintmory.core import session as session_mod
-from mintmory.core.cochange import changed_with, documents_timeline
-from mintmory.core.config import LLMProvider, load_settings
+from mintmory.core.cochange import (
+    COCHANGE_SQLITE_ONLY_MESSAGE,
+    changed_with,
+    documents_timeline,
+)
+from mintmory.core.config import LLMProvider, McpSettings, load_settings
+from mintmory.core.dreaming import run_dream
 from mintmory.core.llm import build_dreaming_engine
 from mintmory.core.ports import StorageBackend
 from mintmory.core.storage import SqliteBackend
 from mintmory.core.storage_factory import build_storage
 from mintmory.core.telemetry import init_telemetry
+from mintmory.core.transfer import copy_between_tenants
 from mintmory.core.types import (
+    TENANT_GLOBAL,
     CaptionRunReport,
     ConceptLinkType,
     DreamIntensity,
@@ -55,8 +64,12 @@ from mintmory.core.types import (
     MemoryFilter,
     MemoryRecord,
     MemorySource,
+    ScopeRequiredError,
     SearchAroundSpec,
     SearchRequest,
+    TenantError,
+    TenantNotFoundError,
+    validate_tenant_id,
 )
 from mintmory.mcp._schema import build_schema
 from mintmory.mcp.concise import concise_memory_get, concise_search_response
@@ -85,20 +98,77 @@ mcp: FastMCP[Any] = FastMCP(
         "send it back with summary_put — no separate LLM backend required. "
         "IMAGES: call image_jobs to get images needing a description, write a combined "
         "description, send it back with image_caption_put — no vision backend needed. "
-        "If MINTMORY_VISION_PROVIDER=llm is configured, call vision_run to auto-caption instead."
+        "If MINTMORY_VISION_PROVIDER=llm is configured, call vision_run to auto-caption instead. "
+        "TENANCY: this server is bound to one tenant scope for its lifetime "
+        "(see mintmory://capabilities); the global scope reads every tenant and "
+        "writes the global tenant, a named scope reads and writes only its tenant. "
+        "tenant_create and tenant_list manage the tenant directory."
     ),
 )
 
+TOOL_TENANT_SCOPE: Final[dict[str, str]] = {
+    "memory_add": "create",
+    "memory_get": "read",
+    "memory_search": "read",
+    "memory_dream": "dream",
+    "memory_stats": "read",
+    "session_feedback": "modify",
+    "memory_archive": "modify",
+    "summary_list": "read",
+    "summary_get": "read",
+    "summary_jobs": "create",
+    "summary_put": "create",
+    "memory_note": "create",
+    "notes_list": "read",
+    "docs_changed_with": "read",
+    "docs_timeline": "read",
+    "image_jobs": "create",
+    "image_caption_put": "create",
+    "vision_run": "create",
+    "tenant_create": "directory",
+    "tenant_list": "directory",
+    "tenant_copy": "copy",
+}
+
 _store: StorageBackend | None = None
+_store_lock = threading.Lock()
+_scope_tenant: str = TENANT_GLOBAL
 
 
 def _get_store() -> StorageBackend:
     global _store
     if _store is None:
-        # build_storage() resolves path / creates parent dir / no embedder (MCP local)
-        _store = build_storage()
-        _store.initialise()
+        # Concurrent tool calls run in worker threads: build the adapter once so
+        # two callers never race two backends against the same database file.
+        with _store_lock:
+            if _store is None:
+                # build_storage() resolves path / creates parent dir / no embedder (MCP local)
+                store = build_storage()
+                store.initialise()
+                _store = store
     return _store
+
+
+def _effective_tenant() -> str | None:
+    """Read scope: ``None`` for the global scope, the tenant id otherwise."""
+    return None if _scope_tenant == TENANT_GLOBAL else _scope_tenant
+
+
+def _bootstrap_scope(scope: str) -> None:
+    """Validate and resolve the process-wide tenant scope once at startup."""
+    global _scope_tenant
+    validate_tenant_id(scope)
+    store = _get_store()
+    if scope != TENANT_GLOBAL:
+        tenant = store.get_tenant(scope)
+        if tenant is None:
+            raise TenantNotFoundError(scope)
+        if not tenant.is_active:
+            print(
+                f"mintmory-mcp: warning: tenant {scope!r} is inactive; this server is read-only",
+                file=sys.stderr,
+            )
+    _scope_tenant = scope
 
 
 # ---------------------------------------------------------------------------
@@ -127,9 +197,15 @@ def mintmory_capabilities() -> dict[str, Any]:
             "llm_model": settings.llm.model,
             "vision_provider": settings.vision.provider.value,
             "dreaming_llm_steps": llm_enabled,
+            "tenant_scope": _scope_tenant,
+            "tenant_scoped": _scope_tenant != TENANT_GLOBAL,
         }
     except Exception:  # noqa: BLE001
-        return {"error": "settings unavailable"}
+        return {
+            "error": "settings unavailable",
+            "tenant_scope": _scope_tenant,
+            "tenant_scoped": _scope_tenant != TENANT_GLOBAL,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +387,7 @@ def memory_add(
         confidence=confidence,
         verified=verified,
         metadata=metadata or {},
+        tenant_id=_scope_tenant,
     )
     stored = store.add_memory(record=record)
     result: dict[str, Any] = stored.model_dump(mode="json")
@@ -328,7 +405,7 @@ def memory_get(
     when you only need the body; use the default "full" for all fields.
     """
     store = _get_store()
-    record = store.get_memory(memory_id)
+    record = store.get_memory(memory_id, tenant_id=_effective_tenant())
     if record is None:
         return None
     result: dict[str, Any] = record.model_dump(mode="json")
@@ -397,7 +474,7 @@ def memory_search(
         filter=memory_filter,
         search_around=search_around,
     )
-    response = store.search(request)
+    response = store.search(request, tenant_id=_effective_tenant())
     result: dict[str, Any] = response.model_dump(mode="json")
     if verbosity == "concise":
         return concise_search_response(result)
@@ -420,16 +497,18 @@ def memory_dream(intensity: str = "light") -> dict[str, Any]:
     """
     store = _get_store()
     settings = load_settings()
-    engine = build_dreaming_engine(
+    report = run_dream(
         store,
-        settings.llm,
-        link_settings=settings.link,
-        summary_settings=settings.summary,
+        intensity=DreamIntensity(intensity),
+        tenant_id=_effective_tenant(),
+        engine_factory=lambda tenant_id: build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+            tenant_id=tenant_id,
+        ),
     )
-    if DreamIntensity(intensity) is DreamIntensity.FULL:
-        report = engine.run_full()
-    else:
-        report = engine.run_light()
     result: dict[str, Any] = report.model_dump(mode="json")
     return result
 
@@ -438,7 +517,7 @@ def memory_dream(intensity: str = "light") -> dict[str, Any]:
 def memory_stats() -> dict[str, Any]:
     """Return memory health statistics."""
     store = _get_store()
-    result: dict[str, Any] = store.get_stats().model_dump(mode="json")
+    result: dict[str, Any] = store.get_stats(tenant_id=_effective_tenant()).model_dump(mode="json")
     return result
 
 
@@ -476,6 +555,7 @@ def session_feedback(
             stale_ids or [],
             confidence_rating,
             reasoning,
+            tenant_id=_effective_tenant(),
         )
     except ValueError as exc:
         return {"error": "conflict", "message": str(exc)}
@@ -487,7 +567,10 @@ def session_feedback(
 def memory_archive(memory_id: str) -> dict[str, Any]:
     """Soft-delete a memory (sets is_archived=True, is_active=False)."""
     store = _get_store()
-    store.archive_memory(memory_id)
+    try:
+        store.archive_memory(memory_id, tenant_id=_effective_tenant())
+    except KeyError as exc:
+        return {"error": "not_found", "message": str(exc)}
     return {"id": memory_id, "archived": True}
 
 
@@ -495,14 +578,17 @@ def memory_archive(memory_id: str) -> dict[str, Any]:
 def summary_list() -> list[dict[str, Any]]:
     """List all concept summaries generated by the dreaming process."""
     store = _get_store()
-    return [summary.model_dump(mode="json") for summary in store.list_summaries()]
+    return [
+        summary.model_dump(mode="json")
+        for summary in store.list_summaries(tenant_id=_effective_tenant())
+    ]
 
 
 @mcp.tool()
 def summary_get(concept: str) -> dict[str, Any] | None:
     """Get the summary for a specific concept. Returns None if not found."""
     store = _get_store()
-    summary = store.get_summary(concept)
+    summary = store.get_summary(concept, _scope_tenant)
     if summary is None:
         return None
     result: dict[str, Any] = summary.model_dump(mode="json")
@@ -531,7 +617,11 @@ def summary_jobs(include_all: bool = False, limit: int = 0) -> list[dict[str, An
     store = _get_store()
     settings = load_settings()
     engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+        store,
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+        tenant_id=_scope_tenant,
     )
     jobs = engine.collect_summary_jobs(include_all=include_all)
     if limit > 0:
@@ -557,7 +647,11 @@ def summary_put(concept: str, summary_text: str) -> dict[str, Any]:
     store = _get_store()
     settings = load_settings()
     engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
+        store,
+        settings.llm,
+        link_settings=settings.link,
+        summary_settings=settings.summary,
+        tenant_id=_scope_tenant,
     )
     result: dict[str, Any] = engine.apply_summary(concept, summary_text).model_dump(mode="json")
     return result
@@ -633,6 +727,7 @@ def memory_note(
         when=parsed_when,
         until=parsed_until,
         category=parsed_category,
+        tenant_id=_scope_tenant,
     )
     result: dict[str, Any] = note_result.model_dump(mode="json")
     return result
@@ -660,6 +755,7 @@ def notes_list(
             upcoming=upcoming,
             overdue=overdue,
             limit=limit,
+            tenant_id=_effective_tenant(),
         )
     except ValueError as exc:
         return {"error": "bad_request", "message": str(exc)}
@@ -674,7 +770,7 @@ _DOCS_TIMELINE_MAX = 200  # hard cap so a single MCP call cannot pull the whole 
 
 
 @mcp.tool()
-def docs_changed_with(path: str) -> list[dict[str, Any]]:
+def docs_changed_with(path: str) -> list[dict[str, Any]] | dict[str, str]:
     """Documents observed to co-change with <path> (same index-tree change-set).
 
     Returns [{path, strength, observed_at, kind}] — each peer in the same observed
@@ -686,8 +782,13 @@ def docs_changed_with(path: str) -> list[dict[str, Any]]:
 
     To populate this data: run `mintmory index-tree <root> --cochange` first.
     Read-only. Only source='document' records are ever returned.
+    SQLite-only: on another storage backend returns {"error": "not_implemented",
+    "message": ...}.
     """
-    return changed_with(cast(SqliteBackend, _get_store()), path)
+    store = _get_store()
+    if not isinstance(store, SqliteBackend):
+        return {"error": "not_implemented", "message": COCHANGE_SQLITE_ONLY_MESSAGE}
+    return changed_with(store, path, tenant_id=_effective_tenant())
 
 
 @mcp.tool()
@@ -706,16 +807,22 @@ def docs_timeline(
 
     A malformed `since`/date value returns {"error": "bad_request", "detail": ...}
     instead of raising. Read-only. Only source='document' records appear.
+    SQLite-only: on another storage backend returns {"error": "not_implemented",
+    "message": ...}.
     """
     capped = max(1, min(limit, _DOCS_TIMELINE_MAX))
+    store = _get_store()
+    if not isinstance(store, SqliteBackend):
+        return {"error": "not_implemented", "message": COCHANGE_SQLITE_ONLY_MESSAGE}
     try:
         return documents_timeline(
-            cast(SqliteBackend, _get_store()),
+            store,
             since=since,
             from_iso=from_date,
             to_iso=to_date,
             collection=collection,
             limit=capped,
+            tenant_id=_effective_tenant(),
         )
     except ValueError as exc:  # bad `since`/date grammar
         return {"error": "bad_request", "detail": str(exc)}
@@ -760,6 +867,7 @@ def image_jobs(
         include_bytes=include_bytes,
         limit=limit,
         settings=settings.vision,
+        tenant_id=_scope_tenant,
     )
     return [j.model_dump(mode="json") for j in jobs]
 
@@ -789,7 +897,11 @@ def image_caption_put(file_id_or_path: str, description: str) -> dict[str, Any]:
 
     try:
         result = vision_mod.image_caption_put(
-            store, file_id_or_path, description, settings=settings.vision
+            store,
+            file_id_or_path,
+            description,
+            settings=settings.vision,
+            tenant_id=_scope_tenant,
         )
     except KeyError as exc:
         return {"error": "not_found", "message": str(exc)}
@@ -828,8 +940,85 @@ def vision_run(limit: int = 0, budget_mb: float = 0.0, include_all: bool = False
         budget=budget,
         include_all=include_all,
         settings=settings.vision,
+        tenant_id=_scope_tenant,
     )
     return report.model_dump(mode="json")
+
+
+# ---------------------------------------------------------------------------
+# Tenant directory tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def tenant_create(tenant_id: str, name: str = "") -> dict[str, Any]:
+    """Create a tenant idempotently.
+
+    Available in every scope; creating a tenant never changes this process's
+    scope. An existing id returns the existing tenant unchanged.
+
+    Args:
+        tenant_id: The tenant id to create (lowercase, validated).
+        name: Optional human-readable tenant name.
+
+    Returns:
+        The stored Tenant as a dict.
+    """
+    store = _get_store()
+    result: dict[str, Any] = store.create_tenant(tenant_id, name).model_dump(mode="json")
+    return result
+
+
+@mcp.tool()
+def tenant_list() -> list[dict[str, Any]]:
+    """List every tenant in the tenant directory (no memory data).
+
+    Available in every scope.
+    """
+    store = _get_store()
+    return [tenant.model_dump(mode="json") for tenant in store.list_tenants()]
+
+
+@mcp.tool()
+def tenant_copy(
+    source_tenant: str,
+    dest_tenant: str,
+    memory_ids: list[str] | None = None,
+    filter: dict[str, Any] | None = None,
+    all_active: bool = False,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Copy memories, their notes and their links between two tenants.
+
+    Global scope only: a named-scope server refuses this before reading
+    anything. The source is never modified. Returns a CopyReport as a dict.
+
+    Args:
+        source_tenant: Tenant to copy from.
+        dest_tenant: Tenant to copy into.
+        memory_ids: Explicit source memory ids to copy.
+        filter: MemoryFilter fields selecting the source records.
+        all_active: Copy every active, non-archived source memory.
+        force: Copy records whose content already exists in the destination.
+    """
+    if _scope_tenant != TENANT_GLOBAL:
+        raise ScopeRequiredError("tenant_copy", _scope_tenant)
+    if filter is not None:
+        unknown = set(filter) - set(MemoryFilter.model_fields)
+        if unknown:
+            raise ValueError(f"unknown filter key(s): {sorted(unknown)}")
+        parsed_filter: MemoryFilter | None = MemoryFilter.model_validate(filter)
+    else:
+        parsed_filter = None
+    return copy_between_tenants(
+        _get_store(),
+        source_tenant=source_tenant,
+        dest_tenant=dest_tenant,
+        memory_ids=memory_ids,
+        filter=parsed_filter,
+        all_active=all_active,
+        force=force,
+    ).model_dump(mode="json")
 
 
 # ---------------------------------------------------------------------------
@@ -849,16 +1038,30 @@ def main() -> None:
     )
     parser.add_argument("--port", type=int, default=8081, help="Port for SSE transport")
     parser.add_argument("--db", default=None, help="Path to SQLite database file")
+    parser.add_argument(
+        "--tenant",
+        default=None,
+        help="Tenant scope for this process (default: MINTMORY_MCP_TENANT or global)",
+    )
     args = parser.parse_args()
 
     if args.db:
         os.environ["MINTMORY_DB"] = args.db
 
+    scope = args.tenant or McpSettings().tenant or TENANT_GLOBAL
+    try:
+        _bootstrap_scope(scope)
+    except TenantError as exc:
+        print(f"mintmory-mcp: error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
     # Initialise OTel exactly once, before the server starts handling requests.
     # Mirrors packages/api/src/mintmory/api/app.py's lifespan: no-op (returns
     # False) when MINTMORY_OTEL_ENABLED is unset/false or the optional
     # opentelemetry SDK is not installed — safe to call unconditionally.
-    init_telemetry(load_settings().otel)
+    # No settings are passed: main() must not validate unrelated config, and
+    # init_telemetry() builds OTelSettings() itself.
+    init_telemetry(default_service_name="mintmory-mcp")
 
     if args.transport == "stdio":
         mcp.run(transport="stdio")

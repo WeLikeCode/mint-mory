@@ -1,0 +1,44 @@
+{
+  "items": [
+    {
+      "actor": "agent",
+      "by": "ciprian@spotus.space",
+      "findings": [
+        {
+          "criterion": "testability",
+          "id": "F-1619b9",
+          "severity": "major",
+          "text": "Scenario 'Bad standard values fall back' needs exactly two WARNINGs on `mintmory.telemetry`: `OTEL_TRACES_EXPORTER` and `OTEL_EXPORTER_OTLP_PROTOCOL`. In that scenario traces use console. Metrics use the default `otlp` exporter, because `MINTMORY_OTEL_EXPORTER` is unset. The spec does not say whether the protocol is checked for each signal or only for a signal that uses OTLP. It also does not say whether one invalid shared variable warns once or once per signal. Checking per signal gives three WARNINGs and the assertion fails. The implementer has to guess the rule."
+        },
+        {
+          "criterion": "interfaces",
+          "id": "F-0ad188",
+          "severity": "major",
+          "text": "Task 7.1 says the exporter-type test checks `captured[-1]._inner`. Task 4b.2 makes `_Scrubbing` the outermost wrapper on every span exporter, and task 4.3 puts the OTLP exporter behind `_GuardedSpanExporter._inner`. So the exporter handed to the processor is `_Scrubbing`, and one `_inner` hop reaches the guard, not the OTLP exporter. The spec does not say whether `_Scrubbing` keeps an `_inner` attribute. It also does not say which object `captured` holds or how many hops the test follows. The edit to the existing test therefore cannot be implemented as written."
+        },
+        {
+          "criterion": "interfaces",
+          "id": "F-fea82d",
+          "severity": "minor",
+          "text": "`OTEL_TRACES_EXPORTER` and `OTEL_METRICS_EXPORTER` can be comma lists. The spec defines only the fallback for an unknown list, 'first known item'. It does not say what a fully valid multi-item list such as `console,otlp` does: use the first item only, or build several exporters. The signatures of `_service_name`, `_resolve_state` and `_traces_endpoint` appear only in tasks, and part 4 reuses them."
+        },
+        {
+          "criterion": "failure_cases",
+          "id": "F-5d64eb",
+          "severity": "minor",
+          "text": "Several cases are not stated. (1) Another component has already set a global tracer or meter provider, so `set_tracer_provider` is a no-op while the spec promises library spans reach the same exporters. (2) Injected exporters with the SDK missing: is there a WARNING? (3) `MINTMORY_OTEL_ENABLED=true` together with `OTEL_SDK_DISABLED=true` and the SDK missing: does it warn? (4) A guard's `shutdown` or `force_flush` raising inside the shutdown daemon thread. (5) `span()` or `add_count` running while `shutdown_telemetry` clears `_tracer` and `_meter`."
+        },
+        {
+          "criterion": "testability",
+          "id": "F-f4dc92",
+          "severity": "minor",
+          "text": "Scenario 'Exit is bounded when export hangs' leaves a live thread blocked on an Event that is never set. It does not say the test must set the Event at the end, so the thread leaks past the test and the autouse reset. Scenario 'Auto with no collector stays off' runs in a subprocess. It does not say the subprocess must unset `MINTMORY_OTEL_ENABLED`, which the root conftest defaults to `false` and a child process inherits. It also does not say how `_endpoint_reachable` is patched in the child. `otlp_receiver.spans()` returns tuples, but the scenarios say it 'contains `x`' without saying whether that means the name or the tuple."
+        }
+      ],
+      "reason": "Resolve both findings while writing the tests. F-1619b9: a shared standard variable is validated once, where it is read: one WARNING per bad variable on mintmory.telemetry, never one per signal; OTEL_EXPORTER_OTLP_PROTOCOL is checked once when any signal uses OTLP, so 'Bad standard values fall back' expects exactly two WARNINGs (OTEL_TRACES_EXPORTER and OTEL_EXPORTER_OTLP_PROTOCOL). F-0ad188: _Scrubbing keeps the exporter it wraps in _inner, as _GuardedSpanExporter does; the exporter-type test follows _inner until an object has none and asserts the innermost exporter's type (the OTLP HTTP span exporter).",
+      "subject": "openspec:add-telemetry-runtime"
+    }
+  ],
+  "plan": "telemetry-and-fixes",
+  "schema": "l4/review-accepted@1"
+}

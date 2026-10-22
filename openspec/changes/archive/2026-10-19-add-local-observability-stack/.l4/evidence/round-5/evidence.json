@@ -1,0 +1,405 @@
+{
+  "schema": "l4/evidence@1",
+  "holds": [],
+  "items": {},
+  "scope": {
+    "declared": [
+      "http://user:token@host",
+      "tests/integration",
+      "deploy/observability/compose.yaml",
+      "packages/cli/src/mintmory/cli/main.py",
+      "packages/core/src/mintmory/core/telemetry.py",
+      "deploy/helm/mintmory/templates/configmap.yaml",
+      "docs/OBSERVABILITY.md",
+      "tests/integration/test_observability_stack.py",
+      "tests/integration/test_bump_version.py",
+      "packages/cli/tests/test_cli.py",
+      "deploy/observability",
+      "otel/opentelemetry-collector-contrib:0.162.0",
+      "${MINTMORY_OBS_COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.162.0}",
+      "--config=/etc/otelcol-contrib/config.yaml",
+      "${MINTMORY_OBS_JAEGER_IMAGE:-jaegertracing/jaeger:2.22.0}",
+      "${MINTMORY_OBS_PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0}",
+      "MINTMORY_DB=/data/memories.db",
+      "OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector",
+      "http://localhost",
+      "deploy/helm/mintmory",
+      "templates/configmap.yaml",
+      "**/?",
+      "**/values.schema.json",
+      "**/prometheus.yml",
+      "**/values.yaml",
+      "**/mintmory.search.*",
+      "**/configmap.yaml",
+      "**/compose.yaml",
+      "**/MINTMORY_OBS_*",
+      "**/telemetry.py",
+      "**/test_cli.py",
+      "**/conftest.py",
+      "module ${MINTMORY_OBS_COLLECTOR_IMAGE:-otel",
+      "module ${MINTMORY_OBS_JAEGER_IMAGE:-jaegertracing",
+      "module ${MINTMORY_OBS_PROMETHEUS_IMAGE:-prom",
+      "module --config=",
+      "module MINTMORY_DB=",
+      "module OTEL_EXPORTER_OTLP_ENDPOINT=http:",
+      "module cli",
+      "module core",
+      "module deploy",
+      "module docs",
+      "module http:",
+      "module otel",
+      "module templates",
+      "module tests"
+    ],
+    "skipped": false,
+    "note": "",
+    "holds": [],
+    "files": [
+      {
+        "path": "README.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "deploy/helm/mintmory/templates/configmap.yaml",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "deploy/helm/mintmory/values.schema.json",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "deploy/helm/mintmory/values.yaml",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "deploy/observability/.env.example",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "deploy/observability/README.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "deploy/observability/compose.yaml",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "deploy/observability/otel-collector.yaml",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "deploy/observability/prometheus.yml",
+        "module": "deploy",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "docs/OBSERVABILITY.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-1/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-1/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-1/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-1/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-2/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-2/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-2/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-2/questions.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-2/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-3/.l4/fix.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-3/.openspec.yaml",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-3/proposal.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack-fix-3/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-1/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-1/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-2/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-2/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-2/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-3/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-3/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-4/evidence.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-4/verdict.json",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/evidence/round-4/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1817Z-6a4b.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1950Z-d34c.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T1952Z-fb34.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/.l4/ledger/r-20261018T2054Z-83ab.jsonl",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/feedback.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/tasks.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "openspec/changes/add-local-observability-stack/verification.md",
+        "module": null,
+        "kind": "exempt",
+        "label": null,
+        "reason": "exempt: harness, spec or documentation path"
+      },
+      {
+        "path": "packages/cli/src/mintmory/cli/main.py",
+        "module": "cli",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/cli/tests/test_cli.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "packages/core/src/mintmory/core/telemetry.py",
+        "module": "core",
+        "kind": "code",
+        "label": "relevant",
+        "reason": "named in the spec"
+      },
+      {
+        "path": "tests/integration/test_helm_telemetry.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/integration/test_observability_guide.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/integration/test_observability_stack.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/integration/test_observability_stack_readme.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      },
+      {
+        "path": "tests/integration/test_observability_toolchain.py",
+        "module": null,
+        "kind": "test",
+        "label": "relevant",
+        "reason": "new test file"
+      }
+    ]
+  },
+  "diff_coverage": null,
+  "tests_ran": null
+}

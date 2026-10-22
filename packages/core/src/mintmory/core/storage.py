@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 from collections import Counter
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -38,19 +39,30 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from mintmory.core import scoring, telemetry
 from mintmory.core.entities import extract_entities
+from mintmory.core.hybrid_search import _passes_filter, collect_scores, fuse_and_search
 from mintmory.core.ports import ManifestEntry
 from mintmory.core.types import (
     SYMMETRIC_LINK_TYPES,
+    TENANT_GLOBAL,
     ConceptLink,
     ConceptLinkType,
+    CrossTenantLinkError,
+    MemoryFilter,
     MemoryRecord,
     MemoryStats,
     MemorySummary,
+    ProtectedTenantError,
     QueryResult,
     QuerySession,
     SearchAroundSpec,
     SearchRequest,
     SearchResponse,
+    Tenant,
+    TenantImmutableError,
+    TenantInactiveError,
+    TenantMigrationError,
+    TenantNotFoundError,
+    validate_tenant_id,
 )
 
 if TYPE_CHECKING:
@@ -87,6 +99,146 @@ _MEMORY_COLUMNS: tuple[str, ...] = (
     "updated_at",
     "last_accessed_at",
     "metadata",
+    "tenant_id",
+)
+
+
+# Tables that carry a ``tenant_id`` column.  Order is the fresh-DDL order.
+_TENANT_TABLES: tuple[str, ...] = (
+    "memories",
+    "concept_links",
+    "memory_summaries",
+    "index_manifest",
+    "query_sessions",
+    "query_results",
+)
+
+# Fresh DDL of the three tables the migration rebuilds (kept in lockstep with
+# schema.sql; the R3.6 test compares a migrated database against a fresh one).
+_TENANT_REBUILD_DDL: dict[str, str] = {
+    "concept_links": """
+        CREATE TABLE concept_links__tenant_new (
+            id                  TEXT PRIMARY KEY,
+            source_memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            target_memory_id    TEXT NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            link_type           TEXT NOT NULL CHECK (link_type IN (
+                                    'relates_to','contradicts','refines','supersedes',
+                                    'enables','depends_on','similar_to','part_of',
+                                    'uses','before','valid_until','annotates'
+                                )),
+            entity              TEXT NOT NULL DEFAULT '',
+            strength            REAL NOT NULL DEFAULT 0.5
+                                    CHECK (strength >= 0.0 AND strength <= 1.0),
+            confidence          REAL NOT NULL DEFAULT 0.5
+                                    CHECK (confidence >= 0.0 AND confidence <= 1.0),
+            source              TEXT NOT NULL DEFAULT 'dreaming'
+                                    CHECK (source IN ('extraction','inference','dreaming','user')),
+            verified            INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT NOT NULL,
+            updated_at          TEXT NOT NULL,
+            tenant_id           TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+            UNIQUE (tenant_id, source_memory_id, target_memory_id, link_type)
+        )
+    """,
+    "memory_summaries": """
+        CREATE TABLE memory_summaries__tenant_new (
+            id              TEXT PRIMARY KEY,
+            concept         TEXT NOT NULL,
+            summary_text    TEXT NOT NULL,
+            memory_count    INTEGER NOT NULL DEFAULT 0,
+            is_current      INTEGER NOT NULL DEFAULT 1,
+            generated_at    TEXT NOT NULL,
+            tenant_id       TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+            UNIQUE (tenant_id, concept)
+        )
+    """,
+    "index_manifest": """
+        CREATE TABLE index_manifest__tenant_new (
+            path          TEXT NOT NULL,
+            collection    TEXT NOT NULL,
+            size          INTEGER NOT NULL,
+            mtime         REAL NOT NULL,
+            content_hash  TEXT,
+            index_mode    TEXT NOT NULL DEFAULT 'metadata'
+                              CHECK (index_mode IN ('metadata','content','vision')),
+            memory_ids    TEXT NOT NULL DEFAULT '[]',
+            online_only   INTEGER NOT NULL DEFAULT 0,
+            last_seen     TEXT NOT NULL,
+            tenant_id     TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+            PRIMARY KEY (tenant_id, path)
+        )
+    """,
+}
+
+_TENANT_REBUILD_COLUMNS: dict[str, tuple[str, ...]] = {
+    "concept_links": (
+        "id",
+        "source_memory_id",
+        "target_memory_id",
+        "link_type",
+        "entity",
+        "strength",
+        "confidence",
+        "source",
+        "verified",
+        "created_at",
+        "updated_at",
+        "tenant_id",
+    ),
+    "memory_summaries": (
+        "id",
+        "concept",
+        "summary_text",
+        "memory_count",
+        "is_current",
+        "generated_at",
+        "tenant_id",
+    ),
+    "index_manifest": (
+        "path",
+        "collection",
+        "size",
+        "mtime",
+        "content_hash",
+        "index_mode",
+        "memory_ids",
+        "online_only",
+        "last_seen",
+        "tenant_id",
+    ),
+}
+
+_TENANT_REBUILD_INDEXES: dict[str, tuple[str, ...]] = {
+    "concept_links": (
+        "CREATE INDEX IF NOT EXISTS idx_links_source ON concept_links(source_memory_id, link_type)",
+        "CREATE INDEX IF NOT EXISTS idx_links_target ON concept_links(target_memory_id, link_type)",
+        "CREATE INDEX IF NOT EXISTS idx_links_type_strength "
+        "ON concept_links(link_type, strength DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_links_entity ON concept_links(entity) WHERE entity != ''",
+    ),
+    "memory_summaries": (),
+    "index_manifest": (
+        "CREATE INDEX IF NOT EXISTS idx_manifest_collection ON index_manifest(collection)",
+    ),
+}
+
+# Missing tenant indexes, in the order required by R3.2(c).
+_TENANT_INDEX_DDL: tuple[tuple[str, str], ...] = (
+    (
+        "idx_memories_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_memories_tenant "
+        "ON memories(tenant_id, is_active, is_archived)",
+    ),
+    (
+        "idx_links_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_links_tenant "
+        "ON concept_links(tenant_id, source_memory_id, link_type)",
+    ),
+    (
+        "idx_sessions_tenant",
+        "CREATE INDEX IF NOT EXISTS idx_sessions_tenant "
+        "ON query_sessions(tenant_id, concluded, created_at)",
+    ),
 )
 
 
@@ -213,6 +365,12 @@ class SqliteBackend:
         # busy_timeout_ms: explicit override (from factory/settings). None means
         # "read from MINTMORY_SQLITE_BUSY_TIMEOUT_MS env var" (legacy path).
         self._busy_timeout_ms_override: int | None = busy_timeout_ms
+        # Re-entrant transaction scope (multi-tenancy-writes task 1). The RLock
+        # makes ``transaction()`` re-entrant in one thread and serialises writers
+        # from different threads on the shared connection; ``_tx_depth`` lets a
+        # nested block join the outermost block instead of committing early.
+        self._tx_lock = threading.RLock()
+        self._tx_depth = 0
 
     # ------------------------------------------------------------------
     # Connection management
@@ -255,13 +413,29 @@ class SqliteBackend:
 
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = self.connect()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
+        """Re-entrant transaction scope over the shared connection.
+
+        The outermost entry commits on a clean exit and rolls back + re-raises
+        on any exception; a nested entry joins the outer block and neither
+        commits nor rolls back (if the caller catches a nested exception, the
+        outermost block commits the statements that succeeded — no savepoints).
+        The lock also keeps a second thread's write from interleaving with this
+        thread's uncommitted work on the shared connection.
+        """
+        with self._tx_lock:
+            conn = self.connect()
+            self._tx_depth += 1
+            try:
+                yield conn
+            except BaseException:
+                self._tx_depth -= 1
+                if self._tx_depth == 0:
+                    conn.rollback()
+                raise
+            else:
+                self._tx_depth -= 1
+                if self._tx_depth == 0:
+                    conn.commit()
 
     def initialise(self) -> None:
         """
@@ -276,6 +450,7 @@ class SqliteBackend:
         self._ensure_trigram(conn)
         self._ensure_is_note_column(conn)
         self._ensure_index_mode_vision(conn)
+        self._ensure_tenant_columns(conn)
 
     def _ensure_trigram(self, conn: sqlite3.Connection) -> None:
         """
@@ -385,7 +560,7 @@ class SqliteBackend:
             conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS index_manifest_new (
-                    path          TEXT PRIMARY KEY,
+                    path          TEXT NOT NULL,
                     collection    TEXT NOT NULL,
                     size          INTEGER NOT NULL,
                     mtime         REAL NOT NULL,
@@ -394,11 +569,13 @@ class SqliteBackend:
                                       CHECK (index_mode IN ('metadata','content','vision')),
                     memory_ids    TEXT NOT NULL DEFAULT '[]',
                     online_only   INTEGER NOT NULL DEFAULT 0,
-                    last_seen     TEXT NOT NULL
+                    last_seen     TEXT NOT NULL,
+                    tenant_id     TEXT NOT NULL DEFAULT 'global' REFERENCES tenants(id),
+                    PRIMARY KEY (tenant_id, path)
                 );
                 INSERT OR IGNORE INTO index_manifest_new
                     SELECT path, collection, size, mtime, content_hash,
-                           index_mode, memory_ids, online_only, last_seen
+                           index_mode, memory_ids, online_only, last_seen, 'global'
                     FROM index_manifest;
                 DROP TABLE index_manifest;
                 ALTER TABLE index_manifest_new RENAME TO index_manifest;
@@ -462,8 +639,10 @@ class SqliteBackend:
             _iso(record.updated_at),
             _iso(record.last_accessed_at),
             json.dumps(record.metadata),
+            record.tenant_id,
         )
 
+    @telemetry.counts_added
     @telemetry.traced("mintmory.add_memory")
     def add_memory(
         self,
@@ -491,6 +670,16 @@ class SqliteBackend:
         columns = ", ".join(_MEMORY_COLUMNS)
 
         with self.transaction() as conn:
+            if record.superseded_by is not None:
+                target_tenant = self._stored_tenant(conn, record.superseded_by)
+                if target_tenant is not None and target_tenant != record.tenant_id:
+                    raise CrossTenantLinkError(
+                        record.id,
+                        record.tenant_id,
+                        record.superseded_by,
+                        target_tenant,
+                    )
+            self._assert_tenant_writable(conn, record.tenant_id)
             conn.execute(
                 f"INSERT INTO memories ({columns}) VALUES ({placeholders})",
                 values,
@@ -523,12 +712,18 @@ class SqliteBackend:
             updated_at=row["updated_at"],
             last_accessed_at=row["last_accessed_at"],
             metadata=json.loads(row["metadata"]),
+            tenant_id=row["tenant_id"],
         )
 
-    def get_memory(self, memory_id: str) -> MemoryRecord | None:
+    def get_memory(self, memory_id: str, tenant_id: str | None = None) -> MemoryRecord | None:
         """Fetch a single memory by ID. Returns None if not found."""
         conn = self.connect()
-        row = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        sql = "SELECT * FROM memories WHERE id = ?"
+        params: list[Any] = [memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
@@ -543,6 +738,13 @@ class SqliteBackend:
         existing = self.get_memory(memory_id)
         if existing is None:
             raise KeyError(f"memory {memory_id!r} not found")
+
+        # ``tenant_id`` is immutable: compare before building the model so an
+        # invalid id reports the tenancy error (it is not validated here).
+        if "tenant_id" in fields:
+            requested_tenant = fields.pop("tenant_id")
+            if requested_tenant != existing.tenant_id:
+                raise TenantImmutableError(memory_id, existing.tenant_id, str(requested_tenant))
 
         data = existing.model_dump()
         data.update(fields)
@@ -607,7 +809,20 @@ class SqliteBackend:
             params.append(embedding)
         params.append(memory_id)
 
+        superseded_by = fields.get("superseded_by")
         with self.transaction() as conn:
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if stored_tenant is not None:
+                if superseded_by is not None:
+                    target_tenant = self._stored_tenant(conn, str(superseded_by))
+                    if target_tenant is not None and target_tenant != stored_tenant:
+                        raise CrossTenantLinkError(
+                            memory_id,
+                            stored_tenant,
+                            str(superseded_by),
+                            target_tenant,
+                        )
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 f"UPDATE memories SET {', '.join(sets)} WHERE id = ?",
                 params,
@@ -616,22 +831,31 @@ class SqliteBackend:
         assert result is not None  # just updated
         return result
 
-    def archive_memory(self, memory_id: str) -> None:
+    def archive_memory(self, memory_id: str, tenant_id: str | None = None) -> None:
         """Soft delete: set is_archived=1, is_active=0, refresh updated_at."""
         with self.transaction() as conn:
-            conn.execute(
-                "UPDATE memories SET is_archived = 1, is_active = 0, updated_at = ? WHERE id = ?",
-                (_iso(_utcnow()), memory_id),
-            )
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if tenant_id is not None and stored_tenant != tenant_id:
+                raise KeyError(f"memory {memory_id!r} not found")
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
+                conn.execute(
+                    "UPDATE memories SET is_archived = 1, is_active = 0, updated_at = ? "
+                    "WHERE id = ?",
+                    (_iso(_utcnow()), memory_id),
+                )
 
     # ------------------------------------------------------------------
     # Index manifest — per-path state for recurrent tree indexing
     # ------------------------------------------------------------------
-    def manifest_get(self, path: str) -> ManifestEntry | None:
-        """Return the manifest row for ``path`` (absolute), or None."""
+    def manifest_get(self, path: str, *, tenant_id: str = "global") -> ManifestEntry | None:
+        """Return the manifest row for ``(tenant_id, path)`` (absolute), or None."""
         row: sqlite3.Row | None = (
             self.connect()
-            .execute("SELECT * FROM index_manifest WHERE path = ?", (path,))
+            .execute(
+                "SELECT * FROM index_manifest WHERE tenant_id = ? AND path = ?",
+                (tenant_id, path),
+            )
             .fetchone()
         )
         if row is None:
@@ -646,6 +870,7 @@ class SqliteBackend:
             memory_ids=row["memory_ids"],
             online_only=row["online_only"],
             last_seen=row["last_seen"],
+            tenant_id=row["tenant_id"],
         )
 
     def manifest_upsert(
@@ -659,15 +884,17 @@ class SqliteBackend:
         index_mode: str,
         memory_ids: list[str],
         content_hash: str | None = None,
+        tenant_id: str = "global",
     ) -> None:
-        """Insert or replace the manifest row for ``path``."""
+        """Insert or replace the manifest row for ``(tenant_id, path)``."""
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, tenant_id)
             conn.execute(
                 "INSERT INTO index_manifest "
                 "(path, collection, size, mtime, content_hash, index_mode, "
-                " memory_ids, online_only, last_seen) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(path) DO UPDATE SET "
+                " memory_ids, online_only, last_seen, tenant_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(tenant_id, path) DO UPDATE SET "
                 "collection=excluded.collection, size=excluded.size, mtime=excluded.mtime, "
                 "content_hash=excluded.content_hash, index_mode=excluded.index_mode, "
                 "memory_ids=excluded.memory_ids, online_only=excluded.online_only, "
@@ -682,24 +909,34 @@ class SqliteBackend:
                     json.dumps(memory_ids),
                     _bool(online_only),
                     _iso(_utcnow()),
+                    tenant_id,
                 ),
             )
 
-    def manifest_paths(self, collection: str) -> set[str]:
-        """All paths currently tracked under ``collection``."""
+    def manifest_paths(self, collection: str, *, tenant_id: str = "global") -> set[str]:
+        """All paths currently tracked under ``collection`` for ``tenant_id``."""
         rows = (
             self.connect()
-            .execute("SELECT path FROM index_manifest WHERE collection = ?", (collection,))
+            .execute(
+                "SELECT path FROM index_manifest WHERE tenant_id = ? AND collection = ?",
+                (tenant_id, collection),
+            )
             .fetchall()
         )
         return {row["path"] for row in rows}
 
-    def manifest_delete(self, path: str) -> None:
-        """Drop the manifest row for ``path`` (memories are archived separately)."""
+    def manifest_delete(self, path: str, *, tenant_id: str = "global") -> None:
+        """Drop the ``(tenant_id, path)`` manifest row (memories are archived separately)."""
         with self.transaction() as conn:
-            conn.execute("DELETE FROM index_manifest WHERE path = ?", (path,))
+            self._assert_tenant_writable(conn, tenant_id)
+            conn.execute(
+                "DELETE FROM index_manifest WHERE tenant_id = ? AND path = ?",
+                (tenant_id, path),
+            )
 
-    def apply_feedback(self, memory_id: str, useful: bool, stale: bool) -> None:
+    def apply_feedback(
+        self, memory_id: str, useful: bool, stale: bool, tenant_id: str | None = None
+    ) -> None:
         """Per-memory feedback primitive (PLAN.md §1b).
 
         useful -> usefulness_score += USEFUL_INCREMENT (cap 10), reinforcement_count += 1.
@@ -712,35 +949,35 @@ class SqliteBackend:
         Sets is_stale=1 when staleness_score >= STALENESS_THRESHOLD (7.0).
         Always refreshes updated_at. Clamping via scoring.increment_*.
         """
-        conn = self.connect()
-        row = conn.execute(
-            "SELECT usefulness_score, staleness_score, reinforcement_count, is_note "
-            "FROM memories WHERE id = ?",
-            (memory_id,),
-        ).fetchone()
-        if row is None:
-            raise KeyError(f"memory {memory_id!r} not found")
-
-        usefulness = row["usefulness_score"]
-        staleness = row["staleness_score"]
-        reinforcement = row["reinforcement_count"]
-        note = bool(row["is_note"])
-
-        if useful:
-            usefulness = scoring.increment_usefulness(usefulness, scoring.USEFUL_INCREMENT)
-            reinforcement += 1
-
-        flag = 0
-        if stale:
-            if note:
-                # A contested note is flagged for human review; staleness unchanged.
-                flag = 1
-            else:
-                staleness = scoring.increment_staleness(staleness, scoring.STALE_INCREMENT)
-
-        is_stale = 1 if staleness >= scoring.STALENESS_THRESHOLD else 0
-
         with self.transaction() as txn:
+            row = txn.execute(
+                "SELECT usefulness_score, staleness_score, reinforcement_count, is_note, "
+                "tenant_id FROM memories WHERE id = ?",
+                (memory_id,),
+            ).fetchone()
+            if row is None or (tenant_id is not None and row["tenant_id"] != tenant_id):
+                raise KeyError(f"memory {memory_id!r} not found")
+            self._assert_tenant_writable(txn, row["tenant_id"])
+
+            usefulness = row["usefulness_score"]
+            staleness = row["staleness_score"]
+            reinforcement = row["reinforcement_count"]
+            note = bool(row["is_note"])
+
+            if useful:
+                usefulness = scoring.increment_usefulness(usefulness, scoring.USEFUL_INCREMENT)
+                reinforcement += 1
+
+            flag = 0
+            if stale:
+                if note:
+                    # A contested note is flagged for human review; staleness unchanged.
+                    flag = 1
+                else:
+                    staleness = scoring.increment_staleness(staleness, scoring.STALE_INCREMENT)
+
+            is_stale = 1 if staleness >= scoring.STALENESS_THRESHOLD else 0
+
             txn.execute(
                 "UPDATE memories SET usefulness_score = ?, staleness_score = ?, "
                 "reinforcement_count = ?, is_stale = ?, updated_at = ?, "
@@ -773,28 +1010,34 @@ class SqliteBackend:
             self._vector_rrf_weight = SearchSettings().vector_rrf_weight
         return self._vector_rrf_weight
 
-    def _fts_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _fts_scores(self, query: str, limit: int, tenant_id: str | None = None) -> dict[str, float]:
         """Run FTS5 MATCH and return {memory_id: bm25-derived score (higher=better)}."""
         match_expr = _sanitise_fts_query(query)
         if not match_expr:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT m.id AS id, bm25(memories_fts) AS rank "
+            "FROM memories_fts "
+            "JOIN memories m ON m.rowid = memories_fts.rowid "
+            "WHERE memories_fts MATCH ? "
+        )
+        params: list[Any] = [match_expr]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY rank LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT m.id AS id, bm25(memories_fts) AS rank "
-                "FROM memories_fts "
-                "JOIN memories m ON m.rowid = memories_fts.rowid "
-                "WHERE memories_fts MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (match_expr, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
         # bm25 returns lower = more relevant; negate so higher = better.
         return {row["id"]: -float(row["rank"]) for row in rows}
 
-    def _trigram_scores(self, query: str, limit: int) -> dict[str, float]:
+    def _trigram_scores(
+        self, query: str, limit: int, tenant_id: str | None = None
+    ) -> dict[str, float]:
         """Run the trigram FTS5 MATCH and return {memory_id: score (higher=better)}."""
         if not self._trigram_loaded:
             return {}
@@ -802,23 +1045,31 @@ class SqliteBackend:
         if not match_expr:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT m.id AS id, bm25(memories_trigram) AS rank "
+            "FROM memories_trigram "
+            "JOIN memories m ON m.rowid = memories_trigram.rowid "
+            "WHERE memories_trigram MATCH ? "
+        )
+        params: list[Any] = [match_expr]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY rank LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT m.id AS id, bm25(memories_trigram) AS rank "
-                "FROM memories_trigram "
-                "JOIN memories m ON m.rowid = memories_trigram.rowid "
-                "WHERE memories_trigram MATCH ? "
-                "ORDER BY rank "
-                "LIMIT ?",
-                (match_expr, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError:
             return {}
         # bm25 returns lower = more relevant; negate so higher = better.
         return {row["id"]: -float(row["rank"]) for row in rows}
 
     def _vector_scores(
-        self, query: str, query_embedding: np.ndarray | None, limit: int
+        self,
+        query: str,
+        query_embedding: np.ndarray | None,
+        limit: int,
+        tenant_id: str | None = None,
     ) -> dict[str, float]:
         """Vector phase of hybrid search: brute-force cosine over stored embeddings.
 
@@ -837,13 +1088,18 @@ class SqliteBackend:
         if blob is None:
             return {}
         conn = self.connect()
+        sql = (
+            "SELECT id, vec_distance_cosine(embedding, ?) AS dist "
+            "FROM memories WHERE embedding IS NOT NULL "
+        )
+        params: list[Any] = [blob]
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY dist ASC LIMIT ?"
+        params.append(limit)
         try:
-            rows = conn.execute(
-                "SELECT id, vec_distance_cosine(embedding, ?) AS dist "
-                "FROM memories WHERE embedding IS NOT NULL "
-                "ORDER BY dist ASC LIMIT ?",
-                (blob, limit),
-            ).fetchall()
+            rows = conn.execute(sql, params).fetchall()
             # dist is NULL when a stored embedding has a different
             # dimension than the query (mixed embedders in one DB) —
             # skip those rows rather than crashing on float(None); they
@@ -853,10 +1109,13 @@ class SqliteBackend:
             return {}
 
     @telemetry.traced("mintmory.search")
+    @telemetry.timed_phase("total")
     def search(
         self,
         request: SearchRequest,
         query_embedding: np.ndarray | None = None,
+        *,
+        tenant_id: str | None = None,
     ) -> SearchResponse:
         """
         Hybrid search pipeline (PLAN.md §3): FTS5 + optional vector phase merged
@@ -866,15 +1125,45 @@ class SqliteBackend:
         Fusion/scoring/session logic lives in ``hybrid_search.fuse_and_search``
         so it is shared identically with PostgresBackend.
         """
-        from mintmory.core.hybrid_search import fuse_and_search  # noqa: PLC0415
-
         # Wider candidate pool than the final limit so filtering + scoring have
         # room to reorder before truncation.
         pool = max(request.limit * 5, 50)
 
-        fts_scores = self._fts_scores(request.query, pool)
-        vec_scores = self._vector_scores(request.query, query_embedding, pool)
-        trigram_scores = self._trigram_scores(request.query, pool)
+        def _fts() -> dict[str, float]:
+            if tenant_id is None:
+                return self._fts_scores(request.query, pool)
+            return self._fts_scores(request.query, pool, tenant_id)
+
+        def _trigram() -> dict[str, float]:
+            if tenant_id is None:
+                return self._trigram_scores(request.query, pool)
+            return self._trigram_scores(request.query, pool, tenant_id)
+
+        def _vector() -> dict[str, float]:
+            if tenant_id is None:
+                return self._vector_scores(request.query, query_embedding, pool)
+            return self._vector_scores(request.query, query_embedding, pool, tenant_id)
+
+        def _load(ids: list[str]) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self._load_memories(ids)
+            return self._load_memories(ids, tenant_id)
+
+        def _around(anchors: list[str], spec: SearchAroundSpec) -> list[str]:
+            if tenant_id is None:
+                return self.search_around(anchors, spec)
+            return self.search_around(anchors, spec, tenant_id)
+
+        def _notes(memory_id: str, cap: int) -> list[MemoryRecord]:
+            if tenant_id is None:
+                return self.get_annotating_notes(memory_id, cap)
+            return self.get_annotating_notes(memory_id, cap, tenant_id)
+
+        fts_scores, trigram_scores, vec_scores = collect_scores(
+            fts_fn=_fts,
+            trigram_fn=_trigram,
+            vector_fn=_vector,
+        )
 
         # Lazily resolve note_bonus / auto_include_cap from NoteSettings on first
         # use — import inside the call to avoid circular imports at module load time.
@@ -887,32 +1176,43 @@ class SqliteBackend:
 
             self._auto_include_cap = NoteSettings().auto_include_cap
 
+        tenant = self.get_tenant(tenant_id) if tenant_id is not None else None
+
         return fuse_and_search(
             request=request,
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=_load,
             bump_retrieval_fn=self._bump_retrieval,
             create_session_fn=self.create_session,
             record_query_results_fn=self.record_query_results,
-            get_annotating_notes_fn=self.get_annotating_notes,
-            search_around_fn=self.search_around,
+            get_annotating_notes_fn=_notes,
+            search_around_fn=_around,
             note_bonus=self._note_bonus,
             auto_include_cap=self._auto_include_cap,
             now=_utcnow(),
+            tenant_id=tenant_id,
+            record_session=tenant_id is None or (tenant is not None and tenant.is_active),
         )
 
-    def _load_memories(self, ids: list[str]) -> list[MemoryRecord]:
+    def _load_memories(self, ids: list[str], tenant_id: str | None = None) -> list[MemoryRecord]:
         if not ids:
             return []
         conn = self.connect()
         placeholders = ", ".join("?" for _ in ids)
-        rows = conn.execute(f"SELECT * FROM memories WHERE id IN ({placeholders})", ids).fetchall()
+        sql = f"SELECT * FROM memories WHERE id IN ({placeholders})"
+        params: list[Any] = list(ids)
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def get_annotating_notes(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_notes(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to ``cap`` notes that ANNOTATE ``memory_id``.
 
         Performs a reverse traversal of the asymmetric ANNOTATES edge: the note is
@@ -923,18 +1223,24 @@ class SqliteBackend:
         if cap <= 0:
             return []
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT m.* FROM concept_links l "
             "JOIN memories m ON m.id = l.source_memory_id "
             "WHERE l.target_memory_id = ? AND l.link_type = ? "
             "AND m.is_note = 1 AND m.is_archived = 0 "
-            "ORDER BY l.strength DESC, m.created_at DESC "
-            "LIMIT ?",
-            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
-        ).fetchall()
+        )
+        params: list[Any] = [memory_id, ConceptLinkType.ANNOTATES.value]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY l.strength DESC, m.created_at DESC LIMIT ?"
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def get_annotating_descriptions(self, memory_id: str, cap: int) -> list[MemoryRecord]:
+    def get_annotating_descriptions(
+        self, memory_id: str, cap: int, tenant_id: str | None = None
+    ) -> list[MemoryRecord]:
         """Return up to ``cap`` ACTIVE image_description memories that ANNOTATE ``memory_id``.
 
         Performs a reverse traversal of the ANNOTATES edge (MM-16 pattern): the
@@ -950,19 +1256,25 @@ class SqliteBackend:
         if cap <= 0:
             return []
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT m.* FROM concept_links l "
             "JOIN memories m ON m.id = l.source_memory_id "
             "WHERE l.target_memory_id = ? AND l.link_type = ? "
             "AND m.is_note = 0 AND m.is_archived = 0 "
             "AND json_extract(m.metadata, '$.kind') = 'image_description' "
-            "ORDER BY m.created_at DESC "
-            "LIMIT ?",
-            (memory_id, ConceptLinkType.ANNOTATES.value, cap),
-        ).fetchall()
+        )
+        params: list[Any] = [memory_id, ConceptLinkType.ANNOTATES.value]
+        if tenant_id is not None:
+            sql += "AND m.tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY m.created_at DESC LIMIT ?"
+        params.append(cap)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
-    def find_image_file_record(self, path_or_rel: str) -> MemoryRecord | None:
+    def find_image_file_record(
+        self, path_or_rel: str, tenant_id: str | None = None
+    ) -> MemoryRecord | None:
         """Find the most recent ACTIVE file-record matching ``path_or_rel`` (path or rel).
 
         A file-record is distinguished from an image_description by the absence of a
@@ -974,7 +1286,7 @@ class SqliteBackend:
         it should ANNOTATE (§8c of the design contract).
         """
         conn = self.connect()
-        row = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE is_archived = 0 "
             "AND (json_extract(metadata, '$.path') = ? OR json_extract(metadata, '$.rel') = ?) "
@@ -983,14 +1295,20 @@ class SqliteBackend:
             # picks the most-recent image rather than any same-path record.
             "AND lower(json_extract(metadata, '$.ext')) IN "
             "('.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg') "
-            "ORDER BY created_at DESC LIMIT 1",
-            (path_or_rel, path_or_rel),
-        ).fetchone()
+        )
+        params: list[Any] = [path_or_rel, path_or_rel]
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY created_at DESC LIMIT 1"
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return self._row_to_memory(row)
 
-    def anchor_candidates(self, about: str, limit: int = 5) -> list[tuple[float, MemoryRecord]]:
+    def anchor_candidates(
+        self, about: str, limit: int = 5, tenant_id: str | None = None
+    ) -> list[tuple[float, MemoryRecord]]:
         """Side-effect-free candidate lookup for note anchoring.
 
         Reuses the hybrid score sources (FTS5 + trigram + vector) and min-max
@@ -1001,16 +1319,16 @@ class SqliteBackend:
         from mintmory.core.hybrid_search import fuse_and_rank  # noqa: PLC0415
 
         pool = max(limit * 5, 50)
-        fts_scores = self._fts_scores(about, pool)
-        vec_scores = self._vector_scores(about, None, pool)
-        trigram_scores = self._trigram_scores(about, pool)
+        fts_scores = self._fts_scores(about, pool, tenant_id)
+        vec_scores = self._vector_scores(about, None, pool, tenant_id)
+        trigram_scores = self._trigram_scores(about, pool, tenant_id)
 
         return fuse_and_rank(
             fts_scores=fts_scores,
             trigram_scores=trigram_scores,
             vector_scores=vec_scores,
             vector_rrf_weight=self._resolve_vector_rrf_weight(),
-            load_memories_fn=self._load_memories,
+            load_memories_fn=lambda ids: self._load_memories(ids, tenant_id),
             limit=limit,
         )
 
@@ -1024,6 +1342,7 @@ class SqliteBackend:
         include_archived: bool = False,
         limit: int = 50,
         now: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """SQL backing for ``notes_list`` (design §5c). Always filters is_note = 1.
 
@@ -1043,6 +1362,10 @@ class SqliteBackend:
         conn = self.connect()
         sql = "SELECT * FROM memories WHERE is_note = 1"
         params: list[Any] = []
+
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
 
         if upcoming:
             sql += " AND valid_from > ?"
@@ -1076,7 +1399,7 @@ class SqliteBackend:
 
         return records
 
-    def supersede_memory(self, memory_id: str, by_id: str) -> None:
+    def supersede_memory(self, memory_id: str, by_id: str, tenant_id: str | None = None) -> None:
         """Mark ``memory_id`` superseded by ``by_id``.
 
         Sets superseded_by=by_id, is_active=0, is_archived=1 and refreshes
@@ -1086,11 +1409,33 @@ class SqliteBackend:
         responsibility when needed.
         """
         with self.transaction() as conn:
-            conn.execute(
-                "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
-                "updated_at = ? WHERE id = ?",
-                (by_id, _iso(_utcnow()), memory_id),
-            )
+            stored_tenant = self._stored_tenant(conn, memory_id)
+            if tenant_id is not None:
+                if stored_tenant != tenant_id:
+                    raise KeyError(f"memory {memory_id!r} not found")
+                if self._stored_tenant(conn, by_id) != tenant_id:
+                    raise KeyError(f"memory {by_id!r} not found")
+                self._assert_tenant_writable(conn, tenant_id)
+                conn.execute(
+                    "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
+                    "updated_at = ? WHERE id = ?",
+                    (by_id, _iso(_utcnow()), memory_id),
+                )
+            elif stored_tenant is not None:
+                by_tenant = self._stored_tenant(conn, by_id)
+                if by_tenant is not None and by_tenant != stored_tenant:
+                    raise CrossTenantLinkError(
+                        memory_id,
+                        stored_tenant,
+                        by_id,
+                        by_tenant,
+                    )
+                self._assert_tenant_writable(conn, stored_tenant)
+                conn.execute(
+                    "UPDATE memories SET superseded_by = ?, is_active = 0, is_archived = 1, "
+                    "updated_at = ? WHERE id = ?",
+                    (by_id, _iso(_utcnow()), memory_id),
+                )
 
     def _bump_retrieval(self, ids: list[str], now: datetime) -> None:
         if not ids:
@@ -1099,15 +1444,18 @@ class SqliteBackend:
         with self.transaction() as conn:
             conn.execute(
                 f"UPDATE memories SET retrieval_count = retrieval_count + 1, "
-                f"last_accessed_at = ? WHERE id IN ({placeholders})",
+                f"last_accessed_at = ? WHERE id IN ({placeholders}) "
+                f"AND tenant_id IN (SELECT id FROM tenants WHERE is_active = 1)",
                 [_iso(now), *ids],
             )
 
     @telemetry.traced("mintmory.search_around")
+    @telemetry.timed_phase("graph")
     def search_around(
         self,
         anchor_ids: list[str],
         spec: SearchAroundSpec,
+        tenant_id: str | None = None,
     ) -> list[str]:
         """
         Graph traversal from anchor_ids via concept_links (PLAN.md §3).
@@ -1136,7 +1484,6 @@ class SqliteBackend:
             if not frontier:
                 break
             placeholders = ", ".join("?" for _ in frontier)
-            params: list[Any] = list(frontier)
             sql = (
                 f"SELECT source_memory_id, target_memory_id, link_type "
                 f"FROM concept_links "
@@ -1144,7 +1491,10 @@ class SqliteBackend:
                 f"(source_memory_id IN ({placeholders}) "
                 f" OR target_memory_id IN ({placeholders}))"
             )
-            params = [spec.min_strength, *frontier, *frontier]
+            params: list[Any] = [spec.min_strength, *frontier, *frontier]
+            if tenant_id is not None:
+                sql += " AND tenant_id = ?"
+                params.append(tenant_id)
             rows = conn.execute(sql, params).fetchall()
 
             next_frontier: set[str] = set()
@@ -1176,11 +1526,29 @@ class SqliteBackend:
     def add_link(self, link: ConceptLink) -> ConceptLink:
         """INSERT OR IGNORE on UNIQUE (source, target, link_type). Returns the link."""
         with self.transaction() as conn:
+            source_tenant = self._stored_tenant(conn, link.source_memory_id)
+            target_tenant = self._stored_tenant(conn, link.target_memory_id)
+            if source_tenant is not None and target_tenant is not None:
+                if source_tenant != target_tenant:
+                    raise CrossTenantLinkError(
+                        link.source_memory_id,
+                        source_tenant,
+                        link.target_memory_id,
+                        target_tenant,
+                    )
+                if link.tenant_id != source_tenant:
+                    raise CrossTenantLinkError(
+                        link.source_memory_id,
+                        source_tenant,
+                        link.target_memory_id,
+                        link.tenant_id,
+                    )
+            self._assert_tenant_writable(conn, link.tenant_id)
             conn.execute(
                 "INSERT OR IGNORE INTO concept_links "
                 "(id, source_memory_id, target_memory_id, link_type, entity, "
-                "strength, confidence, source, verified, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "strength, confidence, source, verified, created_at, updated_at, tenant_id) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     link.id,
                     link.source_memory_id,
@@ -1193,6 +1561,7 @@ class SqliteBackend:
                     _bool(link.verified),
                     _iso(link.created_at),
                     _iso(link.updated_at),
+                    link.tenant_id,
                 ),
             )
         return link
@@ -1210,17 +1579,22 @@ class SqliteBackend:
             verified=bool(row["verified"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            tenant_id=row["tenant_id"],
         )
 
     def get_links(
         self,
         memory_id: str,
         link_type: ConceptLinkType | None = None,
+        tenant_id: str | None = None,
     ) -> list[ConceptLink]:
         """Return all links where memory_id is source OR target."""
         conn = self.connect()
         sql = "SELECT * FROM concept_links WHERE (source_memory_id = ? OR target_memory_id = ?)"
         params: list[Any] = [memory_id, memory_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
         if link_type is not None:
             sql += " AND link_type = ?"
             params.append(link_type.value)
@@ -1233,10 +1607,11 @@ class SqliteBackend:
 
     def create_session(self, session: QuerySession) -> QuerySession:
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, session.tenant_id)
             conn.execute(
                 "INSERT INTO query_sessions "
                 "(id, query_text, created_at, confidence_rating, reasoning, "
-                "useful_ids, stale_ids, concluded) VALUES (?,?,?,?,?,?,?,?)",
+                "useful_ids, stale_ids, concluded, tenant_id) VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     session.id,
                     session.query_text,
@@ -1246,13 +1621,19 @@ class SqliteBackend:
                     json.dumps(session.useful_ids),
                     json.dumps(session.stale_ids),
                     _bool(session.concluded),
+                    session.tenant_id,
                 ),
             )
         return session
 
-    def get_session(self, session_id: str) -> QuerySession | None:
+    def get_session(self, session_id: str, tenant_id: str | None = None) -> QuerySession | None:
         conn = self.connect()
-        row = conn.execute("SELECT * FROM query_sessions WHERE id = ?", (session_id,)).fetchone()
+        sql = "SELECT * FROM query_sessions WHERE id = ?"
+        params: list[Any] = [session_id]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        row = conn.execute(sql, params).fetchone()
         if row is None:
             return None
         return QuerySession(
@@ -1264,16 +1645,38 @@ class SqliteBackend:
             useful_ids=row["useful_ids"],
             stale_ids=row["stale_ids"],
             concluded=bool(row["concluded"]),
+            tenant_id=row["tenant_id"],
         )
 
     def record_query_results(self, results: list[QueryResult]) -> None:
         if not results:
             return
         with self.transaction() as conn:
+            for result in results:
+                session_tenant = self._session_tenant(conn, result.session_id)
+                memory_tenant = self._stored_tenant(conn, result.memory_id)
+                if session_tenant is None or memory_tenant is None:
+                    continue
+                if result.tenant_id != session_tenant:
+                    raise CrossTenantLinkError(
+                        result.session_id,
+                        session_tenant,
+                        result.memory_id,
+                        result.tenant_id,
+                    )
+                if session_tenant != TENANT_GLOBAL and memory_tenant != session_tenant:
+                    raise CrossTenantLinkError(
+                        result.session_id,
+                        session_tenant,
+                        result.memory_id,
+                        memory_tenant,
+                    )
+            for result in results:
+                self._assert_tenant_writable(conn, result.tenant_id)
             conn.executemany(
                 "INSERT OR REPLACE INTO query_results "
                 "(session_id, memory_id, relevance_score, was_accessed, "
-                "was_useful, was_stale) VALUES (?,?,?,?,?,?)",
+                "was_useful, was_stale, tenant_id) VALUES (?,?,?,?,?,?,?)",
                 [
                     (
                         r.session_id,
@@ -1282,6 +1685,7 @@ class SqliteBackend:
                         _bool(r.was_accessed),
                         _bool(r.was_useful),
                         _bool(r.was_stale),
+                        r.tenant_id,
                     )
                     for r in results
                 ],
@@ -1292,15 +1696,20 @@ class SqliteBackend:
     # ------------------------------------------------------------------
 
     def upsert_summary(self, summary: MemorySummary) -> MemorySummary:
-        """INSERT OR REPLACE keyed on the UNIQUE ``concept`` column."""
-        existing = self.get_summary(summary.concept)
+        """Upsert keyed on the ``(tenant_id, concept)`` unique constraint.
+
+        Keeps the existing id of a ``(tenant_id, concept)`` row so an update does
+        not change the summary id.
+        """
+        existing = self.get_summary(summary.concept, summary.tenant_id)
         summary_id = existing.id if existing is not None else summary.id
         with self.transaction() as conn:
+            self._assert_tenant_writable(conn, summary.tenant_id)
             conn.execute(
                 "INSERT INTO memory_summaries "
-                "(id, concept, summary_text, memory_count, is_current, generated_at) "
-                "VALUES (?,?,?,?,?,?) "
-                "ON CONFLICT(concept) DO UPDATE SET "
+                "(id, concept, summary_text, memory_count, is_current, generated_at, tenant_id) "
+                "VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(tenant_id, concept) DO UPDATE SET "
                 "summary_text = excluded.summary_text, "
                 "memory_count = excluded.memory_count, "
                 "is_current = excluded.is_current, "
@@ -1312,9 +1721,10 @@ class SqliteBackend:
                     summary.memory_count,
                     _bool(summary.is_current),
                     _iso(summary.generated_at),
+                    summary.tenant_id,
                 ),
             )
-        result = self.get_summary(summary.concept)
+        result = self.get_summary(summary.concept, summary.tenant_id)
         assert result is not None  # just upserted
         return result
 
@@ -1326,44 +1736,76 @@ class SqliteBackend:
             memory_count=row["memory_count"],
             is_current=bool(row["is_current"]),
             generated_at=row["generated_at"],
+            tenant_id=row["tenant_id"],
         )
 
-    def get_summary(self, concept: str) -> MemorySummary | None:
+    def get_summary(self, concept: str, tenant_id: str = "global") -> MemorySummary | None:
+        """Fetch the summary for ``(tenant_id, concept)``. Returns None if not found."""
         conn = self.connect()
         row = conn.execute(
-            "SELECT * FROM memory_summaries WHERE concept = ?", (concept,)
+            "SELECT * FROM memory_summaries WHERE tenant_id = ? AND concept = ?",
+            (tenant_id, concept),
         ).fetchone()
         if row is None:
             return None
         return self._row_to_summary(row)
 
-    def list_summaries(self) -> list[MemorySummary]:
+    def list_summaries(self, tenant_id: str | None = None) -> list[MemorySummary]:
         conn = self.connect()
-        rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
+        if tenant_id is None:
+            rows = conn.execute("SELECT * FROM memory_summaries ORDER BY concept").fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM memory_summaries WHERE tenant_id = ? ORDER BY concept",
+                (tenant_id,),
+            ).fetchall()
         return [self._row_to_summary(row) for row in rows]
 
     # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------
 
-    def get_stats(self) -> MemoryStats:
+    def get_stats(self, tenant_id: str | None = None) -> MemoryStats:
         conn = self.connect()
-        total = conn.execute("SELECT COUNT(*) AS c FROM memories").fetchone()["c"]
+        tenant_filter = ""
+        tenant_params: list[Any] = []
+        if tenant_id is not None:
+            tenant_filter = " AND tenant_id = ?"
+            tenant_params = [tenant_id]
+
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM memories"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
         active = conn.execute(
             "SELECT COUNT(*) AS c FROM memories WHERE is_active = 1 AND is_archived = 0"
+            + tenant_filter,
+            tenant_params,
         ).fetchone()["c"]
-        stale = conn.execute("SELECT COUNT(*) AS c FROM memories WHERE is_stale = 1").fetchone()[
-            "c"
-        ]
+        stale = conn.execute(
+            "SELECT COUNT(*) AS c FROM memories WHERE is_stale = 1" + tenant_filter,
+            tenant_params,
+        ).fetchone()["c"]
         archived = conn.execute(
-            "SELECT COUNT(*) AS c FROM memories WHERE is_archived = 1"
+            "SELECT COUNT(*) AS c FROM memories WHERE is_archived = 1" + tenant_filter,
+            tenant_params,
         ).fetchone()["c"]
-        links = conn.execute("SELECT COUNT(*) AS c FROM concept_links").fetchone()["c"]
-        summaries = conn.execute("SELECT COUNT(*) AS c FROM memory_summaries").fetchone()["c"]
+        links = conn.execute(
+            "SELECT COUNT(*) AS c FROM concept_links"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
+        summaries = conn.execute(
+            "SELECT COUNT(*) AS c FROM memory_summaries"
+            + (" WHERE tenant_id = ?" if tenant_id is not None else ""),
+            tenant_params,
+        ).fetchone()["c"]
 
         avg_row = conn.execute(
             "SELECT AVG(usefulness_score) AS u, AVG(staleness_score) AS s "
-            "FROM memories WHERE is_active = 1 AND is_archived = 0"
+            "FROM memories WHERE is_active = 1 AND is_archived = 0" + tenant_filter,
+            tenant_params,
         ).fetchone()
         avg_use = float(avg_row["u"]) if avg_row["u"] is not None else 0.0
         avg_stale = float(avg_row["s"]) if avg_row["s"] is not None else 0.0
@@ -1372,6 +1814,8 @@ class SqliteBackend:
         counter: Counter[str] = Counter()
         for row in conn.execute(
             "SELECT entity_ids FROM memories WHERE is_active = 1 AND is_archived = 0"
+            + tenant_filter,
+            tenant_params,
         ).fetchall():
             for entity in json.loads(row["entity_ids"]):
                 counter[entity] += 1
@@ -1393,14 +1837,19 @@ class SqliteBackend:
     # Dreaming helpers
     # ------------------------------------------------------------------
 
-    def get_flagged_memories(self) -> list[MemoryRecord]:
+    def get_flagged_memories(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all memories where flagged_for_review = 1."""
         conn = self.connect()
-        rows = conn.execute("SELECT * FROM memories WHERE flagged_for_review = 1").fetchall()
+        sql = "SELECT * FROM memories WHERE flagged_for_review = 1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_never_accessed_stale(
-        self, days_old: int = 7, min_staleness: float = 3.0
+        self, days_old: int = 7, min_staleness: float = 3.0, tenant_id: str | None = None
     ) -> list[MemoryRecord]:
         """Anomaly detection: never retrieved + staleness_score >= min_staleness.
 
@@ -1408,18 +1857,25 @@ class SqliteBackend:
         (design §5e); surfacing it here would mislead the dreaming anomaly report.
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE last_accessed_at IS NULL "
             "AND staleness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0",
-            (min_staleness,),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     def get_high_staleness_useful(
-        self, min_staleness: float = 5.0, min_usefulness: float = 3.0
+        self,
+        min_staleness: float = 5.0,
+        min_usefulness: float = 3.0,
+        tenant_id: str | None = None,
     ) -> list[MemoryRecord]:
         """Anomaly detection: stale but still useful = needs human resolution.
 
@@ -1428,14 +1884,18 @@ class SqliteBackend:
         appear here by construction — but the guard makes the invariant explicit.
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE staleness_score >= ? "
             "AND usefulness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0",
-            (min_staleness, min_usefulness),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1451,51 +1911,67 @@ class SqliteBackend:
             return False
 
     def get_anomaly_high_staleness_useful_ids(
-        self, min_staleness: float, min_usefulness: float
+        self, min_staleness: float, min_usefulness: float, tenant_id: str | None = None
     ) -> list[str]:
         """IDs of high-staleness + still-useful memories (anomaly step 1a).
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE staleness_score >= ? AND usefulness_score >= ? "
             "AND is_archived = 0 "
-            "AND is_note = 0 "
-            "ORDER BY id",
-            (min_staleness, min_usefulness),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [min_staleness, min_usefulness]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_anomaly_never_accessed_ids(self, cutoff_iso: str) -> list[str]:
+    def get_anomaly_never_accessed_ids(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of never-retrieved memories created before cutoff (anomaly step 1b).
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE retrieval_count = 0 AND created_at < ? "
             "AND is_active = 1 AND is_archived = 0 "
-            "AND is_note = 0 "
-            "ORDER BY id",
-            (cutoff_iso,),
-        ).fetchall()
+            "AND is_note = 0"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_anomaly_flagged_ids(self) -> list[str]:
+    def get_anomaly_flagged_ids(self, tenant_id: str | None = None) -> list[str]:
         """IDs of flagged_for_review memories (anomaly step 1c).
 
         Verbatim SQL relocated from dreaming.detect_anomalies().
         """
         conn = self.connect()
-        rows = conn.execute(
-            "SELECT id FROM memories WHERE flagged_for_review = 1 ORDER BY id"
-        ).fetchall()
+        sql = "SELECT id FROM memories WHERE flagged_for_review = 1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def list_active_memory_ids(self, *, ordered: bool = False) -> list[str]:
+    def list_active_memory_ids(
+        self, *, ordered: bool = False, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of all active, non-archived memories.
 
         Verbatim SQL relocated from dreaming.create_concept_links(),
@@ -1504,41 +1980,57 @@ class SqliteBackend:
         """
         conn = self.connect()
         sql = "SELECT id FROM memories WHERE is_active = 1 AND is_archived = 0"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
         if ordered:
             sql += " ORDER BY id"
-        rows = conn.execute(sql).fetchall()
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_stale_archivable_ids(self, min_staleness: float, cutoff_iso: str) -> list[str]:
+    def get_stale_archivable_ids(
+        self, min_staleness: float, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[str]:
         """IDs of memories eligible for staleness archival (dreaming step 5).
 
         Verbatim SQL relocated from dreaming.archive_stale().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id FROM memories "
             "WHERE is_stale = 1 AND staleness_score >= ? AND is_archived = 0 "
             "AND is_note = 0 "
-            "AND (last_accessed_at IS NULL OR last_accessed_at < ?) "
-            "ORDER BY id",
-            (min_staleness, cutoff_iso),
-        ).fetchall()
+            "AND (last_accessed_at IS NULL OR last_accessed_at < ?)"
+        )
+        params: list[Any] = [min_staleness, cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [row["id"] for row in rows]
 
-    def get_rehabilitable_rows(self, cutoff_iso: str) -> list[tuple[str, float]]:
+    def get_rehabilitable_rows(
+        self, cutoff_iso: str, tenant_id: str | None = None
+    ) -> list[tuple[str, float]]:
         """(id, staleness_score) pairs eligible for rehabilitation (dreaming step 6).
 
         Verbatim SQL relocated from dreaming.rehabilitate().
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT id, staleness_score FROM memories "
             "WHERE is_stale = 1 AND usefulness_score > staleness_score "
             "AND is_archived = 0 "
-            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ? "
-            "ORDER BY id",
-            (cutoff_iso,),
-        ).fetchall()
+            "AND last_accessed_at IS NOT NULL AND last_accessed_at >= ?"
+        )
+        params: list[Any] = [cutoff_iso]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY id"
+        rows = conn.execute(sql, params).fetchall()
         return [(row["id"], float(row["staleness_score"])) for row in rows]
 
     # ------------------------------------------------------------------
@@ -1565,6 +2057,9 @@ class SqliteBackend:
         useful_set = set(useful_ids)
         stale_set = set(stale_ids)
         with self.transaction() as conn:
+            stored_tenant = self._session_tenant(conn, session_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 "UPDATE query_sessions SET confidence_rating = ?, reasoning = ?, "
                 "useful_ids = ?, stale_ids = ?, concluded = 1 WHERE id = ?",
@@ -1594,6 +2089,9 @@ class SqliteBackend:
         Verbatim SQL relocated from session.conclude_session().
         """
         with self.transaction() as conn:
+            stored_tenant = self._session_tenant(conn, session_id)
+            if stored_tenant is not None:
+                self._assert_tenant_writable(conn, stored_tenant)
             conn.execute(
                 "UPDATE query_sessions SET concluded = 1 WHERE id = ?",
                 (session_id,),
@@ -1603,39 +2101,47 @@ class SqliteBackend:
     # Port — absorbed vision.py raw-SQL site (verbatim SQL relocation)
     # ------------------------------------------------------------------
 
-    def list_image_file_records(self) -> list[MemoryRecord]:
+    def list_image_file_records(self, tenant_id: str | None = None) -> list[MemoryRecord]:
         """Return all active, non-archived memories with 'ext' metadata but no 'kind' tag.
 
         Verbatim SQL relocated from vision.image_jobs(). Python post-filtering
         (IMAGE_SUFFIXES, PROPRIETARY, SVG) stays in vision.py.
         """
         conn = self.connect()
-        rows = conn.execute(
+        sql = (
             "SELECT * FROM memories "
             "WHERE is_archived = 0 "
             "AND json_extract(metadata, '$.kind') IS NULL "
             "AND json_extract(metadata, '$.ext') IS NOT NULL "
-            "ORDER BY json_extract(metadata, '$.rel'), id"
-        ).fetchall()
+        )
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += "AND tenant_id = ? "
+            params.append(tenant_id)
+        sql += "ORDER BY json_extract(metadata, '$.rel'), id"
+        rows = conn.execute(sql, params).fetchall()
         return [self._row_to_memory(row) for row in rows]
 
     # ------------------------------------------------------------------
     # Port — absorbed cli/main.py ingest dedup (task 2.1a)
     # ------------------------------------------------------------------
 
-    def memory_exists_with_content(self, content: str) -> bool:
+    def memory_exists_with_content(self, content: str, tenant_id: str | None = None) -> bool:
         """Return True if any memory with the exact content already exists.
 
         Verbatim SQL: SELECT 1 FROM memories WHERE content = ? LIMIT 1
         Used by the ingest command for dedup checks; portable across backends.
         """
         conn = self.connect()
-        return (
-            conn.execute("SELECT 1 FROM memories WHERE content = ? LIMIT 1", (content,)).fetchone()
-            is not None
-        )
+        sql = "SELECT 1 FROM memories WHERE content = ?"
+        params: list[Any] = [content]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " LIMIT 1"
+        return conn.execute(sql, params).fetchone() is not None
 
-    def get_existing_relates_to_pairs(self) -> set[frozenset[str]]:
+    def get_existing_relates_to_pairs(self, tenant_id: str | None = None) -> set[frozenset[str]]:
         """Return the set of existing RELATES_TO concept-link pairs (order-insensitive).
 
         Used by create_concept_links() to pre-check which pairs already exist
@@ -1648,11 +2154,231 @@ class SqliteBackend:
         from mintmory.core.types import ConceptLinkType
 
         conn = self.connect()
-        rows = conn.execute(
-            "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?",
-            (ConceptLinkType.RELATES_TO.value,),
-        ).fetchall()
+        sql = "SELECT source_memory_id, target_memory_id FROM concept_links WHERE link_type = ?"
+        params: list[Any] = [ConceptLinkType.RELATES_TO.value]
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        rows = conn.execute(sql, params).fetchall()
         return {frozenset({r["source_memory_id"], r["target_memory_id"]}) for r in rows}
+
+    @staticmethod
+    def _unique_index_columns(conn: sqlite3.Connection, table: str) -> list[tuple[str, ...]]:
+        """Columns of every unique index on ``table`` (in index order)."""
+        result: list[tuple[str, ...]] = []
+        for index in conn.execute(f"PRAGMA index_list({table})").fetchall():
+            if not index["unique"]:
+                continue
+            columns = tuple(
+                str(row["name"])
+                for row in conn.execute(f"PRAGMA index_info({index['name']})").fetchall()
+            )
+            result.append(columns)
+        return result
+
+    @staticmethod
+    def _primary_key_columns(conn: sqlite3.Connection, table: str) -> tuple[str, ...]:
+        """Column names of ``table``'s primary key, in key order."""
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return tuple(
+            str(row["name"])
+            for row in sorted((row for row in rows if row["pk"]), key=lambda r: r["pk"])
+        )
+
+    def _tenant_migration_statements(self, conn: sqlite3.Connection) -> list[str]:
+        """Return only the tenant DDL this database still needs, in the required order.
+
+        Plan and execution are separate so tests can inject faults and so the
+        plan can be recomputed inside the migration transaction (R3.3).
+        """
+        table_columns: dict[str, list[str]] = {
+            table: [
+                str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            ]
+            for table in _TENANT_TABLES
+        }
+
+        statements: list[str] = []
+        for table in _TENANT_TABLES:
+            if "tenant_id" not in table_columns[table]:
+                statements.append(
+                    f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'global'"
+                )
+
+        rebuilt: set[str] = set()
+        if (
+            "tenant_id",
+            "source_memory_id",
+            "target_memory_id",
+            "link_type",
+        ) not in self._unique_index_columns(conn, "concept_links"):
+            rebuilt.add("concept_links")
+        if ("tenant_id", "concept") not in self._unique_index_columns(conn, "memory_summaries"):
+            rebuilt.add("memory_summaries")
+        if self._primary_key_columns(conn, "index_manifest") != ("tenant_id", "path"):
+            rebuilt.add("index_manifest")
+
+        for table in _TENANT_TABLES:
+            if table not in rebuilt:
+                continue
+            columns = ", ".join(_TENANT_REBUILD_COLUMNS[table])
+            statements.extend(
+                (
+                    _TENANT_REBUILD_DDL[table].strip(),
+                    f"INSERT INTO {table}__tenant_new ({columns}) SELECT {columns} FROM {table}",
+                    f"DROP TABLE {table}",
+                    f"ALTER TABLE {table}__tenant_new RENAME TO {table}",
+                )
+            )
+            statements.extend(_TENANT_REBUILD_INDEXES[table])
+
+        existing_indexes = {
+            str(row["name"])
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            ).fetchall()
+        }
+        index_tables = {
+            "idx_memories_tenant": "memories",
+            "idx_links_tenant": "concept_links",
+            "idx_sessions_tenant": "query_sessions",
+        }
+        for name, ddl in _TENANT_INDEX_DDL:
+            if name not in existing_indexes or index_tables[name] in rebuilt:
+                statements.append(ddl)
+        return statements
+
+    def _ensure_tenant_columns(self, conn: sqlite3.Connection) -> None:
+        """Apply the tenant migration atomically, or fail closed (R3.3/R3.4).
+
+        The plan is computed once without a lock (a migrated database never takes
+        a write lock at startup) and again inside ``BEGIN IMMEDIATE`` so two
+        processes starting together cannot replay a stale plan.
+        """
+        if not self._tenant_migration_statements(conn):
+            return
+
+        # Foreign keys must be off outside the transaction: SQLite ignores the
+        # pragma while a transaction is open. They are restored in ``finally``.
+        conn.execute("PRAGMA foreign_keys = OFF")
+        try:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                statements = self._tenant_migration_statements(conn)
+                for statement in statements:
+                    conn.execute(statement)
+                conn.commit()
+            except sqlite3.Error as exc:
+                conn.rollback()
+                raise TenantMigrationError(str(exc)) from exc
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
+
+    def create_tenant(self, tenant_id: str, name: str = "") -> Tenant:
+        """Create a tenant idempotently; an existing id is returned unchanged."""
+        validate_tenant_id(tenant_id)
+        now = _iso(_utcnow())
+        with self.transaction() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO tenants "
+                "(id, name, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
+                (tenant_id, name, now, now),
+            )
+            row = conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+        assert row is not None
+        return self._row_to_tenant(row)
+
+    def get_tenant(self, tenant_id: str) -> Tenant | None:
+        """Return the tenant row, or None for an unknown/invalid id."""
+        row = self.connect().execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+        return None if row is None else self._row_to_tenant(row)
+
+    def list_tenants(self) -> list[Tenant]:
+        """Every tenant (active and inactive), ordered by id ascending."""
+        rows = self.connect().execute("SELECT * FROM tenants ORDER BY id").fetchall()
+        return [self._row_to_tenant(row) for row in rows]
+
+    def set_tenant_active(self, tenant_id: str, active: bool) -> Tenant:
+        """Activate/deactivate a tenant; ``global`` cannot be deactivated."""
+        existing = self.get_tenant(tenant_id)
+        if existing is None:
+            raise TenantNotFoundError(tenant_id)
+        if tenant_id == TENANT_GLOBAL:
+            if not active:
+                raise ProtectedTenantError()
+            return existing
+        with self.transaction() as conn:
+            conn.execute(
+                "UPDATE tenants SET is_active = ?, updated_at = ? WHERE id = ?",
+                (_bool(active), _iso(_utcnow()), tenant_id),
+            )
+        updated = self.get_tenant(tenant_id)
+        assert updated is not None
+        return updated
+
+    @staticmethod
+    def _row_to_tenant(row: sqlite3.Row) -> Tenant:
+        return Tenant(
+            id=row["id"],
+            name=row["name"],
+            is_active=bool(row["is_active"]),
+            created_at=datetime.fromisoformat(row["created_at"]),
+            updated_at=datetime.fromisoformat(row["updated_at"]),
+        )
+
+    def _stored_tenant(self, conn: sqlite3.Connection, memory_id: str) -> str | None:
+        """Stored tenant of a memory row, or ``None`` when the row is missing."""
+        row = conn.execute("SELECT tenant_id FROM memories WHERE id = ?", (memory_id,)).fetchone()
+        return None if row is None else str(row["tenant_id"])
+
+    def _session_tenant(self, conn: sqlite3.Connection, session_id: str) -> str | None:
+        """Stored tenant of a session row, or ``None`` when the row is missing."""
+        row = conn.execute(
+            "SELECT tenant_id FROM query_sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        return None if row is None else str(row["tenant_id"])
+
+    def _assert_tenant_writable(self, conn: sqlite3.Connection, tenant_id: str) -> None:
+        """Raise unless ``tenant_id`` exists and is active."""
+        row = conn.execute("SELECT is_active FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+        if row is None:
+            raise TenantNotFoundError(tenant_id)
+        if not row["is_active"]:
+            raise TenantInactiveError(tenant_id)
+
+    def list_memories(
+        self,
+        filter: MemoryFilter | None = None,
+        *,
+        tenant_id: str | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryRecord]:
+        """Query-text-free list of memories for the cross-tenant copy.
+
+        SQL keeps only non-archived rows (plus the tenant predicate when
+        concrete); ``_passes_filter`` (the same helper the search pipeline
+        uses) applies the ``MemoryFilter`` semantics in Python, and ``limit``
+        counts only matching rows because it is applied after the filter.
+        """
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be >= 0")
+        conn = self.connect()
+        sql = "SELECT * FROM memories WHERE is_archived = 0"
+        params: list[Any] = []
+        if tenant_id is not None:
+            sql += " AND tenant_id = ?"
+            params.append(tenant_id)
+        sql += " ORDER BY created_at, id"
+        rows = conn.execute(sql, params).fetchall()
+        records = [self._row_to_memory(row) for row in rows]
+        matching = [
+            mem
+            for mem in records
+            if _passes_filter(mem, filter or MemoryFilter(), include_archived=False)
+        ]
+        if limit is None:
+            return matching
+        return matching[:limit]
 
 
 # ---------------------------------------------------------------------------

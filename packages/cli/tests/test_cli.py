@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from mintmory.cli.main import app
@@ -461,6 +461,122 @@ def test_doctor_healthy_offline(cli_db: Path) -> None:
     assert "disabled" in result.output  # default LLM provider=none
 
 
+def _doctor_output(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Run ``doctor`` against the isolated DB with a wide terminal; return stdout."""
+    monkeypatch.setenv("COLUMNS", "200")
+    _add("a doctor telemetry probe", "--category", "fact")
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0, result.output
+    return result.output
+
+
+@pytest.mark.l4("C-2b1a1bac")
+def test_doctor_telemetry_without_a_collector(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mintmory.core import telemetry
+
+    monkeypatch.delenv("MINTMORY_OTEL_ENABLED", raising=False)
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", lambda url, timeout=0.1: False)
+    output = _doctor_output(monkeypatch)
+    assert "telemetry" in output
+    assert (
+        "mode=auto, state=no collector, endpoint=http://localhost:4318/v1/traces, "
+        "reachable=no, service=mintmory-cli"
+    ) in output
+
+
+@pytest.mark.l4("C-93f4f5b3")
+def test_doctor_telemetry_endpoint_it_cannot_parse(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret_i = "SECRET" + "-I-33"
+    for endpoint in (
+        "not a url",
+        "http://localhost:99999",
+        f"http://user:{secret_i}@localhost:99999",
+    ):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", endpoint)
+        output = _doctor_output(monkeypatch)
+        assert "endpoint=<invalid>, reachable=invalid" in output
+        assert secret_i not in output
+
+
+@pytest.mark.l4("C-8b3b5845")
+def test_doctor_telemetry_hides_credentials(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mintmory.core import telemetry
+
+    secret_u = "SECRET" + "-U-55"
+    secret_q = "SECRET" + "-Q-77"
+    seen: list[str] = []
+
+    def _record(url: str, timeout: float = 0.1) -> bool:
+        seen.append(url)
+        return False
+
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", _record)
+    cases = [
+        (
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            f"http://user:{secret_u}@collector:4318",
+            "http://collector:4318/v1/traces",
+        ),
+        (
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            f"https://collector.example:4318/v1/traces?api_key={secret_q}#frag",
+            "https://collector.example:4318/v1/traces",
+        ),
+    ]
+    for variable, value, printed in cases:
+        seen.clear()
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+        monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+        monkeypatch.setenv(variable, value)
+        output = _doctor_output(monkeypatch)
+        assert f"endpoint={printed}, reachable=no" in output
+        assert printed in seen
+        assert secret_u not in output
+        assert secret_q not in output
+        assert "api_key" not in output
+
+
+@pytest.mark.l4("C-db0580b1")
+def test_doctor_telemetry_survives_a_failing_status(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mintmory.core import telemetry
+
+    def _boom(settings: object, default_service_name: str = "mintmory-cli") -> dict[str, str]:
+        raise RuntimeError
+
+    monkeypatch.setattr(telemetry, "status", _boom)
+    output = _doctor_output(monkeypatch)
+    assert "status unavailable (RuntimeError)" in output
+
+
+@pytest.mark.l4("C-92d621b6")
+def test_doctor_telemetry_sdk_missing_and_hides_headers(
+    cli_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mintmory.core import telemetry
+
+    secret_h = "SECRET" + "-1234"
+    monkeypatch.setenv("MINTMORY_OTEL_ENABLED", "true")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4318")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", f"authorization=Bearer {secret_h}")
+    monkeypatch.setattr(telemetry, "_endpoint_reachable", lambda url, timeout=0.1: True)
+
+    first = _doctor_output(monkeypatch)
+    assert "state=exporting" in first
+    assert "reachable=yes" in first
+    assert secret_h not in first
+
+    monkeypatch.setattr(telemetry, "_sdk_available", lambda: False)
+    second = _doctor_output(monkeypatch)
+    assert "state=SDK missing" in second
+    assert secret_h not in second
+
+
 # ---------------------------------------------------------------------------
 # ingest — conversion
 # ---------------------------------------------------------------------------
@@ -750,6 +866,298 @@ def test_index_tree_content_pass_full_texts_docs(
     assert "GATEWAY" in facts[0][0]
     assert '"converter": "markitdown"' in facts[0][1]
     assert conn.execute("SELECT index_mode FROM index_manifest").fetchone()[0] == "content"
+
+
+# ---------------------------------------------------------------------------
+# index-tree: online-only guard for the default text-content pass
+# ---------------------------------------------------------------------------
+
+
+def _report_value(output: str, label: str) -> str | None:
+    """The digits of the report-table row `label`, or None when the row is absent."""
+    for line in output.splitlines():
+        if label not in line:
+            continue
+        digits = "".join(ch for ch in line.split(label, 1)[1] if ch.isdigit())
+        return digits or ""
+    return None
+
+
+def _spy_extract_markdown(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Wrap ``conversion.extract_markdown`` and return the file basenames it was called with."""
+    from mintmory.core import conversion
+
+    seen: list[str] = []
+    original = conversion.extract_markdown
+
+    def spy(path: str | Path, **kwargs: Any) -> Any:
+        seen.append(Path(path).name)
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(conversion, "extract_markdown", spy)
+    return seen
+
+
+def _mark_online_only_by_size(monkeypatch: pytest.MonkeyPatch, size: int) -> None:
+    """A real FS cannot produce st_blocks == 0: mark this file size as a cloud placeholder."""
+
+    def fake(st: os.stat_result) -> bool:
+        return st.st_size == size
+
+    monkeypatch.setattr("mintmory.core.tree_index._is_online_only", fake)
+
+
+def _mark_every_file_online_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake(st: os.stat_result) -> bool:
+        return True
+
+    monkeypatch.setattr("mintmory.core.tree_index._is_online_only", fake)
+
+
+def _write_online_only_tree(root: Path) -> None:
+    root.mkdir()
+    (root / "local.txt").write_text("LOCAL-BODY-5520 plus more")
+    (root / "cloud.txt").write_text("CLOUD-BODY-7391")
+
+
+@pytest.mark.l4("C-0c4d71c5")
+def test_index_tree_text_content_skips_online_only_file(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mark_online_only_by_size(monkeypatch, 15)
+    seen = _spy_extract_markdown(monkeypatch)
+    tree = tmp_path / "lib"
+    _write_online_only_tree(tree)
+    result = runner.invoke(app, ["index-tree", str(tree), "--collection", "lib"])
+    assert result.exit_code == 0, result.output
+    assert seen == ["local.txt"]  # cloud.txt was never opened
+
+    conn = _store(cli_db).connect()
+    cloud_facts = conn.execute(
+        "SELECT count(*) FROM memories WHERE category = 'fact' AND content LIKE '%CLOUD-BODY-7391%'"
+    ).fetchone()[0]
+    local_facts = conn.execute(
+        "SELECT count(*) FROM memories WHERE category = 'fact' AND content LIKE '%LOCAL-BODY-5520%'"
+    ).fetchone()[0]
+    assert cloud_facts == 0
+    assert local_facts == 1
+
+    cloud_row = conn.execute(
+        "SELECT index_mode, online_only FROM index_manifest WHERE path = ?",
+        (str(tree / "cloud.txt"),),
+    ).fetchone()
+    assert cloud_row[0] == "metadata"
+    assert cloud_row[1] == 1
+    local_mode = conn.execute(
+        "SELECT index_mode FROM index_manifest WHERE path = ?", (str(tree / "local.txt"),)
+    ).fetchone()[0]
+    assert local_mode == "content"
+    assert _report_value(result.output, "text-skipped-online-only") == "1"
+
+
+@pytest.mark.l4("C-70797ec0", "C-85ba8c03")
+def test_index_tree_online_only_skip_counted_per_run(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mark_online_only_by_size(monkeypatch, 15)
+    tree = tmp_path / "lib"
+    _write_online_only_tree(tree)
+    args = ["index-tree", str(tree), "--collection", "lib"]
+
+    first = runner.invoke(app, args)
+    assert first.exit_code == 0, first.output
+    assert _report_value(first.output, "text-skipped-online-only") == "1"
+
+    # Unchanged files are counted too: the row is per scanned file, not per read.
+    second = runner.invoke(app, args)
+    assert second.exit_code == 0, second.output
+    assert _report_value(second.output, "text-skipped-online-only") == "1"
+
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "only.txt").write_text("just a local body")
+    none = runner.invoke(app, ["index-tree", str(plain), "--collection", "plain"])
+    assert none.exit_code == 0, none.output
+    assert "text-skipped-online-only" not in none.output
+
+    disabled = runner.invoke(app, [*args, "--no-text-content"])
+    assert disabled.exit_code == 0, disabled.output
+    assert "text-skipped-online-only" not in disabled.output
+
+
+@pytest.mark.l4("C-62e431f2")
+def test_index_tree_content_pass_reads_online_only_text_on_request(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mark_online_only_by_size(monkeypatch, 15)
+    seen = _spy_extract_markdown(monkeypatch)
+    tree = tmp_path / "lib"
+    _write_online_only_tree(tree)
+    result = runner.invoke(
+        app,
+        ["index-tree", str(tree), "--collection", "lib", "--content", "--content-types", "txt"],
+    )
+    assert result.exit_code == 0, result.output
+    assert seen.count("cloud.txt") == 1  # the budgeted pass fetched it
+
+    conn = _store(cli_db).connect()
+    cloud_row = conn.execute(
+        "SELECT index_mode, online_only FROM index_manifest WHERE path = ?",
+        (str(tree / "cloud.txt"),),
+    ).fetchone()
+    assert cloud_row[0] == "content"
+    assert cloud_row[1] == 1
+    assert _report_value(result.output, "downloaded") == "40"  # 25 + 15 bytes
+    assert "text-skipped-online-only" not in result.output
+
+    # Control: a default run on the same tree skips the placeholder and counts it.
+    fallback = runner.invoke(app, ["index-tree", str(tree), "--collection", "lib"])
+    assert fallback.exit_code == 0, fallback.output
+    assert _report_value(fallback.output, "text-skipped-online-only") == "1"
+
+
+@pytest.mark.l4("C-1935acc7", "C-5cd92e1a")
+def test_index_tree_content_run_upgrades_metadata_row_without_force(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mark_online_only_by_size(monkeypatch, 15)
+    seen = _spy_extract_markdown(monkeypatch)
+    tree = tmp_path / "lib"
+    _write_online_only_tree(tree)
+    default_args = ["index-tree", str(tree), "--collection", "lib"]
+    cloud_path = str(tree / "cloud.txt")
+
+    first = runner.invoke(app, default_args)
+    assert first.exit_code == 0, first.output
+    conn = _store(cli_db).connect()
+    cloud_row = conn.execute(
+        "SELECT index_mode, online_only FROM index_manifest WHERE path = ?", (cloud_path,)
+    ).fetchone()
+    assert cloud_row[0] == "metadata"
+    assert cloud_row[1] == 1
+    assert (
+        conn.execute(
+            "SELECT index_mode FROM index_manifest WHERE path = ?", (str(tree / "local.txt"),)
+        ).fetchone()[0]
+        == "content"
+    )
+
+    # A content run upgrades the metadata row without --force.
+    upgraded = runner.invoke(app, [*default_args, "--content", "--content-types", "txt"])
+    assert upgraded.exit_code == 0, upgraded.output
+    assert seen.count("cloud.txt") == 1
+    assert _report_value(upgraded.output, "unchanged") == "1"
+    assert (
+        conn.execute(
+            "SELECT index_mode FROM index_manifest WHERE path = ?", (cloud_path,)
+        ).fetchone()[0]
+        == "content"
+    )
+    active = conn.execute(
+        "SELECT count(*) FROM memories WHERE category = 'context' AND is_archived = 0 "
+        'AND metadata LIKE \'%"rel": "cloud.txt"%\''
+    ).fetchone()[0]
+    assert active == 1
+    assert "text-skipped-online-only" not in upgraded.output
+
+    # A later default run does not downgrade the content row.
+    again = runner.invoke(app, default_args)
+    assert again.exit_code == 0, again.output
+    assert (
+        conn.execute(
+            "SELECT index_mode FROM index_manifest WHERE path = ?", (cloud_path,)
+        ).fetchone()[0]
+        == "content"
+    )
+    assert _report_value(again.output, "unchanged") == "2"
+    assert _report_value(again.output, "text-skipped-online-only") == "1"
+
+
+@pytest.mark.l4("C-de4a2e51")
+def test_index_tree_empty_tree_has_no_online_only_row(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mark_online_only_by_size(monkeypatch, 15)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = runner.invoke(app, ["index-tree", str(empty), "--collection", "lib"])
+    assert result.exit_code == 0, result.output
+    assert _report_value(result.output, "scanned") == "0"
+    assert "text-skipped-online-only" not in result.output
+
+    # Control (the same command on non-empty input): one online-only text file -> row 1.
+    tree = tmp_path / "lib"
+    tree.mkdir()
+    (tree / "cloud.txt").write_text("CLOUD-BODY-7391")
+    control = runner.invoke(app, ["index-tree", str(tree), "--collection", "lib"])
+    assert control.exit_code == 0, control.output
+    assert _report_value(control.output, "text-skipped-online-only") == "1"
+
+
+@pytest.mark.l4("C-4c28579c", "C-85ba8c03")
+def test_index_tree_budget_exhausted_online_only_text_counted(
+    cli_db: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _mark_every_file_online_only(monkeypatch)
+    seen = _spy_extract_markdown(monkeypatch)
+    tree = tmp_path / "lib"
+    tree.mkdir()
+    (tree / "a.txt").write_text("hello")
+    (tree / "b.txt").write_text("hello")
+    result = runner.invoke(
+        app,
+        [
+            "index-tree",
+            str(tree),
+            "--collection",
+            "lib",
+            "--content",
+            "--content-types",
+            "txt",
+            "--max-download-mb",
+            "0.000001",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    # os.walk order is not sorted: exactly one of the two files was read.
+    assert len(seen) == 1
+    assert seen[0] in {"a.txt", "b.txt"}
+
+    conn = _store(cli_db).connect()
+    modes = sorted(row[0] for row in conn.execute("SELECT index_mode FROM index_manifest"))
+    assert modes == ["content", "metadata"]
+    assert _report_value(result.output, "text-skipped-online-only") == "1"
+    assert "budget" in result.output
+
+
+def _index_tree_option_help(option_name: str) -> str:
+    """The help string of one ``index-tree`` option, read from the Click command it registers."""
+    from typer.main import get_command
+
+    command = get_command(app)
+    index_tree_command = getattr(command, "commands", {})["index-tree"]
+    for parameter in index_tree_command.params:
+        if getattr(parameter, "name", None) == option_name:
+            return getattr(parameter, "help", "") or ""
+    raise AssertionError(f"index-tree registers no option named {option_name!r}")
+
+
+@pytest.mark.l4("C-f71c3c7c")
+def test_index_tree_text_content_help_notes_online_only_skip() -> None:
+    shown = runner.invoke(app, ["index-tree", "--help"])
+    assert shown.exit_code == 0, shown.output
+    help_text = _index_tree_option_help("text_content").lower()
+    assert "online-only" in help_text
+    assert "skip" in help_text
+
+
+@pytest.mark.l4("C-f71c3c7c")
+def test_index_tree_docstring_notes_online_only_skip() -> None:
+    from mintmory.cli.main import index_tree
+
+    doc = index_tree.__doc__ or ""
+    sentences = [sentence.lower() for sentence in doc.replace("\n", " ").split(".")]
+    assert any("online-only" in sentence and "skip" in sentence for sentence in sentences)
 
 
 def test_doctor_conversion_row_not_installed(cli_db: Path, monkeypatch: pytest.MonkeyPatch) -> None:

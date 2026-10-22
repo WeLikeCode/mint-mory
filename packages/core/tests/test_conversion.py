@@ -108,6 +108,191 @@ def test_clean_markdown_is_idempotent() -> None:
 
 
 # ---------------------------------------------------------------------------
+# clean_markdown — fenced code blocks survive cleanup (design D1-D3)
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_clean_markdown_keeps_fenced_content_and_cleans_prose() -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_clean_markdown_normalises_line_endings_inside_fence() -> None:
+    assert clean_markdown("```\r\nx  \r\n```") == "```\nx  \n```"
+
+
+@pytest.mark.l4("C-99501760")
+def test_clean_markdown_fence_grammar() -> None:
+    assert clean_markdown("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->") == "~~~\n```\n<!-- k -->\n~~~"
+    assert (
+        clean_markdown("````\n```\n<!-- k -->\n````\n<!-- gone -->")
+        == "````\n```\n<!-- k -->\n````"
+    )
+    assert clean_markdown("   ```\n<!-- k -->\n   ```") == "   ```\n<!-- k -->\n   ```"
+    assert clean_markdown("    ```\n<!-- x -->") == "    ```"
+
+
+@pytest.mark.l4("C-637d6041")
+def test_clean_markdown_unterminated_fence_runs_to_end_of_text() -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-279cc124")
+def test_clean_markdown_comment_spanning_a_fence_is_not_removed() -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_clean_markdown_unterminated_fence_keeps_trailing_blank_lines() -> None:
+    text = "a\n```\nx\n\n\n"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-202c649c")
+def test_clean_markdown_collapses_blank_run_before_fence() -> None:
+    text = "text\n\n\n\n```\ny\n```"
+    expected = "text\n\n```\ny\n```"
+    assert conversion._clean_pass(text) == expected
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_clean_markdown_removed_comment_exposing_opener_needs_one_pass() -> None:
+    text = "<!-- c -->```\n<!-- x -->\n\n\n\ny  "
+    assert conversion._clean_pass(text) == "```\n\ny"
+    assert clean_markdown(text) == "```\n\ny"
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_clean_markdown_second_pass_changes_first_pass_output() -> None:
+    text = "<!-- c -->```\n```\n<!-- k -->  \n```"
+    assert conversion._clean_pass(text) == "```\n```\n<!-- k -->  \n```"
+    assert clean_markdown(text) == "```\n```\n\n```"
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_clean_markdown_is_idempotent_with_fences() -> None:
+    samples = [
+        (
+            "Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n"
+            "<!-- keep me -->\nline   \n\n\n\nend\n```\n\n~~~\na\n\n\n\nb  \n~~~\n"
+        ),
+        "```\r\nx  \r\n```",
+        "~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->",
+        "````\n```\n<!-- k -->\n````\n<!-- gone -->",
+        "    ```\n<!-- x -->",
+        "a\n```\n<!-- c -->\n\n\n\nb",
+        "a <!-- open\n```\nx\n```\nclose --> b",
+        "a\n```\nx\n\n\n",
+        "text\n\n\n\n```\ny\n```",
+        "<!-- c -->```\n<!-- x -->\n\n\n\ny  ",
+        "<!-- c -->```\n```\n<!-- k -->  \n```",
+    ]
+    for text in samples:
+        once = clean_markdown(text)
+        assert clean_markdown(once) == once
+    assert clean_markdown("text\n\n\n\n```\ny  \n```") == "text\n\n```\ny  \n```"
+
+
+# ---------------------------------------------------------------------------
+# clean_markdown — fence-aware cleanup, pinned independently of the tests above
+# (task 2.1: ``_fenced_line_mask`` + the ``_FENCE_OPEN_RE`` fence grammar)
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_clean_markdown_fence_prose_around_block_is_cleaned() -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_clean_markdown_fence_line_endings_normalised_spaces_kept() -> None:
+    assert clean_markdown("```\r\nx  \r\n```") == "```\nx  \n```"
+
+
+@pytest.mark.l4("C-99501760")
+def test_clean_markdown_fence_grammar_character_and_length() -> None:
+    assert clean_markdown("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->") == "~~~\n```\n<!-- k -->\n~~~"
+    assert (
+        clean_markdown("````\n```\n<!-- k -->\n````\n<!-- gone -->")
+        == "````\n```\n<!-- k -->\n````"
+    )
+    assert clean_markdown("   ```\n<!-- k -->\n   ```") == "   ```\n<!-- k -->\n   ```"
+    assert clean_markdown("    ```\n<!-- x -->") == "    ```"
+
+
+@pytest.mark.l4("C-637d6041")
+def test_clean_markdown_fence_without_closer_reaches_last_line() -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-279cc124")
+def test_clean_markdown_comment_crossing_fence_boundary_survives() -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_clean_markdown_unclosed_fence_preserves_unique_trailing_blanks() -> None:
+    text = "a\n```\nx\n\n\n"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-202c649c")
+def test_clean_markdown_blank_run_before_opening_fence_collapses() -> None:
+    assert clean_markdown("text\n\n\n\n```\ny\n```") == "text\n\n```\ny\n```"
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_clean_markdown_comment_removal_may_expose_fence_in_one_pass() -> None:
+    assert clean_markdown("<!-- c -->```\n<!-- x -->\n\n\n\ny  ") == "```\n\ny"
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_clean_markdown_fixed_point_after_second_pass() -> None:
+    assert clean_markdown("<!-- c -->```\n```\n<!-- k -->  \n```") == "```\n```\n\n```"
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_clean_markdown_fence_passes_are_idempotent() -> None:
+    samples = [
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n<!-- keep me -->\nline   \n\n\n\nend\n```",
+        "```\r\nx  \r\n```",
+        "~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->",
+        "    ```\n<!-- x -->",
+        "a\n```\n<!-- c -->\n\n\n\nb",
+        "a <!-- open\n```\nx\n```\nclose --> b",
+        "text\n\n\n\n```\ny\n```",
+        "<!-- c -->```\n<!-- x -->\n\n\n\ny  ",
+        "<!-- c -->```\n```\n<!-- k -->  \n```",
+    ]
+    for text in samples:
+        once = clean_markdown(text)
+        assert clean_markdown(once) == once
+    assert clean_markdown("text\n\n\n\n```\ny  \n```") == "text\n\n```\ny  \n```"
+
+
+# ---------------------------------------------------------------------------
 # is_convertible / supported_suffixes
 # ---------------------------------------------------------------------------
 def test_is_convertible_true_for_office_binaries() -> None:
@@ -389,3 +574,414 @@ def test_extract_markdown_conversion_timeout_raises(
             extract_markdown(p, convert=True, timeout_s=0.1)
     finally:
         release.set()  # let the daemon thread finish promptly
+
+
+# ---------------------------------------------------------------------------
+# clean_markdown — task 2.2 contract, re-pinned on the public API alone
+# (no import of the private pass helpers; real, non-empty expected answers)
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_clean_markdown_prose_cleanup_outside_fences_keeps_block() -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_clean_markdown_crlf_in_fence_normalised_spaces_preserved() -> None:
+    assert clean_markdown("```\r\nx  \r\n```") == "```\nx  \n```"
+
+
+@pytest.mark.l4("C-99501760")
+def test_clean_markdown_fence_opening_and_closing_grammar() -> None:
+    assert clean_markdown("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->") == "~~~\n```\n<!-- k -->\n~~~"
+    assert (
+        clean_markdown("````\n```\n<!-- k -->\n````\n<!-- gone -->")
+        == "````\n```\n<!-- k -->\n````"
+    )
+    assert clean_markdown("   ```\n<!-- k -->\n   ```") == "   ```\n<!-- k -->\n   ```"
+    assert clean_markdown("    ```\n<!-- x -->") == "    ```"
+
+
+@pytest.mark.l4("C-637d6041")
+def test_clean_markdown_unclosed_fence_spans_to_final_line() -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-279cc124")
+def test_clean_markdown_comment_broken_by_fence_left_intact() -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_clean_markdown_unclosed_fence_retains_trailing_blanks() -> None:
+    text = "a\n```\nx\n\n\n"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-202c649c")
+def test_clean_markdown_blank_lines_before_fence_collapse_to_one() -> None:
+    assert clean_markdown("text\n\n\n\n```\ny\n```") == "text\n\n```\ny\n```"
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_clean_markdown_comment_removal_exposing_fence_is_stable() -> None:
+    assert clean_markdown("<!-- c -->```\n<!-- x -->\n\n\n\ny  ") == "```\n\ny"
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_clean_markdown_repeated_pass_reaches_fixed_point() -> None:
+    assert clean_markdown("<!-- c -->```\n```\n<!-- k -->  \n```") == "```\n```\n\n```"
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_clean_markdown_with_fences_idempotent() -> None:
+    samples = [
+        (
+            "Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n"
+            "<!-- keep me -->\nline   \n\n\n\nend\n```"
+        ),
+        "```\r\nx  \r\n```",
+        "~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->",
+        "    ```\n<!-- x -->",
+        "a\n```\n<!-- c -->\n\n\n\nb",
+        "a <!-- open\n```\nx\n```\nclose --> b",
+        "text\n\n\n\n```\ny\n```",
+        "<!-- c -->```\n<!-- x -->\n\n\n\ny  ",
+        "<!-- c -->```\n```\n<!-- k -->  \n```",
+    ]
+    for text in samples:
+        once = clean_markdown(text)
+        assert clean_markdown(once) == once
+    assert clean_markdown("text\n\n\n\n```\ny  \n```") == "text\n\n```\ny  \n```"
+
+
+# ---------------------------------------------------------------------------
+# extract_markdown call sites — dispatch and suffix tables unchanged (task 2.3)
+# The cleaner is reached from three call sites (text suffix, convertible via
+# markitdown, unknown suffix). These pin that the call sites still route the
+# file text through the fence-aware ``clean_markdown`` and that the suffix
+# tables keep their frozen values; ``extract_markdown`` itself is untouched.
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_extract_markdown_text_path_keeps_fenced_content(tmp_path: Path) -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    p = tmp_path / "doc.md"
+    p.write_text(text, encoding="utf-8")
+    result = extract_markdown(p)
+    assert result == ExtractResult(text=expected, method="text", path=p)
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_extract_markdown_text_path_normalises_crlf_inside_fence(tmp_path: Path) -> None:
+    p = tmp_path / "crlf.md"
+    p.write_bytes(b"```\r\nx  \r\n```")
+    assert extract_markdown(p) == ExtractResult(text="```\nx  \n```", method="text", path=p)
+
+
+@pytest.mark.l4("C-99501760")
+def test_extract_markdown_text_path_fence_grammar(tmp_path: Path) -> None:
+    cases = [
+        ("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->", "~~~\n```\n<!-- k -->\n~~~"),
+        ("````\n```\n<!-- k -->\n````\n<!-- gone -->", "````\n```\n<!-- k -->\n````"),
+        ("   ```\n<!-- k -->\n   ```", "   ```\n<!-- k -->\n   ```"),
+        ("    ```\n<!-- x -->", "    ```"),
+    ]
+    for i, (text, expected) in enumerate(cases):
+        p = tmp_path / f"grammar{i}.md"
+        p.write_text(text, encoding="utf-8")
+        assert extract_markdown(p) == ExtractResult(text=expected, method="text", path=p)
+
+
+@pytest.mark.l4("C-637d6041")
+def test_extract_markdown_text_path_unterminated_fence_runs_to_end(tmp_path: Path) -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    p = tmp_path / "unterminated.md"
+    p.write_text(text, encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text=text, method="text", path=p)
+
+
+@pytest.mark.l4("C-279cc124")
+def test_extract_markdown_text_path_comment_split_by_fence_survives(tmp_path: Path) -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    p = tmp_path / "split.md"
+    p.write_text(text, encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text=text, method="text", path=p)
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_extract_markdown_text_path_unterminated_fence_keeps_trailing_blanks(
+    tmp_path: Path,
+) -> None:
+    text = "a\n```\nx\n\n\n"
+    p = tmp_path / "trailing.md"
+    p.write_text(text, encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text=text, method="text", path=p)
+
+
+@pytest.mark.l4("C-202c649c")
+def test_extract_markdown_text_path_blank_run_before_fence_collapses(tmp_path: Path) -> None:
+    p = tmp_path / "blanks.md"
+    p.write_text("text\n\n\n\n```\ny\n```", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text="text\n\n```\ny\n```", method="text", path=p)
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_extract_markdown_text_path_comment_exposing_opener_needs_one_pass(
+    tmp_path: Path,
+) -> None:
+    p = tmp_path / "expose.md"
+    p.write_text("<!-- c -->```\n<!-- x -->\n\n\n\ny  ", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text="```\n\ny", method="text", path=p)
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_extract_markdown_text_path_second_pass_reaches_fixed_point(tmp_path: Path) -> None:
+    p = tmp_path / "second.md"
+    p.write_text("<!-- c -->```\n```\n<!-- k -->  \n```", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(text="```\n```\n\n```", method="text", path=p)
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_extract_markdown_text_path_fence_cleanup_is_idempotent(tmp_path: Path) -> None:
+    p = tmp_path / "idem.md"
+    p.write_text("text\n\n\n\n```\ny  \n```", encoding="utf-8")
+    once = extract_markdown(p)
+    assert once == ExtractResult(text="text\n\n```\ny  \n```", method="text", path=p)
+    p2 = tmp_path / "idem2.md"
+    p2.write_text(once.text, encoding="utf-8")
+    assert extract_markdown(p2).text == once.text
+
+
+@pytest.mark.l4("C-0c0ba143")
+def test_extract_markdown_unknown_suffix_path_keeps_fenced_content(tmp_path: Path) -> None:
+    p = tmp_path / "data.weird"
+    p.write_text("before <!-- gone -->\n\n```\ncode   \n```\n", encoding="utf-8")
+    assert extract_markdown(p) == ExtractResult(
+        text="before\n\n```\ncode   \n```", method="text", path=p
+    )
+
+
+@pytest.mark.l4("C-0c0ba143")
+def test_extract_markdown_markitdown_path_keeps_fenced_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _inject_fake_markitdown(monkeypatch, "Intro <!-- drop -->text\n\n```\nkeep   \n```\n")
+    p = tmp_path / "report.docx"
+    p.write_bytes(b"PK\x03\x04 fake docx bytes")
+    assert extract_markdown(p, convert=True) == ExtractResult(
+        text="Intro text\n\n```\nkeep   \n```", method="markitdown", path=p
+    )
+
+
+# ---------------------------------------------------------------------------
+# task 3.1 gate — one fresh test per scenario of the fence requirement, checked
+# against the implementation that already satisfies it (TDD exemption). The
+# existing ``test_conversion.py`` and ingest/index-tree CLI tests are run
+# unedited by the gate; these new tests re-pin the same acceptance criteria on
+# the public ``clean_markdown`` API under distinct names.
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_gate_fenced_content_kept_prose_around_cleaned() -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_gate_line_endings_normalised_inside_fence() -> None:
+    assert clean_markdown("```\r\nx  \r\n```") == "```\nx  \n```"
+
+
+@pytest.mark.l4("C-99501760")
+def test_gate_fence_grammar() -> None:
+    assert clean_markdown("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->") == "~~~\n```\n<!-- k -->\n~~~"
+    assert (
+        clean_markdown("````\n```\n<!-- k -->\n````\n<!-- gone -->")
+        == "````\n```\n<!-- k -->\n````"
+    )
+    assert clean_markdown("   ```\n<!-- k -->\n   ```") == "   ```\n<!-- k -->\n   ```"
+    assert clean_markdown("    ```\n<!-- x -->") == "    ```"
+
+
+@pytest.mark.l4("C-637d6041")
+def test_gate_unterminated_fence_runs_to_end_of_text() -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-279cc124")
+def test_gate_comment_removed_only_within_one_run_of_non_fenced_lines() -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_gate_unterminated_fence_keeps_trailing_blank_lines() -> None:
+    text = "a\n```\nx\n\n\n"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-202c649c")
+def test_gate_blank_runs_before_fence_still_collapse() -> None:
+    assert clean_markdown("text\n\n\n\n```\ny\n```") == "text\n\n```\ny\n```"
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_gate_removed_comment_exposing_opener_needs_one_pass() -> None:
+    assert clean_markdown("<!-- c -->```\n<!-- x -->\n\n\n\ny  ") == "```\n\ny"
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_gate_second_pass_changes_first_pass_output() -> None:
+    assert clean_markdown("<!-- c -->```\n```\n<!-- k -->  \n```") == "```\n```\n\n```"
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_gate_idempotent_with_fences_unchanged_without() -> None:
+    samples = [
+        (
+            "Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n"
+            "<!-- keep me -->\nline   \n\n\n\nend\n```\n\n~~~\na\n\n\n\nb  \n~~~\n"
+        ),
+        "```\r\nx  \r\n```",
+        "~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->",
+        "````\n```\n<!-- k -->\n````\n<!-- gone -->",
+        "   ```\n<!-- k -->\n   ```",
+        "    ```\n<!-- x -->",
+        "a\n```\n<!-- c -->\n\n\n\nb",
+        "a <!-- open\n```\nx\n```\nclose --> b",
+        "a\n```\nx\n\n\n",
+        "text\n\n\n\n```\ny\n```",
+        "<!-- c -->```\n<!-- x -->\n\n\n\ny  ",
+        "<!-- c -->```\n```\n<!-- k -->  \n```",
+    ]
+    for text in samples:
+        once = clean_markdown(text)
+        assert clean_markdown(once) == once
+    without_fence = "a\r\n\r\n\r\n\r\nb   \n\n\n<!-- x -->c"
+    assert clean_markdown(without_fence) == "a\n\nb\n\nc"
+
+
+# ---------------------------------------------------------------------------
+# task 3.2 gate — the fence requirement re-pinned once more under fresh names
+# against the code that already satisfies it (TDD exemption). Each test checks
+# one scenario of ``specs/ingestion/spec.md`` on the public ``clean_markdown``
+# API with a real, non-empty expected answer.
+# ---------------------------------------------------------------------------
+@pytest.mark.l4("C-0c0ba143")
+def test_quality_gate_fenced_content_survives_cleanup() -> None:
+    text = (
+        "Intro <!-- drop -->text\n\n\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~\n"
+    )
+    expected = (
+        "Intro text\n\nmore\n\n"
+        "```html\n<!-- keep me -->\nline   \n\n\n\nend\n```\n\n"
+        "~~~\na\n\n\n\nb  \n~~~"
+    )
+    assert clean_markdown(text) == expected
+
+
+@pytest.mark.l4("C-d06cb587")
+def test_quality_gate_crlf_normalised_inside_fence() -> None:
+    assert clean_markdown("```\r\nx  \r\n```") == "```\nx  \n```"
+
+
+@pytest.mark.l4("C-99501760")
+def test_quality_gate_fence_grammar_rules() -> None:
+    assert clean_markdown("~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->") == "~~~\n```\n<!-- k -->\n~~~"
+    assert (
+        clean_markdown("````\n```\n<!-- k -->\n````\n<!-- gone -->")
+        == "````\n```\n<!-- k -->\n````"
+    )
+    assert clean_markdown("   ```\n<!-- k -->\n   ```") == "   ```\n<!-- k -->\n   ```"
+    assert clean_markdown("    ```\n<!-- x -->") == "    ```"
+
+
+@pytest.mark.l4("C-637d6041")
+def test_quality_gate_unterminated_fence_spans_to_end() -> None:
+    text = "a\n```\n<!-- c -->\n\n\n\nb"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-279cc124")
+def test_quality_gate_comment_split_by_fence_is_kept() -> None:
+    text = "a <!-- open\n```\nx\n```\nclose --> b"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-bd2b7567")
+def test_quality_gate_unterminated_fence_keeps_trailing_blanks() -> None:
+    text = "a\n```\nx\n\n\n"
+    assert clean_markdown(text) == text
+
+
+@pytest.mark.l4("C-202c649c")
+def test_quality_gate_blank_run_before_fence_collapses() -> None:
+    assert clean_markdown("text\n\n\n\n```\ny\n```") == "text\n\n```\ny\n```"
+
+
+@pytest.mark.l4("C-67b0056e")
+def test_quality_gate_comment_exposing_opener_is_stable_in_one_pass() -> None:
+    assert clean_markdown("<!-- c -->```\n<!-- x -->\n\n\n\ny  ") == "```\n\ny"
+
+
+@pytest.mark.l4("C-13d0e1ab")
+def test_quality_gate_second_pass_reaches_fixed_point() -> None:
+    assert clean_markdown("<!-- c -->```\n```\n<!-- k -->  \n```") == "```\n```\n\n```"
+
+
+@pytest.mark.l4("C-c9868a1c")
+def test_quality_gate_cleanup_is_idempotent_with_and_without_fences() -> None:
+    samples = [
+        (
+            "Intro <!-- drop -->text\n\n\n\nmore\n\n```html\n"
+            "<!-- keep me -->\nline   \n\n\n\nend\n```\n\n~~~\na\n\n\n\nb  \n~~~\n"
+        ),
+        "```\r\nx  \r\n```",
+        "~~~\n```\n<!-- k -->\n~~~\n<!-- gone -->",
+        "````\n```\n<!-- k -->\n````\n<!-- gone -->",
+        "   ```\n<!-- k -->\n   ```",
+        "    ```\n<!-- x -->",
+        "a\n```\n<!-- c -->\n\n\n\nb",
+        "a <!-- open\n```\nx\n```\nclose --> b",
+        "a\n```\nx\n\n\n",
+        "text\n\n\n\n```\ny\n```",
+        "<!-- c -->```\n<!-- x -->\n\n\n\ny  ",
+        "<!-- c -->```\n```\n<!-- k -->  \n```",
+        "a\r\n\r\n\r\n\r\nb   \n\n\n<!-- x -->c",
+    ]
+    for text in samples:
+        once = clean_markdown(text)
+        assert clean_markdown(once) == once
+    assert clean_markdown("text\n\n\n\n```\ny  \n```") == "text\n\n```\ny  \n```"
+    assert clean_markdown("a\r\n\r\n\r\n\r\nb   \n\n\n<!-- x -->c") == "a\n\nb\n\nc"

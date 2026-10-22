@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 from mintmory.core.history.distill import (
     ChatFn,
+    _elide_transcript,
     distill_llm,
     distill_segment_deterministic,
 )
@@ -25,6 +26,7 @@ from mintmory.core.history.models import (
     NormalizedTurn,
     SessionSummary,
 )
+from mintmory.core.prompts import HISTORY_SEGMENT_PROMPT
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -678,3 +680,181 @@ def test_no_secret_survives_truncation() -> None:
     prompt = chat.captured[-1]  # type: ignore[attr-defined]
     assert secret not in prompt
     assert "[REDACTED:mk_agent]" in prompt
+
+
+# ---------------------------------------------------------------------------
+# _elide_transcript: bounded transcript (markers counted, first/last shortened)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.l4("C-05c7c216")
+def test_elide_transcript_user_turns_alone_over_cap() -> None:
+    """40 pairs (user 400 + assistant 2000), cap 12000.
+
+    The user turns alone exceed the cap, so the last-resort path keeps the first,
+    the last and as many middle user turns as fit, markers counted.
+    """
+    lines: list[tuple[str, str]] = []
+    for _ in range(40):
+        lines.append(("user", "u" * 400))
+        lines.append(("assistant", "a" * 2000))
+    result = _elide_transcript(lines, 12000)
+    rendered = result.split("\n")
+    assert len(result) == 11880
+    assert result.startswith("[USER] " + "u" * 400)
+    assert rendered[-1] == "[ASSISTANT] " + "a" * 2000
+    assert sum(1 for line in rendered if line.startswith("[USER] ")) == 23
+    assert sum(1 for line in rendered if "turns elided" in line) == 23
+    assert len(rendered) == 47
+
+
+@pytest.mark.l4("C-0840957b")
+def test_elide_transcript_drop_path_counts_markers() -> None:
+    """30 pairs (user 300 + assistant 300), cap 12000: the drop path counts its markers."""
+    lines: list[tuple[str, str]] = []
+    for _ in range(30):
+        lines.append(("user", "u" * 300))
+        lines.append(("assistant", "a" * 300))
+    result = _elide_transcript(lines, 12000)
+    rendered = result.split("\n")
+    assert len(result) == 11913
+    assert sum(1 for line in rendered if line.startswith("[USER] ")) == 30
+    assert sum(1 for line in rendered if line.startswith("[ASSISTANT] ")) == 7
+    assert sum(1 for line in rendered if "turns elided" in line) == 23
+    assert len(rendered) == 60
+
+
+@pytest.mark.l4("C-42290229")
+def test_elide_transcript_many_single_turn_gaps() -> None:
+    """200 pairs (user 50 + tool 10), cap 12000: many single-turn gaps stay bounded."""
+    lines: list[tuple[str, str]] = []
+    for _ in range(200):
+        lines.append(("user", "u" * 50))
+        lines.append(("tool", "t" * 10))
+    result = _elide_transcript(lines, 12000)
+    rendered = result.split("\n")
+    assert len(result) == 11947
+    assert rendered[0] == "[USER] " + "u" * 50
+    assert rendered[-1] == "[TOOL] " + "t" * 10
+    assert sum(1 for line in rendered if line.startswith("[USER] ")) == 151
+    assert sum(1 for line in rendered if "turns elided" in line) == 151
+    assert len(rendered) == 303
+
+
+@pytest.mark.l4("C-6ca7055a")
+def test_elide_transcript_first_and_last_over_cap_shortened() -> None:
+    """When the first and last turn alone exceed the cap, both are shortened."""
+    two = _elide_transcript([("user", "u" * 2000), ("assistant", "a" * 2000)], 500)
+    assert len(two) == 500
+    assert two == ("[USER] " + "u" * 2000)[:249] + "\n" + ("[ASSISTANT] " + "a" * 2000)[:250]
+    one = _elide_transcript([("user", "u" * 2000)], 500)
+    assert one == ("[USER] " + "u" * 2000)[:500]
+
+
+@pytest.mark.l4("C-ecdd32b9")
+def test_elide_transcript_first_and_last_over_cap_with_middle_turns() -> None:
+    """Turns between an oversized first and last turn collapse into one marker."""
+    lines = [
+        ("user", "u" * 2000),
+        ("assistant", "a" * 500),
+        ("user", "u" * 500),
+        ("assistant", "a" * 2000),
+    ]
+    result = _elide_transcript(lines, 500)
+    expected = "\n".join(
+        [
+            ("[USER] " + "u" * 2000)[:239],
+            "… [2 turns elided] …",
+            ("[ASSISTANT] " + "a" * 2000)[:239],
+        ]
+    )
+    assert len(result) == 500
+    assert result == expected
+
+
+@pytest.mark.l4("C-9cade05a")
+def test_elide_transcript_within_cap_unchanged() -> None:
+    """Text within the cap is returned unchanged, and oversized input is cut to the cap."""
+    assert _elide_transcript([("user", "hi"), ("assistant", "ok")], 12000) == (
+        "[USER] hi\n[ASSISTANT] ok"
+    )
+    assert len(_elide_transcript([("user", "u" * 2000), ("assistant", "a" * 2000)], 500)) == 500
+
+
+@pytest.mark.l4("C-203b5e3e")
+def test_huge_segment_prompt_is_bounded_and_ask_preserving() -> None:
+    """A segment with 200k-char turns yields a bounded, ask-preserving, secret-free prompt."""
+    valid = {"title": "t", "kind": "fix", "summary": "s", "outcome": "done", "next_context": ""}
+    s = _make_summary()
+    captured: list[str] = []
+
+    def capturing_chat(prompt: str) -> str:
+        captured.append(prompt)
+        return json.dumps(valid)
+
+    secret = "mk_" + "agent_" + "A" * 24
+    turns = [
+        NormalizedTurn(seq=0, ts=None, role="user", text="ASK-0 " + secret + " " + "u" * 400),
+        NormalizedTurn(seq=1, ts=None, role="assistant", text="A" * 200000),
+    ]
+    seq = 2
+    for i in range(20):
+        turns.append(NormalizedTurn(seq=seq, ts=None, role="user", text=f"ASK-U{i} " + "u" * 400))
+        seq += 1
+        turns.append(
+            NormalizedTurn(seq=seq, ts=None, role="assistant", text=f"REP-{i} " + "a" * 300)
+        )
+        seq += 1
+    turns.append(NormalizedTurn(seq=seq, ts=None, role="assistant", text="LAST-ASSISTANT"))
+
+    distill_llm(s, turns, capturing_chat, max_turn_chars=2000, max_prompt_chars=12000)
+
+    assert captured, "chat was not called"
+    prompt = captured[-1]
+    overhead = len(HISTORY_SEGMENT_PROMPT.format(prev_context="", transcript="", repo=s.repo))
+    assert len(prompt) <= 12000 + overhead, f"prompt not bounded: {len(prompt)}"
+    assert secret not in prompt
+    assert "ASK-0 " in prompt
+    assert "LAST-ASSISTANT" in prompt
+    assert all(f"ASK-U{i} " in prompt for i in range(20))
+
+
+@pytest.mark.l4("C-5bd97470")
+def test_prompt_bounded_by_cap_plus_template() -> None:
+    """The whole prompt is bounded by the cap plus the template overhead."""
+    valid = {"title": "t", "kind": "fix", "summary": "s", "outcome": "done", "next_context": ""}
+    s = _make_summary()
+    overhead = len(HISTORY_SEGMENT_PROMPT.format(prev_context="", transcript="", repo=s.repo))
+
+    captured: list[str] = []
+
+    def capturing_chat(prompt: str) -> str:
+        captured.append(prompt)
+        return json.dumps(valid)
+
+    turns = [
+        NormalizedTurn(seq=i, ts=None, role="user", text=f"ASK-{i} " + ("x" * 5000))
+        for i in range(60)
+    ]
+    distill_llm(s, turns, capturing_chat, max_turn_chars=2000, max_prompt_chars=12000)
+    assert captured, "chat was not called"
+    prompt = captured[-1]
+    assert len(prompt) <= 12000 + overhead, f"prompt not bounded: {len(prompt)}"
+    assert "ASK-0 " in prompt
+    assert "ASK-59 " in prompt
+    assert "elided" in prompt
+
+    captured_review: list[str] = []
+
+    def capturing_chat_review(prompt: str) -> str:
+        captured_review.append(prompt)
+        return json.dumps(valid)
+
+    review: list[NormalizedTurn] = []
+    for i in range(40):
+        review.append(NormalizedTurn(seq=2 * i, ts=None, role="user", text="u" * 400))
+        review.append(NormalizedTurn(seq=2 * i + 1, ts=None, role="assistant", text="a" * 2000))
+    distill_llm(s, review, capturing_chat_review, max_turn_chars=2000, max_prompt_chars=12000)
+    assert captured_review, "chat was not called"
+    prompt_review = captured_review[-1]
+    assert len(prompt_review) <= 12000 + overhead, f"prompt not bounded: {len(prompt_review)}"

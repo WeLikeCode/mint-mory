@@ -1,0 +1,37 @@
+{
+  "schema": "l4/followup@1",
+  "parent": "openspec:add-telemetry-boundary-tracing",
+  "items": [
+    {
+      "id": "FB-001",
+      "sha256": "fc2fbf775aec4a7272bddf34a90e18220f1a60eee6aa2f00f37651b3b29a5d6c"
+    },
+    {
+      "id": "FB-002",
+      "sha256": "499da0c7ba52de4d294f7f38255e4b428556a939f0ea28a1c27ec32fab9331b7"
+    },
+    {
+      "id": "FB-003",
+      "sha256": "6ed923ee4c8d39a6e090b79b9410921f5df2e5b392d8f64bc0ea201ba48bdfc6"
+    },
+    {
+      "id": "FB-004",
+      "sha256": "84eeb6b2686d2c21fa8f62a784446ed2e9ba4fdbff6becb88d96488de2335d12"
+    },
+    {
+      "id": "FB-005",
+      "sha256": "cd3837e5fe40f79b442972d27694a9a0d3c16cb2aceecb197415dcb364e06c0c"
+    }
+  ],
+  "chores": [
+    "F-d97951ca",
+    "F-47d25d08",
+    "F-a0274ee1"
+  ],
+  "test_chores": [
+    "F-d97951ca",
+    "F-47d25d08",
+    "F-a0274ee1"
+  ],
+  "refactors": []
+}

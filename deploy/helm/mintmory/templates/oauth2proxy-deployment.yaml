@@ -11,13 +11,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      {{- include "mintmory.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: oauth2-proxy
+      {{- include "mintmory.oauth2ProxySelectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "mintmory.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: oauth2-proxy
+        {{- include "mintmory.oauth2ProxySelectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

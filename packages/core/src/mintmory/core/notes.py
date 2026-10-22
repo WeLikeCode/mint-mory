@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from mintmory.core.entities import extract_entities
 from mintmory.core.types import (
+    TENANT_GLOBAL,
     ConceptLink,
     ConceptLinkType,
     LinkSource,
@@ -48,6 +49,7 @@ def _resolve_anchor(
     note_id: str,
     about: str,
     settings: NoteSettings,
+    tenant_id: str = TENANT_GLOBAL,
 ) -> tuple[str | None, list[str]]:
     """Resolve an ``about`` phrase.
 
@@ -75,7 +77,9 @@ def _resolve_anchor(
     # ------------------------------------------------------------------
     # Step 1: side-effect-free candidate lookup (no QuerySession, no bumps).
     # ------------------------------------------------------------------
-    candidates: list[tuple[float, MemoryRecord]] = adapter.anchor_candidates(about, limit=5)
+    candidates: list[tuple[float, MemoryRecord]] = adapter.anchor_candidates(
+        about, limit=5, tenant_id=tenant_id
+    )
 
     # Exclude the just-created note and other notes / archived rows.
     candidates = [
@@ -106,6 +110,7 @@ def _resolve_anchor(
                     source=LinkSource.USER,
                     strength=1.0,
                     confidence=top_share,
+                    tenant_id=tenant_id,
                 )
                 adapter.add_link(link)
                 return top_mem.id, list(top_mem.entity_ids)
@@ -130,6 +135,8 @@ def create_note(
     until: datetime | None = None,
     category: MemoryCategory | None = None,
     settings: NoteSettings | None = None,
+    *,
+    tenant_id: str = TENANT_GLOBAL,
 ) -> NoteResult:
     """Create a user-authored note (the ONE capture primitive).
 
@@ -181,6 +188,7 @@ def create_note(
             is_note=True,
             valid_from=when,
             valid_until=until,
+            tenant_id=tenant_id,
         )
     )
 
@@ -191,7 +199,9 @@ def create_note(
     anchor_phrase: str | None = about
 
     if about is not None:
-        anchor_memory_id, anchor_entities = _resolve_anchor(adapter, note.id, about, settings)
+        anchor_memory_id, anchor_entities = _resolve_anchor(
+            adapter, note.id, about, settings, tenant_id
+        )
         anchor_kind = "memory" if anchor_memory_id is not None else "topic"
 
         # Single follow-up update: fold anchor entities into note's entity_ids
@@ -228,6 +238,8 @@ def notes_list(
     overdue: bool = False,
     limit: int = 50,
     now: datetime | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> list[MemoryRecord]:
     """List notes (``is_note=1``), newest-first by default.
 
@@ -283,4 +295,5 @@ def notes_list(
         include_archived=False,
         limit=limit,
         now=now,
+        tenant_id=tenant_id,
     )

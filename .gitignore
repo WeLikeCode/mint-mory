@@ -57,3 +57,4 @@ scripts/corpus_parts/
 *.db
 *.db-wal
 *.db-shm
+.l4-out/

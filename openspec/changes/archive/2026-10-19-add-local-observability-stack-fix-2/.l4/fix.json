@@ -1,0 +1,16 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:add-local-observability-stack",
+  "round": 2,
+  "findings": [
+    "F-f5fcb85c"
+  ],
+  "chores": [
+    "F-f5fcb85c"
+  ],
+  "test_chores": [
+    "F-f5fcb85c"
+  ],
+  "refactors": [],
+  "retakes": []
+}

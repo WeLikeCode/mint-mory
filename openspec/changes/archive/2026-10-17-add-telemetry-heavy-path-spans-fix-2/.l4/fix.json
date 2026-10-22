@@ -1,0 +1,12 @@
+{
+  "schema": "l4/fix-unit@1",
+  "parent": "openspec:add-telemetry-heavy-path-spans",
+  "round": 2,
+  "findings": [
+    "H-e0757174"
+  ],
+  "chores": [],
+  "test_chores": [],
+  "refactors": [],
+  "retakes": []
+}

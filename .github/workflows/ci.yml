@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # Release tags (vX.Y.Z) run CI too, so publish-image pushes the release's image tag (MM-44).
+    tags: ["v*"]
   pull_request:
 
 concurrency:
@@ -167,6 +169,18 @@ jobs:
             -f deploy/helm/mintmory/values-postgres.yaml \
             | kubeconform -strict -summary -kubernetes-version 1.29.0 -
 
+      # oauth2-proxy / OIDC SSO auth mode (MM-44): placeholder OIDC values so the oauth2-proxy
+      # Deployment, Service and Secret and the ingress auth annotations render.
+      - name: Validate rendered manifests (oauth2proxy auth)
+        run: |
+          helm template t deploy/helm/mintmory \
+            --set auth.mode=oauth2proxy \
+            --set auth.oauth2proxy.oidcIssuerUrl=https://issuer.example.com \
+            --set auth.oauth2proxy.clientId=mintmory-ci \
+            --set auth.oauth2proxy.clientSecret=ci-placeholder \
+            --set ingress.enabled=true \
+            | kubeconform -strict -summary -kubernetes-version 1.29.0 -
+
       # The SQLite single-writer guardrail is non-negotiable: prove the schema still
       # rejects a multi-writer sqlite topology (this MUST fail — inverted exit check).
       - name: Guardrail negative test (sqlite + replicaCount=2 must be rejected)
@@ -209,6 +223,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Tags: `main` and `latest` for a default-branch push, `sha-<short sha>` always, and
+      # `X.Y.Z` for a release tag `vX.Y.Z` (the chart's default image tag, its appVersion).
+      # `latest=false` stops the action's default `latest=auto` from also tagging a release
+      # `latest`: only the explicit default-branch line below sets it.
       - name: Docker metadata (tags + labels)
         id: meta
         uses: docker/metadata-action@v5
@@ -217,8 +235,10 @@ jobs:
           tags: |
             type=ref,event=branch
             type=sha,prefix=sha-
-            type=ref,event=tag
+            type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=false
 
       # LIGHT variant only. The full/torch image (~2 GB) is build-on-demand
       # (`docker build --build-arg VARIANT=full`), never auto-published.

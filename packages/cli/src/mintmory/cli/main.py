@@ -21,15 +21,29 @@ Commands:
 
 from __future__ import annotations
 
+import contextlib
 import os
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NoReturn, cast
 
 import numpy as np
 import typer
-from mintmory.core.types import ConceptLinkType, MemoryCategory, MemorySource
+from mintmory.core import telemetry
+from mintmory.core.types import (
+    TENANT_GLOBAL,
+    ConceptLinkType,
+    DreamIntensity,
+    InvalidTenantIdError,
+    MemoryCategory,
+    MemorySource,
+    TenantInactiveError,
+    TenantNotFoundError,
+    validate_tenant_id,
+)
 from numpy.typing import NDArray
+from rich import box
 from rich.console import Console
 from rich.table import Table
 
@@ -37,8 +51,94 @@ if TYPE_CHECKING:
     from mintmory.core.ports import StorageBackend
     from mintmory.core.storage import SqliteBackend
 
-app = typer.Typer(name="mintmory", help="MintMory — typed memory for LLM agents")
+app = typer.Typer(
+    name="mintmory",
+    help=(
+        "MintMory — typed memory for LLM agents\n\n"
+        "Tenant id. Absent or 'global': reads span every tenant and writes go to the global tenant."
+    ),
+)
 console = Console()
+
+_TENANT: str | None = None
+_NO_TENANT_COMMANDS = {
+    "serve",
+    "mcp-serve",
+    "doctor",
+    "index-tree",
+    "history",
+    "migrate-storage",
+}
+
+
+def _fail(exc: Exception) -> NoReturn:
+    typer.echo(f"error: {exc}", err=True)
+    raise typer.Exit(code=1)
+
+
+def _fail_text(message: str) -> NoReturn:
+    typer.echo(f"error: {message}", err=True)
+    raise typer.Exit(code=1)
+
+
+@contextlib.contextmanager
+def _tenant_errors() -> Iterator[None]:
+    from mintmory.core.dreaming import DreamFailedError
+    from mintmory.core.types import TenantError
+
+    try:
+        yield
+    except (TenantError, DreamFailedError) as exc:
+        _fail(exc)
+
+
+def _read_tenant() -> str | None:
+    return _TENANT
+
+
+def _write_tenant() -> str:
+    return _TENANT or TENANT_GLOBAL
+
+
+def _check_write_tenant(store: StorageBackend) -> None:
+    """Raise when the selected write tenant is missing or inactive."""
+    tenant_id = _TENANT
+    if tenant_id is None:
+        return
+    tenant = store.get_tenant(tenant_id)
+    if tenant is None:
+        raise TenantNotFoundError(tenant_id)
+    if not tenant.is_active:
+        raise TenantInactiveError(tenant_id)
+
+
+@app.callback()
+def _init_telemetry(
+    ctx: typer.Context,
+    tenant: str | None = typer.Option(
+        None,
+        "--tenant",
+        help=(
+            "Tenant id. Absent or 'global': reads span every tenant and writes "
+            "go to the global tenant."
+        ),
+    ),
+) -> None:
+    """Initialise telemetry for CLI commands; ``serve`` and ``mcp-serve`` defer to their servers."""
+    global _TENANT
+    _TENANT = None
+    if tenant and tenant != TENANT_GLOBAL:
+        try:
+            _TENANT = validate_tenant_id(tenant)
+        except InvalidTenantIdError as exc:
+            _fail(exc)
+    if _TENANT is not None and ctx.invoked_subcommand in _NO_TENANT_COMMANDS:
+        _fail_text(f"'{ctx.invoked_subcommand}' does not support --tenant; run it without --tenant")
+    if ctx.invoked_subcommand in ("serve", "mcp-serve"):
+        return
+    from mintmory.core import telemetry
+
+    telemetry.init_telemetry(default_service_name="mintmory-cli")
 
 
 def _get_store() -> StorageBackend:
@@ -48,8 +148,118 @@ def _get_store() -> StorageBackend:
 
     settings = load_settings()
     store = build_storage(settings.storage, embedder=embedder_from_settings(settings.embed))
-    store.initialise()
+    with _tenant_errors():
+        store.initialise()
     return store
+
+
+# ---------------------------------------------------------------------------
+# mintmory tenant — tenant directory commands
+# ---------------------------------------------------------------------------
+
+tenant_app = typer.Typer(name="tenant", help="Tenant directory commands")
+app.add_typer(tenant_app)
+
+
+@tenant_app.command("create")
+def tenant_create(
+    tenant_id: str = typer.Argument(..., help="Tenant id to create"),
+    name: str = typer.Option("", "--name", help="Human-readable tenant name"),
+) -> None:
+    """Create a tenant idempotently."""
+    with _tenant_errors():
+        store = _get_store()
+        existed = store.get_tenant(tenant_id) is not None
+        store.create_tenant(tenant_id, name or "")
+    if existed:
+        console.print(f"tenant {tenant_id!r} already exists")
+    else:
+        console.print(f"created tenant {tenant_id!r}")
+
+
+@tenant_app.command("list")
+def tenant_list(
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table"),
+) -> None:
+    """List every tenant in the directory, ordered by id."""
+    import json as _json
+
+    with _tenant_errors():
+        store = _get_store()
+        tenants = store.list_tenants()
+
+    if as_json:
+        typer.echo(_json.dumps([t.model_dump(mode="json") for t in tenants]))
+        return
+
+    table = Table(title="Tenants")
+    table.add_column("id", style="cyan", no_wrap=True)
+    table.add_column("name")
+    table.add_column("is_active", style="magenta")
+    table.add_column("created_at", style="yellow")
+    for t in tenants:
+        table.add_row(t.id, t.name, "true" if t.is_active else "false", t.created_at.isoformat())
+    console.print(table)
+    console.print(f"[dim]{len(tenants)} tenant(s)[/dim]")
+
+
+@tenant_app.command("copy")
+def tenant_copy(
+    source: str = typer.Argument(..., help="Source tenant id"),
+    dest: str = typer.Argument(..., help="Destination tenant id"),
+    memory_ids: list[str] = typer.Option([], "--id", help="Source memory id to copy (repeatable)"),
+    category: str | None = typer.Option(None, "--category", help="Filter by category"),
+    entity: str | None = typer.Option(None, "--entity", help="Filter by entity"),
+    all_active: bool = typer.Option(False, "--all-active", help="Copy every active memory"),
+    force: bool = typer.Option(False, "--force", help="Copy records already in the destination"),
+    as_json: bool = typer.Option(False, "--json", help="Emit JSON instead of a table"),
+) -> None:
+    """Copy memories, their attached notes and their links between two tenants.
+
+    Global scope only: a named root ``--tenant`` refuses the command before
+    touching the store. The source is never modified.
+    """
+    from mintmory.core.transfer import CopyReport, CopySelectionError, copy_between_tenants
+    from mintmory.core.types import MemoryFilter, ScopeRequiredError
+
+    with _tenant_errors():
+        scope = _read_tenant()
+        if scope is not None:
+            raise ScopeRequiredError("tenant copy", scope)
+
+        mem_filter: MemoryFilter | None = None
+        if category is not None or entity is not None:
+            mem_filter = MemoryFilter(
+                category=_parse_category(category) if category is not None else None,
+                entity=entity,
+            )
+
+        store = _get_store()
+        try:
+            report = copy_between_tenants(
+                store,
+                source_tenant=source,
+                dest_tenant=dest,
+                memory_ids=memory_ids or None,
+                filter=mem_filter,
+                all_active=all_active,
+                force=force,
+            )
+        except CopySelectionError as exc:
+            _fail(exc)
+
+    if as_json:
+        typer.echo(report.model_dump_json())
+        return
+
+    table = Table(title=f"Copy report ({source} -> {dest})", box=box.SIMPLE)
+    table.add_column("metric", style="cyan")
+    table.add_column("value", justify="right", style="green")
+    for name in CopyReport.model_fields:
+        if name in ("source_tenant", "dest_tenant", "id_map"):
+            continue
+        table.add_row(name, str(getattr(report, name)))
+    console.print(table)
 
 
 def _parse_category(category: str) -> MemoryCategory:
@@ -98,6 +308,7 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 @app.command()
+@telemetry.command_span("add")
 def add(
     content: str = typer.Argument(..., help="Memory content"),
     category: str = typer.Option("fact", help="Memory category"),
@@ -107,17 +318,21 @@ def add(
     """Add a new memory."""
     cat = _parse_category(category)
     src = _parse_source(source)
-    store = _get_store()
-    record = store.add_memory(
-        content=content,
-        category=cat,
-        source=src,
-        verified=verified,
-    )
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        record = store.add_memory(
+            content=content,
+            category=cat,
+            source=src,
+            verified=verified,
+            tenant_id=_write_tenant(),
+        )
     console.print(f"[green]Added memory[/green] [bold]{record.id}[/bold]")
 
 
 @app.command()
+@telemetry.command_span("search")
 def search(
     query: str = typer.Argument(..., help="Search query"),
     limit: int = typer.Option(10, help="Max results"),
@@ -139,15 +354,17 @@ def search(
     if around is not None:
         search_around = SearchAroundSpec(link_types=[_parse_link_type(around)])
 
-    store = _get_store()
-    response = store.search(
-        SearchRequest(
-            query=query,
-            limit=limit,
-            filter=mem_filter,
-            search_around=search_around,
+    with _tenant_errors():
+        store = _get_store()
+        response = store.search(
+            SearchRequest(
+                query=query,
+                limit=limit,
+                filter=mem_filter,
+                search_around=search_around,
+            ),
+            tenant_id=_read_tenant(),
         )
-    )
 
     table = Table(title=f"Search results for {query!r}")
     table.add_column("id", style="cyan", no_wrap=True)
@@ -160,19 +377,30 @@ def search(
 
 
 @app.command()
+@telemetry.command_span("dream")
 def dream(
     full: bool = typer.Option(False, "--full/--light", help="Full vs light dreaming"),
 ) -> None:
     """Run the dreaming consolidation process (uses the configured LLM tier for L3)."""
     from mintmory.core.config import load_settings
+    from mintmory.core.dreaming import run_dream
     from mintmory.core.llm import build_dreaming_engine
 
     settings = load_settings()
-    store = _get_store()
-    engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
-    )
-    report = engine.run_full() if full else engine.run_light()
+    with _tenant_errors():
+        store = _get_store()
+        report = run_dream(
+            store,
+            intensity=DreamIntensity.FULL if full else DreamIntensity.LIGHT,
+            tenant_id=_read_tenant(),
+            engine_factory=lambda tenant_id: build_dreaming_engine(
+                store,
+                settings.llm,
+                link_settings=settings.link,
+                summary_settings=settings.summary,
+                tenant_id=tenant_id,
+            ),
+        )
 
     table = Table(title=f"Dream report ({report.intensity.value})")
     table.add_column("metric", style="cyan")
@@ -189,8 +417,9 @@ def dream(
 @app.command()
 def stats() -> None:
     """Show memory health statistics."""
-    store = _get_store()
-    s = store.get_stats()
+    with _tenant_errors():
+        store = _get_store()
+        s = store.get_stats(tenant_id=_read_tenant())
 
     table = Table(title="Memory statistics")
     table.add_column("metric", style="cyan")
@@ -248,6 +477,14 @@ def _chunk_text(text: str, max_chars: int) -> list[str]:
     return chunks
 
 
+def _file_size_bytes(path: Path) -> int:
+    """A file's size for telemetry attributes; 0 when the stat itself fails."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
 def _resolve_files(paths: list[str], globs: list[str]) -> list[Path]:
     """Expand files + directories (recursive glob) into a deduplicated file list."""
     out: list[Path] = []
@@ -269,6 +506,7 @@ def _resolve_files(paths: list[str], globs: list[str]) -> list[Path]:
 
 
 @app.command()
+@telemetry.command_span("ingest")
 def ingest(
     paths: list[str] = typer.Argument(..., help="Files or directories to ingest"),
     category: str = typer.Option("fact", help="Category for ingested memories"),
@@ -302,75 +540,89 @@ def ingest(
 
     cat = _parse_category(category)
     src = _parse_source(source)
-    globs = [g.strip() for g in glob.split(",") if g.strip()]
-    files = _resolve_files(paths, globs)
-    if not files:
-        console.print("[yellow]No matching files to ingest.[/yellow]")
-        raise typer.Exit(code=1)
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        globs = [g.strip() for g in glob.split(",") if g.strip()]
+        files = _resolve_files(paths, globs)
+        if not files:
+            console.print("[yellow]No matching files to ingest.[/yellow]")
+            raise typer.Exit(code=1)
 
-    settings = load_settings()
-    conv = settings.convert
-    store = _get_store()
-    added = skipped = converted = failed = 0
-    for f in files:
-        try:
-            result = extract_markdown(
-                f,
-                convert=convert and conv.enabled,
-                max_bytes=conv.max_bytes,
-                extra_text_suffixes=conv.extra_text_suffixes,
-                enable_plugins=conv.enable_plugins,
-                timeout_s=conv.timeout_s,
-                max_output_bytes=conv.max_output_bytes,
-            )
-        except ConversionError as exc:
-            console.print(f"[red]skip[/red] {f}: {exc}")
-            failed += 1
-            continue
-        chunks = _chunk_text(result.text, chunk_chars)
-        if not chunks:
-            console.print(f"[yellow]+0[/yellow] {f}: produced no extractable text")
-            failed += 1
-            continue
-        if result.method == "markitdown":
-            converted += 1
-        n_added = 0
-        for i, chunk in enumerate(chunks):
-            if skip_duplicates and store.memory_exists_with_content(chunk):
-                skipped += 1
+        settings = load_settings()
+        conv = settings.convert
+        added = skipped = converted = failed = 0
+        for f in files:
+            try:
+                with telemetry.file_span(
+                    "mintmory.convert",
+                    suffix=f.suffix,
+                    size_bytes=_file_size_bytes(f),
+                ):
+                    result = extract_markdown(
+                        f,
+                        convert=convert and conv.enabled,
+                        max_bytes=conv.max_bytes,
+                        extra_text_suffixes=conv.extra_text_suffixes,
+                        enable_plugins=conv.enable_plugins,
+                        timeout_s=conv.timeout_s,
+                        max_output_bytes=conv.max_output_bytes,
+                    )
+            except ConversionError as exc:
+                console.print(f"[red]skip[/red] {f}: {exc}")
+                failed += 1
                 continue
-            store.add_memory(
-                content=chunk,
-                category=cat,
-                source=src,
-                metadata={
-                    "source_file": str(f),
-                    "chunk": i,
-                    "chunks": len(chunks),
-                    "converter": result.method,
-                },
-            )
-            added += 1
-            n_added += 1
-        dup_note = " [dim](dups skipped)[/dim]" if n_added < len(chunks) else ""
-        console.print(f"[green]+{n_added}[/green] {f}{dup_note}")
-    console.print(
-        f"[bold green]Ingested {added} memory-chunk(s)[/bold green] from "
-        f"{len(files)} file(s) as [magenta]{cat.value}[/magenta]"
-        + (f"; skipped {skipped} duplicate(s)" if skipped else "")
-        + (f"; skipped {failed} file(s)" if failed else "")
-        + (f" ({converted} via markitdown)" if converted else "")
-        + "."
-    )
-    if dream:
-        from mintmory.core.llm import build_dreaming_engine
-
-        report = build_dreaming_engine(
-            store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
-        ).run_light()
+            chunks = _chunk_text(result.text, chunk_chars)
+            if not chunks:
+                console.print(f"[yellow]+0[/yellow] {f}: produced no extractable text")
+                failed += 1
+                continue
+            if result.method == "markitdown":
+                converted += 1
+            n_added = 0
+            for i, chunk in enumerate(chunks):
+                if skip_duplicates and store.memory_exists_with_content(
+                    chunk, tenant_id=_write_tenant()
+                ):
+                    skipped += 1
+                    continue
+                store.add_memory(
+                    content=chunk,
+                    category=cat,
+                    source=src,
+                    metadata={
+                        "source_file": str(f),
+                        "chunk": i,
+                        "chunks": len(chunks),
+                        "converter": result.method,
+                    },
+                    tenant_id=_write_tenant(),
+                )
+                added += 1
+                n_added += 1
+            dup_note = " [dim](dups skipped)[/dim]" if n_added < len(chunks) else ""
+            console.print(f"[green]+{n_added}[/green] {f}{dup_note}")
         console.print(
-            f"[dim]dream: +{report.new_links} links, +{report.new_summaries} summaries[/dim]"
+            f"[bold green]Ingested {added} memory-chunk(s)[/bold green] from "
+            f"{len(files)} file(s) as [magenta]{cat.value}[/magenta]"
+            + (f"; skipped {skipped} duplicate(s)" if skipped else "")
+            + (f"; skipped {failed} file(s)" if failed else "")
+            + (f" ({converted} via markitdown)" if converted else "")
+            + "."
         )
+        if dream:
+            from mintmory.core.llm import build_dreaming_engine
+
+            report = build_dreaming_engine(
+                store,
+                settings.llm,
+                link_settings=settings.link,
+                summary_settings=settings.summary,
+                tenant_id=_write_tenant(),
+            ).run_light()
+            console.print(
+                f"[dim]dream: +{report.new_links} links, +{report.new_summaries} summaries[/dim]"
+            )
 
 
 @app.command()
@@ -445,12 +697,19 @@ def doctor() -> None:
             "conversion",
             "[yellow]not installed — `uv sync --extra docs` for PDF/DOCX/XLSX[/yellow]",
         )
+    try:
+        telemetry_status = telemetry.status(settings.otel, "mintmory-cli")
+        telemetry_text = ", ".join(f"{key}={value}" for key, value in telemetry_status.items())
+    except Exception as exc:  # noqa: BLE001 — doctor must report, not raise
+        telemetry_text = f"status unavailable ({type(exc).__name__})"
+    table.add_row("telemetry", telemetry_text)
     console.print(table)
     if not healthy:
         raise typer.Exit(code=2)
 
 
 @app.command()
+@telemetry.command_span("index-tree")
 def index_tree(
     roots: list[str] = typer.Argument(..., help="Root folder(s) to index recursively"),
     collection: str = typer.Option(
@@ -462,7 +721,10 @@ def index_tree(
     text_content: bool = typer.Option(
         True,
         "--text-content/--no-text-content",
-        help="Full-text small plain-text files (.txt/.md/.log/.rst) inline — cheap, no budget",
+        help=(
+            "Full-text small plain-text files (.txt/.md/.log/.rst) inline — cheap, "
+            "no budget; online-only files are skipped by this inline text pass"
+        ),
     ),
     text_max_kb: int = typer.Option(
         2048, help="Max size (KB) for inline text-content; larger text files stay metadata-only"
@@ -512,7 +774,8 @@ def index_tree(
 
     Writes one metadata + folder-context memory per file (stat-only for the walk),
     full-texts small plain-text files inline by default (cheap — .txt/.md/.log/.rst),
-    and optionally downloads+converts heavy binary docs with ``--content`` (bounded
+    skipping online-only files that are not local (the inline text pass never triggers a
+    download), and optionally downloads+converts heavy binary docs with ``--content`` (bounded
     by ``--max-download-mb``). Idempotent via a per-path manifest: re-runs skip
     unchanged files and replace changed ones. Designed for cloud-backed
     (online-only) libraries.
@@ -549,6 +812,13 @@ def index_tree(
     conv = settings.convert
     store = _get_store()
     run_cochange = cochange if cochange is not None else settings.doc.cochange_enabled
+    if run_cochange:
+        from mintmory.core.cochange import COCHANGE_SQLITE_ONLY_MESSAGE
+        from mintmory.core.storage import SqliteBackend as _SqliteBackend
+
+        if not isinstance(store, _SqliteBackend):
+            console.print(f"[yellow]co-change skipped[/yellow]: {COCHANGE_SQLITE_ONLY_MESSAGE}")
+            run_cochange = False
     doc_s = settings.doc
 
     # MM-34 E: detect cold vs incremental BEFORE the walk
@@ -584,6 +854,7 @@ def index_tree(
     scanned = added = updated = unchanged = converted = failed = pruned = 0
     downloaded = 0
     budget_hit = False
+    text_skipped_online_only = 0
     # Vision-specific counters (only relevant when --vision)
     svg_described = 0
     images_queued = 0
@@ -595,290 +866,327 @@ def index_tree(
     # Size cap for raster images (used when captioner is not None).
     max_image_bytes: int | None = settings.vision.max_image_bytes if vision else None
 
-    for root in roots:
-        root_path = Path(root).expanduser()
-        if not root_path.is_dir():
-            raise typer.BadParameter(f"not a directory: {root}")
-        root_label = root_path.name
-        for group in iter_dir_groups(root_path, include=inc, exclude=exc):
-            for entry in group.entries:
-                if limit and scanned >= limit:
-                    break
-                scanned += 1
-                path_str = str(entry.path)
-                seen.add(path_str)
-                # Plain-text files are cheap to read -> full-text them inline by
-                # default (no markitdown, no download budget). Heavy binary docs
-                # need --content and consume the download budget.
-                text_eligible = (
-                    text_content
-                    and entry.suffix in TEXT_SUFFIXES
-                    and (text_max_bytes is None or entry.size <= text_max_bytes)
-                )
-                want_binary = content and entry.suffix in ctypes and not budget_hit
-                do_content = text_eligible or want_binary
-
-                # Vision: third content mode — separate from text/binary.
-                # Proprietary formats (xd/vsdx/dwg/psd/eps) are skip-and-flagged.
-                # ``vision_mod`` is not None when vision=True (guard above).
-                want_vision = (
-                    vision
-                    and vision_mod is not None
-                    and entry.suffix in vision_mod.IMAGE_SUFFIXES
-                    and entry.suffix not in vision_mod.PROPRIETARY_IMAGE_SUFFIXES
-                )
-
-                if (
-                    vision
-                    and vision_mod is not None
-                    and entry.suffix in vision_mod.PROPRIETARY_IMAGE_SUFFIXES
-                ):
-                    vision_skipped += 1
-
-                # desired_mode: 'content' wins over 'vision' (an image that is
-                # also full-text converted keeps 'content'); 'vision' beats
-                # 'metadata' for image suffixes handled by --vision.
-                if do_content:
-                    desired_mode = "content"
-                elif want_vision:
-                    desired_mode = "vision"
-                else:
-                    desired_mode = "metadata"
-
-                existing = store.manifest_get(path_str)
-                if existing is not None and not force:
-                    same = (
-                        existing["size"] == entry.size
-                        and abs(existing["mtime"] - entry.mtime) < 1e-6
+    with telemetry.span("mintmory.index_tree.scan"):
+        for root in roots:
+            root_path = Path(root).expanduser()
+            if not root_path.is_dir():
+                raise typer.BadParameter(f"not a directory: {root}")
+            root_label = root_path.name
+            for group in iter_dir_groups(root_path, include=inc, exclude=exc):
+                for entry in group.entries:
+                    if limit and scanned >= limit:
+                        break
+                    scanned += 1
+                    path_str = str(entry.path)
+                    seen.add(path_str)
+                    # Plain-text files are cheap to read -> full-text them inline by
+                    # default (no markitdown, no download budget). Heavy binary docs
+                    # need --content and consume the download budget.
+                    text_candidate = (
+                        text_content
+                        and entry.suffix in TEXT_SUFFIXES
+                        and (text_max_bytes is None or entry.size <= text_max_bytes)
                     )
-                    # 'content' and 'vision' are both richer than 'metadata';
-                    # 'content' > 'vision' (if already content, don't downgrade).
-                    existing_mode = existing["index_mode"]
-                    covered = existing_mode in ("content", "vision") or desired_mode == "metadata"
-                    if same and covered:
-                        unchanged += 1
-                        continue
+                    # The inline text pass never reads an online-only placeholder:
+                    # reading it would trigger a download. A budgeted --content pass
+                    # can still fetch it (want_binary below).
+                    text_eligible = text_candidate and not entry.online_only
+                    want_binary = content and entry.suffix in ctypes and not budget_hit
+                    # One counting rule for text-skipped-online-only: evaluated for
+                    # every scanned file, right after want_binary and before the
+                    # unchanged check below (unchanged files count too; a file the
+                    # budgeted pass reads is not counted).
+                    if text_candidate and entry.online_only and not want_binary:
+                        text_skipped_online_only += 1
+                    do_content = text_eligible or want_binary
 
-                new_ids: list[str] = []
-                file_mtime_dt = datetime.fromtimestamp(entry.mtime, tz=UTC).replace(tzinfo=None)
-                file_record_text = render_file_record(entry, group, root_label)
-                file_record = store.add_memory(
-                    content=file_record_text,
-                    category="context",
-                    source="document",
-                    valid_from=file_mtime_dt,
-                    metadata={
-                        "collection": collection,
-                        "path": path_str,
-                        "rel": entry.rel,
-                        "ext": entry.suffix,
-                        "size": entry.size,
-                        "mtime": entry.mtime,
-                        "online_only": entry.online_only,
-                        "folder": str(Path(entry.rel).parent),
-                        "index_mode": "metadata",
-                        "modified_source": "fs_mtime",
-                        "record_role": "file",  # MM-34 D
-                    },
-                )
-                new_ids.append(file_record.id)
-                mode = "metadata"
-                content_hash: str | None = None
+                    # Vision: third content mode — separate from text/binary.
+                    # Proprietary formats (xd/vsdx/dwg/psd/eps) are skip-and-flagged.
+                    # ``vision_mod`` is not None when vision=True (guard above).
+                    want_vision = (
+                        vision
+                        and vision_mod is not None
+                        and entry.suffix in vision_mod.IMAGE_SUFFIXES
+                        and entry.suffix not in vision_mod.PROPRIETARY_IMAGE_SUFFIXES
+                    )
 
-                if do_content:
-                    try:
-                        result = extract_markdown(
-                            entry.path,
-                            convert=True,
-                            max_bytes=conv.max_bytes,
-                            timeout_s=conv.timeout_s,
-                            max_output_bytes=conv.max_output_bytes,
-                            enable_plugins=conv.enable_plugins,
-                        )
-                        if want_binary:
-                            downloaded += entry.size  # only heavy docs count toward the budget
-                        for i, chunk in enumerate(_chunk_text(result.text, chunk_chars)):
-                            crec = store.add_memory(
-                                content=chunk,
-                                category="fact",
-                                source="document",
-                                valid_from=file_mtime_dt,  # MM-34 D
-                                metadata={
-                                    "collection": collection,
-                                    "source_file": path_str,
-                                    "rel": entry.rel,
-                                    "chunk": i,
-                                    "converter": result.method,
-                                    "modified_source": "fs_mtime",  # MM-34 D
-                                    "record_role": "chunk",  # MM-34 D
-                                },
-                            )
-                            new_ids.append(crec.id)
-                        if len(new_ids) > 1:
-                            mode = "content"
-                            content_hash = hashlib.blake2b(
-                                result.text.encode("utf-8"), digest_size=16
-                            ).hexdigest()
-                            converted += 1
-                        if want_binary and budget is not None and downloaded >= budget:
-                            budget_hit = True
-                    except ConversionError as exc:
-                        console.print(f"[yellow]content skip[/yellow] {entry.name}: {exc}")
-                        failed += 1
-                elif want_vision:
-                    # Vision branch: SVG → inline extraction; raster → queue for agent.
-                    # ``want_vision`` is True only when vision_mod is not None (see above).
-                    assert vision_mod is not None  # noqa: S101
-                    mode = "vision"
-                    if entry.suffix in vision_mod.SVG_SUFFIXES:
-                        # SVG: read bytes (counts against download budget for online-only),
-                        # extract embedded text via pure stdlib, store description inline.
-                        try:
-                            svg_bytes: bytes = b""
-                            if entry.online_only:
-                                if budget is not None and downloaded >= budget:
-                                    # budget exhausted; skip this SVG's byte read
-                                    mode = "metadata"
-                                    console.print(
-                                        f"[yellow]vision skip[/yellow] {entry.name}: "
-                                        "download budget exhausted"
-                                    )
-                                    failed += 1
-                                else:
-                                    svg_bytes = entry.path.read_bytes()
-                                    downloaded += len(svg_bytes)
-                                    if budget is not None and downloaded >= budget:
-                                        budget_hit = True
-                            else:
-                                svg_bytes = entry.path.read_bytes()
-                            if mode == "vision":
-                                svg_text = vision_mod.extract_svg_text(svg_bytes)
-                                if svg_text:
-                                    desc = vision_mod.image_caption_put(
-                                        store, file_record.id, svg_text, settings=settings.vision
-                                    )
-                                    new_ids.append(desc.record.id)
-                                    content_hash = hashlib.blake2b(
-                                        svg_text.encode("utf-8"), digest_size=16
-                                    ).hexdigest()
-                                    svg_described += 1
-                                # Empty SVG text: mode stays 'vision' (manifest marks it
-                                # as vision-attempted so a re-run doesn't re-attempt unless
-                                # the file changes). No description created.
-                        except OSError as exc:
-                            console.print(
-                                f"[yellow]vision skip[/yellow] {entry.name}: read error {exc}"
-                            )
-                            mode = "metadata"
-                            failed += 1
+                    if (
+                        vision
+                        and vision_mod is not None
+                        and entry.suffix in vision_mod.PROPRIETARY_IMAGE_SUFFIXES
+                    ):
+                        vision_skipped += 1
+
+                    # desired_mode: 'content' wins over 'vision' (an image that is
+                    # also full-text converted keeps 'content'); 'vision' beats
+                    # 'metadata' for image suffixes handled by --vision.
+                    if do_content:
+                        desired_mode = "content"
+                    elif want_vision:
+                        desired_mode = "vision"
                     else:
-                        # Raster image: queue for agent OR caption inline.
-                        # captioner is None  →  provider=agent (UNCHANGED MM-18 behaviour):
-                        #     count the job and move on; the agent loop will describe it later.
-                        # captioner is not None  →  provider=llm (or future):
-                        #     caption inline under the SAME budget + manifest.
-                        assert vision_mod is not None  # noqa: S101 — want_vision guard
-                        if captioner is None:
-                            images_queued += 1
-                            # mode already 'vision'; no bytes read, no description yet.
-                        else:
-                            # Inline captioning under the shared download budget.
+                        desired_mode = "metadata"
+
+                    existing = store.manifest_get(path_str)
+                    if existing is not None and not force:
+                        same = (
+                            existing["size"] == entry.size
+                            and abs(existing["mtime"] - entry.mtime) < 1e-6
+                        )
+                        # 'content' and 'vision' are both richer than 'metadata';
+                        # 'content' > 'vision' (if already content, don't downgrade).
+                        existing_mode = existing["index_mode"]
+                        covered = (
+                            existing_mode in ("content", "vision") or desired_mode == "metadata"
+                        )
+                        if same and covered:
+                            unchanged += 1
+                            continue
+
+                    new_ids: list[str] = []
+                    file_mtime_dt = datetime.fromtimestamp(entry.mtime, tz=UTC).replace(tzinfo=None)
+                    file_record_text = render_file_record(entry, group, root_label)
+                    file_record = store.add_memory(
+                        content=file_record_text,
+                        category="context",
+                        source="document",
+                        valid_from=file_mtime_dt,
+                        metadata={
+                            "collection": collection,
+                            "path": path_str,
+                            "rel": entry.rel,
+                            "ext": entry.suffix,
+                            "size": entry.size,
+                            "mtime": entry.mtime,
+                            "online_only": entry.online_only,
+                            "folder": str(Path(entry.rel).parent),
+                            "index_mode": "metadata",
+                            "modified_source": "fs_mtime",
+                            "record_role": "file",  # MM-34 D
+                        },
+                    )
+                    new_ids.append(file_record.id)
+                    mode = "metadata"
+                    content_hash: str | None = None
+
+                    if do_content:
+                        convert_ctx = (
+                            telemetry.file_span(
+                                "mintmory.convert",
+                                suffix=entry.suffix,
+                                size_bytes=entry.size,
+                            )
+                            if want_binary
+                            else contextlib.nullcontext()
+                        )
+                        try:
+                            with convert_ctx:
+                                result = extract_markdown(
+                                    entry.path,
+                                    convert=True,
+                                    max_bytes=conv.max_bytes,
+                                    timeout_s=conv.timeout_s,
+                                    max_output_bytes=conv.max_output_bytes,
+                                    enable_plugins=conv.enable_plugins,
+                                )
+                            if want_binary:
+                                downloaded += entry.size  # only heavy docs count toward the budget
+                            for i, chunk in enumerate(_chunk_text(result.text, chunk_chars)):
+                                crec = store.add_memory(
+                                    content=chunk,
+                                    category="fact",
+                                    source="document",
+                                    valid_from=file_mtime_dt,  # MM-34 D
+                                    metadata={
+                                        "collection": collection,
+                                        "source_file": path_str,
+                                        "rel": entry.rel,
+                                        "chunk": i,
+                                        "converter": result.method,
+                                        "modified_source": "fs_mtime",  # MM-34 D
+                                        "record_role": "chunk",  # MM-34 D
+                                    },
+                                )
+                                new_ids.append(crec.id)
+                            if len(new_ids) > 1:
+                                mode = "content"
+                                content_hash = hashlib.blake2b(
+                                    result.text.encode("utf-8"), digest_size=16
+                                ).hexdigest()
+                                converted += 1
+                            if want_binary and budget is not None and downloaded >= budget:
+                                budget_hit = True
+                        except ConversionError as exc:
+                            console.print(f"[yellow]content skip[/yellow] {entry.name}: {exc}")
+                            failed += 1
+                    elif want_vision:
+                        # Vision branch: SVG → inline extraction; raster → queue for agent.
+                        # ``want_vision`` is True only when vision_mod is not None (see above).
+                        assert vision_mod is not None  # noqa: S101
+                        mode = "vision"
+                        if entry.suffix in vision_mod.SVG_SUFFIXES:
+                            # SVG: read bytes (counts against download budget for online-only),
+                            # extract embedded text via pure stdlib, store description inline.
                             try:
-                                if max_image_bytes is not None and entry.size > max_image_bytes:
-                                    # Oversized: skip this image.
-                                    vision_skipped += 1
-                                elif (
-                                    entry.online_only
-                                    and budget is not None
-                                    and downloaded >= budget
-                                ):
-                                    # Budget exhausted for online-only images.
-                                    vision_skipped += 1
-                                else:
-                                    raw = entry.path.read_bytes()
-                                    if entry.online_only:
-                                        downloaded += len(raw)
+                                svg_bytes: bytes = b""
+                                if entry.online_only:
+                                    if budget is not None and downloaded >= budget:
+                                        # budget exhausted; skip this SVG's byte read
+                                        mode = "metadata"
+                                        console.print(
+                                            f"[yellow]vision skip[/yellow] {entry.name}: "
+                                            "download budget exhausted"
+                                        )
+                                        failed += 1
+                                    else:
+                                        svg_bytes = entry.path.read_bytes()
+                                        downloaded += len(svg_bytes)
                                         if budget is not None and downloaded >= budget:
                                             budget_hit = True
-                                    desc = captioner.describe(
-                                        vision_mod.ImageInput(
-                                            file_id=file_record.id,
-                                            path=path_str,
-                                            mime=vision_mod._mime_for(entry.suffix),
-                                            data=raw,
+                                else:
+                                    svg_bytes = entry.path.read_bytes()
+                                if mode == "vision":
+                                    svg_text = vision_mod.extract_svg_text(svg_bytes)
+                                    if svg_text:
+                                        desc = vision_mod.image_caption_put(
+                                            store,
+                                            file_record.id,
+                                            svg_text,
+                                            settings=settings.vision,
                                         )
-                                    )
-                                    put = vision_mod.image_caption_put(
-                                        store,
-                                        file_record.id,
-                                        desc.record.content,
-                                        settings=settings.vision,
-                                    )
-                                    new_ids.append(put.record.id)
-                                    content_hash = hashlib.blake2b(
-                                        desc.record.content.encode("utf-8"), digest_size=16
-                                    ).hexdigest()
-                                    images_described += 1
-                            except vision_mod.VisionError as exc:
-                                console.print(f"[yellow]vision skip[/yellow] {entry.name}: {exc}")
-                                vision_skipped += 1
+                                        new_ids.append(desc.record.id)
+                                        content_hash = hashlib.blake2b(
+                                            svg_text.encode("utf-8"), digest_size=16
+                                        ).hexdigest()
+                                        svg_described += 1
+                                    # Empty SVG text: mode stays 'vision' (manifest marks it
+                                    # as vision-attempted so a re-run doesn't re-attempt unless
+                                    # the file changes). No description created.
                             except OSError as exc:
                                 console.print(
                                     f"[yellow]vision skip[/yellow] {entry.name}: read error {exc}"
                                 )
-                                vision_skipped += 1
-                        # mode stays 'vision' in all cases (manifest records the attempt).
+                                mode = "metadata"
+                                failed += 1
+                        else:
+                            # Raster image: queue for agent OR caption inline.
+                            # captioner is None  →  provider=agent (UNCHANGED MM-18 behaviour):
+                            #     count the job and move on; the agent loop will describe it later.
+                            # captioner is not None  →  provider=llm (or future):
+                            #     caption inline under the SAME budget + manifest.
+                            assert vision_mod is not None  # noqa: S101 — want_vision guard
+                            if captioner is None:
+                                images_queued += 1
+                                # mode already 'vision'; no bytes read, no description yet.
+                            else:
+                                # Inline captioning under the shared download budget.
+                                try:
+                                    if max_image_bytes is not None and entry.size > max_image_bytes:
+                                        # Oversized: skip this image.
+                                        vision_skipped += 1
+                                    elif (
+                                        entry.online_only
+                                        and budget is not None
+                                        and downloaded >= budget
+                                    ):
+                                        # Budget exhausted for online-only images.
+                                        vision_skipped += 1
+                                    else:
+                                        raw = entry.path.read_bytes()
+                                        if entry.online_only:
+                                            downloaded += len(raw)
+                                            if budget is not None and downloaded >= budget:
+                                                budget_hit = True
+                                        with telemetry.file_span(
+                                            "mintmory.vision.caption",
+                                            suffix=entry.suffix,
+                                            size_bytes=entry.size,
+                                        ):
+                                            desc = captioner.describe(
+                                                vision_mod.ImageInput(
+                                                    file_id=file_record.id,
+                                                    path=path_str,
+                                                    mime=vision_mod._mime_for(entry.suffix),
+                                                    data=raw,
+                                                )
+                                            )
+                                        put = vision_mod.image_caption_put(
+                                            store,
+                                            file_record.id,
+                                            desc.record.content,
+                                            settings=settings.vision,
+                                        )
+                                        new_ids.append(put.record.id)
+                                        content_hash = hashlib.blake2b(
+                                            desc.record.content.encode("utf-8"), digest_size=16
+                                        ).hexdigest()
+                                        images_described += 1
+                                except vision_mod.VisionError as exc:
+                                    console.print(
+                                        f"[yellow]vision skip[/yellow] {entry.name}: {exc}"
+                                    )
+                                    vision_skipped += 1
+                                except OSError as exc:
+                                    console.print(
+                                        f"[yellow]vision skip[/yellow] {entry.name}: "
+                                        f"read error {exc}"
+                                    )
+                                    vision_skipped += 1
+                            # mode stays 'vision' in all cases (manifest records the attempt).
 
-                if existing is not None:
-                    for old_id in json.loads(existing["memory_ids"]):
-                        store.archive_memory(old_id)
-                    updated += 1
-                else:
-                    added += 1
+                    if existing is not None:
+                        for old_id in json.loads(existing["memory_ids"]):
+                            store.archive_memory(old_id)
+                        updated += 1
+                    else:
+                        added += 1
 
-                # Co-change: collect this doc for cluster_changesets (MM-34 B: exclude suffixes)
-                if run_cochange:
-                    _suffix = Path(path_str).suffix.lower()
-                    if _suffix not in _cochange_exclude:
-                        try:
-                            _emb: NDArray[np.float32] | None = (
-                                store.embedder.embed(file_record_text) if store.embedder else None
+                    # Co-change: collect this doc for cluster_changesets (MM-34 B: exclude suffixes)
+                    if run_cochange:
+                        _suffix = Path(path_str).suffix.lower()
+                        if _suffix not in _cochange_exclude:
+                            try:
+                                _emb: NDArray[np.float32] | None = (
+                                    store.embedder.embed(file_record_text)
+                                    if store.embedder
+                                    else None
+                                )
+                            except Exception:
+                                _emb = None
+                            changed_docs.append(
+                                ChangedDoc(
+                                    memory_id=file_record.id,
+                                    doc_id=path_str,
+                                    rel=entry.rel,
+                                    mtime=entry.mtime,
+                                    embedding=_emb,
+                                )
                             )
-                        except Exception:
-                            _emb = None
-                        changed_docs.append(
-                            ChangedDoc(
-                                memory_id=file_record.id,
-                                doc_id=path_str,
-                                rel=entry.rel,
-                                mtime=entry.mtime,
-                                embedding=_emb,
-                            )
-                        )
 
-                store.manifest_upsert(
-                    path_str,
-                    collection,
-                    size=entry.size,
-                    mtime=entry.mtime,
-                    online_only=entry.online_only,
-                    index_mode=mode,
-                    memory_ids=new_ids,
-                    content_hash=content_hash,
-                )
+                    store.manifest_upsert(
+                        path_str,
+                        collection,
+                        size=entry.size,
+                        mtime=entry.mtime,
+                        online_only=entry.online_only,
+                        index_mode=mode,
+                        memory_ids=new_ids,
+                        content_hash=content_hash,
+                    )
+                if limit and scanned >= limit:
+                    break
             if limit and scanned >= limit:
                 break
-        if limit and scanned >= limit:
-            break
 
     if prune:
-        for gone in store.manifest_paths(collection) - seen:
-            row = store.manifest_get(gone)
-            if row is not None:
-                for old_id in json.loads(row["memory_ids"]):
-                    store.archive_memory(old_id)
-                store.manifest_delete(gone)
-                pruned += 1
+        with telemetry.span("mintmory.index_tree.prune"):
+            for gone in store.manifest_paths(collection) - seen:
+                row = store.manifest_get(gone)
+                if row is not None:
+                    for old_id in json.loads(row["memory_ids"]):
+                        store.archive_memory(old_id)
+                    store.manifest_delete(gone)
+                    pruned += 1
 
     # Co-change post-walk pass
     n_changesets = 0
@@ -889,27 +1197,47 @@ def index_tree(
     if run_cochange and len(changed_docs) >= 2:
         from mintmory.core.cochange import apply_changesets
 
-        try:
-            cochange_result = cluster_changesets(changed_docs, doc_s, run_kind=run_kind)
-            from mintmory.core.storage import SqliteBackend as _SqliteBackend
+        with telemetry.span("mintmory.index_tree.cochange"):
+            try:
+                cochange_result = cluster_changesets(changed_docs, doc_s, run_kind=run_kind)
+                from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
-            n_changesets = apply_changesets(cast(_SqliteBackend, store), cochange_result.changesets)
-            n_co_changed_files = sum(len(cs.member_ids) for cs in cochange_result.changesets)
-            cochange_result_dropped_oversized = cochange_result.dropped_oversized
-            cochange_result_dropped_singletons = cochange_result.dropped_singletons
-            cochange_result_truncated = cochange_result.truncated
-            if cochange_result.truncated > 0:
-                _max_p = doc_s.max_cochange_partition_size
-                console.print(
-                    f"[yellow]co-change: {cochange_result.truncated} file(s) dropped"
-                    f" from oversized blocks"
-                    f" (max_cochange_partition_size={_max_p})[/yellow]"
+                n_changesets = apply_changesets(
+                    cast(_SqliteBackend, store), cochange_result.changesets
                 )
-        except CoChangeUnavailable:
-            console.print(
-                "[dim]co-change skipped: install the 'cochange' extra "
-                "(pip install mintmory[cochange])[/dim]"
-            )
+                n_co_changed_files = sum(len(cs.member_ids) for cs in cochange_result.changesets)
+                cochange_result_dropped_oversized = cochange_result.dropped_oversized
+                cochange_result_dropped_singletons = cochange_result.dropped_singletons
+                cochange_result_truncated = cochange_result.truncated
+                telemetry.set_attributes(
+                    **{
+                        "mintmory.outcome": "ok",
+                        "mintmory.cochange.changesets": n_changesets,
+                    }
+                )
+                if cochange_result.truncated > 0:
+                    _max_p = doc_s.max_cochange_partition_size
+                    console.print(
+                        f"[yellow]co-change: {cochange_result.truncated} file(s) dropped"
+                        f" from oversized blocks"
+                        f" (max_cochange_partition_size={_max_p})[/yellow]"
+                    )
+            except CoChangeUnavailable:
+                telemetry.set_attributes(**{"mintmory.outcome": "unavailable"})
+                console.print(
+                    "[dim]co-change skipped: install the 'cochange' extra "
+                    "(pip install mintmory[cochange])[/dim]"
+                )
+
+    telemetry.set_attributes(
+        **{
+            "mintmory.files.scanned": scanned,
+            "mintmory.files.added": added,
+            "mintmory.files.updated": updated,
+            "mintmory.files.unchanged": unchanged,
+            "mintmory.files.failed": failed,
+        }
+    )
 
     table = Table(title=f"index-tree [{collection}]")
     table.add_column("metric", style="cyan")
@@ -926,6 +1254,8 @@ def index_tree(
     ]
     for label, value in base_rows:
         table.add_row(label, value)
+    if text_skipped_online_only:
+        table.add_row("text-skipped-online-only", str(text_skipped_online_only))
     if vision:
         table.add_row("svg-described", str(svg_described))
         if captioner is not None:
@@ -973,15 +1303,18 @@ def note(
     when_dt = _parse_iso(when)
     until_dt = _parse_iso(until)
     cat = _parse_category(category) if category is not None else None
-    store = _get_store()
-    result = notes_mod.create_note(
-        store,
-        content=content,
-        about=about,
-        when=when_dt,
-        until=until_dt,
-        category=cat,
-    )
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        result = notes_mod.create_note(
+            store,
+            content=content,
+            about=about,
+            when=when_dt,
+            until=until_dt,
+            category=cat,
+            tenant_id=_write_tenant(),
+        )
     console.print(f"[green]Added note[/green] [bold]{result.note.id}[/bold]")
     if result.anchor_kind == "memory":
         console.print(f"  [dim]-> annotates [cyan]{result.anchor_memory_id}[/cyan][/dim]")
@@ -1000,17 +1333,19 @@ def notes(
     """List user-authored notes. Use --upcoming / --overdue for time views."""
     from mintmory.core import notes as notes_mod
 
-    store = _get_store()
-    try:
-        records = notes_mod.notes_list(
-            store,
-            about=about,
-            upcoming=upcoming,
-            overdue=overdue,
-            limit=limit,
-        )
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tenant_errors():
+        store = _get_store()
+        try:
+            records = notes_mod.notes_list(
+                store,
+                about=about,
+                upcoming=upcoming,
+                overdue=overdue,
+                limit=limit,
+                tenant_id=_read_tenant(),
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     table = Table(title="Notes")
     table.add_column("id", style="cyan", no_wrap=True)
@@ -1037,11 +1372,16 @@ def summary_jobs(
     from mintmory.core.llm import build_dreaming_engine
 
     settings = load_settings()
-    store = _get_store()
-    engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
-    )
-    jobs = engine.collect_summary_jobs(include_all=include_all)
+    with _tenant_errors():
+        store = _get_store()
+        engine = build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+            tenant_id=_write_tenant(),
+        )
+        jobs = engine.collect_summary_jobs(include_all=include_all)
     if limit > 0:
         jobs = jobs[:limit]
 
@@ -1084,11 +1424,17 @@ def summary_put(
         raise typer.BadParameter("empty summary text (provide TEXT, --file, or stdin)")
 
     settings = load_settings()
-    store = _get_store()
-    engine = build_dreaming_engine(
-        store, settings.llm, link_settings=settings.link, summary_settings=settings.summary
-    )
-    summary = engine.apply_summary(concept, summary_text)
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        engine = build_dreaming_engine(
+            store,
+            settings.llm,
+            link_settings=settings.link,
+            summary_settings=settings.summary,
+            tenant_id=_write_tenant(),
+        )
+        summary = engine.apply_summary(concept, summary_text)
     console.print(
         f"[green]Stored summary[/green] for [cyan]{summary.concept}[/cyan] "
         f"[dim]({summary.memory_count} memories)[/dim]"
@@ -1126,14 +1472,16 @@ def image_jobs(
     from mintmory.core.config import load_settings
 
     settings = load_settings()
-    store = _get_store()
-    jobs = vision_mod.image_jobs(
-        store,
-        include_all=include_all,
-        include_bytes=include_bytes,
-        limit=limit,
-        settings=settings.vision,
-    )
+    with _tenant_errors():
+        store = _get_store()
+        jobs = vision_mod.image_jobs(
+            store,
+            include_all=include_all,
+            include_bytes=include_bytes,
+            limit=limit,
+            settings=settings.vision,
+            tenant_id=_write_tenant(),
+        )
 
     if json_out:
         console.print_json(_json.dumps([j.model_dump(mode="json") for j in jobs]))
@@ -1195,13 +1543,19 @@ def image_caption_put(
         )
 
     settings = load_settings()
-    store = _get_store()
-    try:
-        result = vision_mod.image_caption_put(
-            store, file_id_or_path, description, settings=settings.vision
-        )
-    except KeyError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
+        try:
+            result = vision_mod.image_caption_put(
+                store,
+                file_id_or_path,
+                description,
+                settings=settings.vision,
+                tenant_id=_write_tenant(),
+            )
+        except KeyError as exc:
+            _fail_text(str(exc.args[0]))
 
     console.print(
         f"[green]Stored description[/green] [bold]{result.record.id}[/bold] "
@@ -1235,28 +1589,32 @@ def vision_run(
     from mintmory.core.config import load_settings
 
     settings = load_settings()
-    try:
-        captioner = vision_mod.captioner_from_settings(settings.vision)
-    except NotImplementedError as exc:
-        console.print(f"[red]error[/red]: {exc}")
-        raise typer.Exit(code=1) from exc
+    with _tenant_errors():
+        store = _get_store()
+        _check_write_tenant(store)
 
-    if captioner is None:
-        console.print(
-            "[dim]provider=agent: nothing to run (use image-jobs/image-caption-put)[/dim]"
+        try:
+            captioner = vision_mod.captioner_from_settings(settings.vision)
+        except NotImplementedError as exc:
+            console.print(f"[red]error[/red]: {exc}")
+            raise typer.Exit(code=1) from exc
+
+        if captioner is None:
+            console.print(
+                "[dim]provider=agent: nothing to run (use image-jobs/image-caption-put)[/dim]"
+            )
+            return
+
+        budget: int | None = int(budget_mb * 1024 * 1024) if budget_mb > 0 else None
+        report = vision_mod.caption_pending_images(
+            store,
+            captioner=captioner,
+            limit=limit,
+            budget=budget,
+            include_all=include_all,
+            settings=settings.vision,
+            tenant_id=_write_tenant(),
         )
-        return
-
-    store = _get_store()
-    budget: int | None = int(budget_mb * 1024 * 1024) if budget_mb > 0 else None
-    report = vision_mod.caption_pending_images(
-        store,
-        captioner=captioner,
-        limit=limit,
-        budget=budget,
-        include_all=include_all,
-        settings=settings.vision,
-    )
 
     table = Table(title="vision-run")
     table.add_column("metric", style="cyan")
@@ -1338,6 +1696,7 @@ def _parse_since(since: str) -> datetime:
 
 
 @history_app.command("backfill")
+@telemetry.command_span("history backfill")
 def history_backfill(
     source: list[str] = typer.Option(
         [], "--source", help="Adapter(s) to run: claude_code, codex, kiro, hermes (repeatable)"
@@ -1419,6 +1778,7 @@ def history_backfill(
 
 
 @history_app.command("sync")
+@telemetry.command_span("history sync")
 def history_sync(
     source: list[str] = typer.Option(
         [], "--source", help="Adapter(s): claude_code, codex, kiro, hermes (repeatable)"
@@ -1670,24 +2030,29 @@ def docs_timeline(
     Shows documents indexed by index-tree, ordered by file modified-time
     (recorded as valid_from). Filters source='document' only.
     """
-    from mintmory.core.cochange import documents_timeline
+    from mintmory.core.cochange import COCHANGE_SQLITE_ONLY_MESSAGE, documents_timeline
     from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
     if db:
         os.environ["MINTMORY_DB"] = db
 
-    store = _get_store()
-    try:
-        rows = documents_timeline(
-            cast(_SqliteBackend, store),
-            since=since,
-            from_iso=from_iso,
-            to_iso=to_iso,
-            collection=collection,
-            limit=limit,
-        )
-    except ValueError as exc:
-        raise typer.BadParameter(str(exc)) from exc
+    with _tenant_errors():
+        store = _get_store()
+        if not isinstance(store, _SqliteBackend):
+            console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
+            raise typer.Exit(code=1)
+        try:
+            rows = documents_timeline(
+                store,
+                since=since,
+                from_iso=from_iso,
+                to_iso=to_iso,
+                collection=collection,
+                limit=limit,
+                tenant_id=_read_tenant(),
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
 
     table = Table(title="Documents timeline (newest first)")
     table.add_column("date", style="cyan", no_wrap=True)
@@ -1711,14 +2076,18 @@ def docs_changed_with(
     Co-change is inferred from HDBSCAN clustering of the index-tree run that
     processed these files; it is NOT an atomic git change-set.
     """
-    from mintmory.core.cochange import changed_with
+    from mintmory.core.cochange import COCHANGE_SQLITE_ONLY_MESSAGE, changed_with
     from mintmory.core.storage import SqliteBackend as _SqliteBackend
 
     if db:
         os.environ["MINTMORY_DB"] = db
 
-    store = _get_store()
-    peers = changed_with(cast(_SqliteBackend, store), path)
+    with _tenant_errors():
+        store = _get_store()
+        if not isinstance(store, _SqliteBackend):
+            console.print(f"[red]{COCHANGE_SQLITE_ONLY_MESSAGE}[/red]")
+            raise typer.Exit(code=1)
+        peers = changed_with(store, path, tenant_id=_read_tenant())
 
     console.print(
         "[dim]observed co-change (time+folder+content) — not a version-controlled commit[/dim]"

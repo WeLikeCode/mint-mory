@@ -1,0 +1,89 @@
+# L4 harness settings for MintMory (docs: the harness's docs/SPEC.md section 3.2, docs/quickstart.md).
+# The harness itself is not in this repository: the copied setup action (.github/actions/l4/) fetches the pinned
+# release at run time with a read-only deploy key (the environment secret L4_HARNESS_SSH_KEY). Move the pin with
+# `l4 upgrade --harness-ref vX.Y.Z`.
+version: 1
+harness:
+  delivery: action
+spec:
+  frameworks:
+  - openspec
+  - kiro
+gates:
+  # the same commands as .github/workflows/ci.yml (job "lint · types · tests")
+  setup:
+  - uv sync --frozen --extra cochange --extra otel --extra postgres
+  lint:
+  - .venv/bin/ruff check --extend-exclude .l4 .
+  - .venv/bin/ruff format --check .
+  typecheck:
+  - .venv/bin/mypy packages
+  test:
+    command: .venv/bin/pytest -q --junitxml=.l4-out/junit.xml   # the pytest script, not `python -m pytest`: the working directory is not put first on sys.path; addopts keep the 80% coverage gate
+profiles:
+  deepseek:                 # OpenCode Go, the key in OPENCODE_API_KEY
+    adapter: opencode
+    model: opencode-go/deepseek-v4.1-flash
+    vendor: deepseek
+    auth: api_key
+  glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
+    adapter: opencode
+    model: opencode/glm-5.3-flash-free
+    vendor: zhipu
+    auth: api_key
+  deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
+    adapter: opencode
+    model: opencode/deepseek-v4.1-flash-free
+    vendor: deepseek
+  glm-free:                 # OpenCode Zen's free GLM 5.3 Flash, no key: the last fallback
+    adapter: opencode
+    model: opencode/glm-5.3-flash-free
+    vendor: zhipu
+  jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
+    backend: system-one
+    engine: jev
+    base_url: https://api.typesafe.ai
+    api_key_env: TYPESAFE_API_KEY
+    model: jev-1.13.0       # pinned: thresholds are tuned to a version
+    vendor: typesafe
+  claude-judge:             # Claude Code, the token in CLAUDE_CODE_OAUTH_TOKEN
+    adapter: claude-code
+    auth: subscription
+    vendor: anthropic
+  nemotron-judge:           # OpenCode Zen's free NVIDIA Nemotron 3.5 Super, no key: the judge when Claude is unavailable or out of quota
+    adapter: opencode
+    model: opencode/nemotron-3.5-super-vl-free
+    vendor: nvidia
+roles:
+  implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited; then the free models
+  - deepseek                # (no key) when the OpenCode Go key is rejected or out of credit
+  - glm
+  - deepseek-free
+  - glm-free
+  judges:
+  - claude-judge
+  - nemotron-judge          # the free fallback judge (NVIDIA: independent of the DeepSeek and GLM implementers)
+  s1_judge:                 # System One for the clarifier router and the verifier's citation/criterion checks
+  - jev
+forge:
+  type: github
+  token_env: GITHUB_TOKEN
+  base_branch: staging      # every unit is cut from staging and merged into it; a person promotes staging to main
+  merge_policy: auto        # only units of an active `merge: auto` delivery plan are merged by L4; other PRs a person merges
+ci:
+  platform: github
+  runner_tags: []
+  self_provision: true
+  continuation: dispatch
+  time_budget: auto  # the job timeout (L4_JOB_TIMEOUT_MINUTES, 180) minus the margin: 0.4.19 checks every step against it
+  soft_deadline_margin: 20m
+  upload_artifacts: false   # a public repository: the l4-out artifact (prompts, transcripts) would be downloadable
+yolo:
+  review:
+    max_dependency_chars: 60000   # multi-tenancy's design and tasks (about 26,000 characters) are a prerequisite of three Kiro units
+    accept_by_agents: true        # the owner lets the planning agent run `l4 yolo accept` under its conditions (two judged versions, no blocking finding, a reason for the implementer)
+  hold:                     # no agent work for these until a plan lists them (L4 0.4.1 yolo.hold; replaces the backlog plan)
+  - openspec:add-image-understanding
+  - openspec:add-llm-vision-provider
+clarifier:
+  answer_by_agents: true    # the owner lets the planning agent answer questions with `l4 questions` (including one that unfreezes a test-support file); each answer is a commit on the unit branch

@@ -596,7 +596,7 @@ feature — measurements below close the loop and set long-term defaults.
 
 | Param | Default (ships) | Range | Hypothesis | What to measure | VERDICT |
 |---|---|---|---|---|---|
-| `MINTMORY_NOTE_NOTE_BONUS` | `0.05` | 0.0–0.20 | Half the max recency bonus (0.1); breaks ties without outranking clearly-more-relevant non-notes. At `0.0` ranking is byte-identical to today. | RRF rank delta for note vs non-note with equal base relevance; note appears first at default. | pending |
+| `MINTMORY_NOTE_BONUS` | `0.05` | 0.0–0.20 | Half the max recency bonus (0.1); breaks ties without outranking clearly-more-relevant non-notes. At `0.0` ranking is byte-identical to today. | RRF rank delta for note vs non-note with equal base relevance; note appears first at default. | pending |
 | `MINTMORY_NOTE_AUTO_INCLUDE_CAP` | `3` | 0–10 | Return up to 3 annotating notes per search result (reverse `ANNOTATES` traversal). `0` disables entirely (today's behaviour). | extra items in `notes_on_results` per result; latency delta of Phase-3 traversal loop. | pending |
 | `MINTMORY_NOTE_ANCHOR_MIN_DOMINANCE` | `0.6` | 0.40–0.90 | Confident anchor: top candidate must hold ≥ 60% of the candidate pool's relevance mass AND beat the second candidate strictly. Below threshold, fall back to topic-entity fold (no hard link). | `anchor_kind="memory"` rate on a labelled anchor-query set; false-positive hard-links at dominance 0.4 vs 0.6 vs 0.8. | pending |
 

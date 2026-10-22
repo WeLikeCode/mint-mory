@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import urllib.parse
 import urllib.request
 from typing import TYPE_CHECKING, Any
 
@@ -103,15 +104,28 @@ def post_chat_completion(
         headers=headers,
         method="POST",
     )
+    parsed = urllib.parse.urlsplit(base_url)
+    try:
+        port = parsed.port
+    except ValueError:
+        # A malformed port must not be reported as a telemetry failure: the
+        # request itself decides what the caller sees (FB-002).
+        port = None
+    if port is None:
+        port = 443 if parsed.scheme == "https" else 80
     attrs: dict[str, Any] = {
         "gen_ai.system": system,
         "gen_ai.request.model": model,
+        "server.address": parsed.hostname,
+        "server.port": port,
     }
     if extra_attrs:
         attrs.update(extra_attrs)
     start = time.perf_counter()
     ok = False
-    with telemetry.span("gen_ai.chat", **attrs) as sp:
+    with telemetry.span("gen_ai.chat", kind="client", **attrs) as sp:
+        for header, value in telemetry.inject_trace_headers({}).items():
+            req.add_header(header, value)
         try:
             with urllib.request.urlopen(  # noqa: S310 (configured base_url)
                 req, timeout=timeout_s
@@ -240,6 +254,8 @@ def build_summarizer(settings: LLMSettings) -> Summarizer | None:
 def build_conflict_resolver(
     settings: LLMSettings,
     adapter: StorageBackend,
+    *,
+    tenant_id: str | None = None,
 ) -> ConflictResolver | None:
     """Build a conflict-resolver callable, or ``None`` when ``provider=none``.
 
@@ -254,7 +270,7 @@ def build_conflict_resolver(
     def resolve(record: MemoryRecord) -> list[BatchResolutionAction]:
         others: list[tuple[str, str]] = []
         for cid in record.contradicts_ids:
-            other = adapter.get_memory(cid)
+            other = adapter.get_memory(cid, tenant_id=tenant_id)
             if other is not None:
                 others.append((other.id, other.content))
         if not others:
@@ -349,6 +365,8 @@ def build_dreaming_engine(
     llm_settings: LLMSettings | None = None,
     link_settings: LinkSettings | None = None,
     summary_settings: SummarySettings | None = None,
+    *,
+    tenant_id: str | None = None,
 ) -> DreamingEngine:
     """Wire a ``DreamingEngine`` from settings.
 
@@ -360,7 +378,8 @@ def build_dreaming_engine(
     return DreamingEngine(
         adapter,
         summarizer=build_summarizer(llm),
-        conflict_resolver=build_conflict_resolver(llm, adapter),
+        conflict_resolver=build_conflict_resolver(llm, adapter, tenant_id=tenant_id),
         link_settings=link_settings,
         summary_settings=summary_settings,
+        tenant_id=tenant_id,
     )

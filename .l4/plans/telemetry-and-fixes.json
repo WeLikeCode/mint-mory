@@ -1,0 +1,93 @@
+{
+  "schema": "l4/delivery-plan@1",
+  "plan_id": "telemetry-and-fixes",
+  "target": "staging",
+  "merge": "auto",
+  "limits": {
+    "max_unit_attempts": 2,
+    "max_runs": 80,
+    "max_cost_usd": 60
+  },
+  "external_dependencies": [],
+  "batches": [
+    {
+      "id": "warm-up",
+      "depends_on": [],
+      "units": [
+        {
+          "id": "openspec:fix-markdown-cleanup-fences",
+          "depends_on": []
+        }
+      ]
+    },
+    {
+      "id": "telemetry",
+      "depends_on": [],
+      "units": [
+        {
+          "id": "openspec:add-telemetry-runtime",
+          "depends_on": []
+        },
+        {
+          "id": "openspec:add-telemetry-entry-points",
+          "depends_on": [
+            "openspec:add-telemetry-runtime"
+          ]
+        },
+        {
+          "id": "openspec:add-telemetry-heavy-path-spans",
+          "depends_on": [
+            "openspec:add-telemetry-runtime",
+            "openspec:fix-cochange-tools-on-postgres",
+            "openspec:add-recurrent-tree-indexing"
+          ]
+        },
+        {
+          "id": "openspec:add-telemetry-boundary-tracing",
+          "depends_on": [
+            "openspec:add-telemetry-runtime",
+            "openspec:add-telemetry-heavy-path-spans"
+          ]
+        },
+        {
+          "id": "openspec:add-local-observability-stack",
+          "depends_on": [
+            "openspec:add-telemetry-runtime",
+            "openspec:add-telemetry-entry-points",
+            "openspec:add-telemetry-heavy-path-spans",
+            "openspec:add-telemetry-boundary-tracing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fixes",
+      "depends_on": [],
+      "units": [
+        {
+          "id": "openspec:fix-note-bonus-env-name",
+          "depends_on": []
+        },
+        {
+          "id": "openspec:fix-distiller-prompt-cap",
+          "depends_on": []
+        },
+        {
+          "id": "openspec:fix-cochange-tools-on-postgres",
+          "depends_on": []
+        },
+        {
+          "id": "openspec:add-recurrent-tree-indexing",
+          "depends_on": [
+            "openspec:fix-cochange-tools-on-postgres"
+          ]
+        },
+        {
+          "id": "openspec:deployment-hardening",
+          "depends_on": []
+        }
+      ]
+    }
+  ],
+  "exclude": []
+}
