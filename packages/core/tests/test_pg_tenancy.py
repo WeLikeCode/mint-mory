@@ -13,7 +13,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from mintmory.core.ports import ManifestEntry, StorageBackend
@@ -55,6 +55,62 @@ def _assert_tenant_parameter(
     assert params["tenant_id"].default == default
     if keyword_only:
         assert params["tenant_id"].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def _read_responder(sql: str, params: Any) -> list[Any]:
+    normalised = " ".join(sql.split())
+    if normalised.startswith("SELECT is_active FROM tenants"):
+        return [{"is_active": True}]
+    if "COUNT(" in normalised:
+        return [(0,)]
+    if "AVG(" in normalised:
+        return [(None, None)]
+    return []
+
+
+def _read_backend() -> tuple[PostgresBackend, FakeConnection]:
+    conn = FakeConnection(responder=_read_responder)
+    backend = PostgresBackend("postgresql://unused")
+    backend._pool = FakePool(conn)
+    return backend, conn
+
+
+def _normalised_statements(conn: FakeConnection) -> list[tuple[str, tuple[Any, ...]]]:
+    return [
+        (" ".join(sql.split()), () if params is None else tuple(params))
+        for sql, params in conn.executed
+    ]
+
+
+def _assert_read_tenancy(invoke: Callable[[PostgresBackend, str | None], object]) -> None:
+    _assert_read_surface_complete()
+    backend, conn = _read_backend()
+    invoke(backend, "t1")
+    scoped = _normalised_statements(conn)
+    assert scoped, "read executed no statement"
+    for sql, params in scoped:
+        assert sql.upper().startswith("SELECT"), sql
+        assert "tenant_id = %s" in sql, sql
+        assert "t1" in params, params
+    conn.executed.clear()
+    invoke(backend, None)
+    for sql, _params in _normalised_statements(conn):
+        assert "tenant_id =" not in sql, sql
+
+
+def _assert_keyed_read_scoped(
+    backend: PostgresBackend,
+    conn: FakeConnection,
+    invoke: Callable[[], object],
+    expected_params: tuple[Any, ...],
+) -> None:
+    invoke()
+    statements = _normalised_statements(conn)
+    assert statements
+    sql, params = statements[0]
+    assert sql.upper().startswith("SELECT"), sql
+    assert "tenant_id = %s" in sql, sql
+    assert params == expected_params, params
 
 
 # ---------------------------------------------------------------------------
@@ -103,13 +159,8 @@ def test_protocol_tenant_signatures_and_manifest_entry() -> None:
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873")
 def test_pg_require_global_tenant_tenancy() -> None:
-    assert isinstance(
-        inspect.getattr_static(PostgresBackend, "_require_global_tenant"), staticmethod
-    )
-    assert PostgresBackend._require_global_tenant(None, "read") is None
-    assert PostgresBackend._require_global_tenant("global", "read") is None
-    with pytest.raises(TenancyNotSupportedError):
-        PostgresBackend._require_global_tenant("t1", "read")
+    assert not hasattr(PostgresBackend, "_require_global_tenant")
+    assert issubclass(TenancyNotSupportedError, NotImplementedError)
 
 
 # ---------------------------------------------------------------------------
@@ -119,12 +170,11 @@ def test_pg_require_global_tenant_tenancy() -> None:
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873")
 def test_pg_get_summary_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _read_backend()
     _assert_tenant_parameter(backend.get_summary, keyword_only=False, default="global")
-    get_summary = cast(Callable[..., object], backend.get_summary)
-    with pytest.raises(TenancyNotSupportedError):
-        get_summary("acme", tenant_id="t1")
-    assert backend._pool is None
+    _assert_keyed_read_scoped(
+        backend, conn, lambda: backend.get_summary("c", tenant_id="t1"), ("c", "t1")
+    )
 
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
@@ -151,12 +201,11 @@ def test_pg_upsert_summary_tenancy() -> None:
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873")
 def test_pg_manifest_get_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _read_backend()
     _assert_tenant_parameter(backend.manifest_get, keyword_only=True, default="global")
-    manifest_get = cast(Callable[..., object], backend.manifest_get)
-    with pytest.raises(TenancyNotSupportedError):
-        manifest_get("/a", tenant_id="t1")
-    assert backend._pool is None
+    _assert_keyed_read_scoped(
+        backend, conn, lambda: backend.manifest_get("/a", tenant_id="t1"), ("/a", "t1")
+    )
 
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
@@ -182,12 +231,11 @@ def test_pg_manifest_upsert_tenancy() -> None:
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873")
 def test_pg_manifest_paths_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _read_backend()
     _assert_tenant_parameter(backend.manifest_paths, keyword_only=True, default="global")
-    manifest_paths = cast(Callable[..., object], backend.manifest_paths)
-    with pytest.raises(TenancyNotSupportedError):
-        manifest_paths("default", tenant_id="t1")
-    assert backend._pool is None
+    _assert_keyed_read_scoped(
+        backend, conn, lambda: backend.manifest_paths("c", tenant_id="t1"), ("c", "t1")
+    )
 
 
 @pytest.mark.l4("C-a7f825e4", "C-0e897873", "C-1b7a83e9")
@@ -620,18 +668,6 @@ def _assert_read_surface_complete() -> None:
     assert wrong_default == [], f"reads with a non-None tenant default: {wrong_default}"
 
 
-def _assert_read_rejects_tenant(
-    backend: PostgresBackend,
-    operation: str,
-    invoke: Callable[[], object],
-) -> None:
-    _assert_read_surface_complete()
-    with pytest.raises(TenancyNotSupportedError) as excinfo:
-        invoke()
-    assert excinfo.value.operation == operation
-    assert backend._pool is None
-
-
 @pytest.mark.l4("C-588818fc")
 def test_protocol_declares_tenant_read_signatures() -> None:
     _assert_read_surface_complete()
@@ -639,290 +675,214 @@ def test_protocol_declares_tenant_read_signatures() -> None:
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_memory_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_memory, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_memory",
-        lambda: backend.get_memory("m1", tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_memory("m1", tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_search_tenancy() -> None:
-    backend = _backend()
+    backend, conn = _read_backend()
     _assert_tenant_parameter(backend.search, keyword_only=True, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "search",
-        lambda: backend.search(SearchRequest(query="Alice"), tenant_id="t1"),
-    )
+
+    backend.search(SearchRequest(query="Alice"), tenant_id="t1")
+    scoped = [
+        (sql, params) for sql, params in _normalised_statements(conn) if "content_tsv @@" in sql
+    ]
+    assert scoped
+    for sql, params in scoped:
+        assert "tenant_id = %s" in sql, sql
+        assert "t1" in params, params
+
+    conn.executed.clear()
+    backend.search(SearchRequest(query="Alice"))
+    unscoped = [
+        (sql, params) for sql, params in _normalised_statements(conn) if "content_tsv @@" in sql
+    ]
+    assert unscoped
+    for sql, _params in unscoped:
+        assert "tenant_id =" not in sql, sql
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_search_around_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.search_around, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "search_around",
-        lambda: backend.search_around(["m1"], SearchAroundSpec(), tenant_id="t1"),
+    _assert_read_tenancy(
+        lambda b, tenant: b.search_around(["m1"], SearchAroundSpec(), tenant_id=tenant)
     )
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_links_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_links, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_links",
-        lambda: backend.get_links("m1", tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_links("m1", tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_annotating_notes_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_annotating_notes, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_annotating_notes",
-        lambda: backend.get_annotating_notes("m1", 3, tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_annotating_notes("m1", 3, tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_annotating_descriptions_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_annotating_descriptions, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_annotating_descriptions",
-        lambda: backend.get_annotating_descriptions("m1", 3, tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_annotating_descriptions("m1", 3, tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_find_image_file_record_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.find_image_file_record, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "find_image_file_record",
-        lambda: backend.find_image_file_record("/x.png", tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.find_image_file_record("/x.png", tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_anchor_candidates_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.anchor_candidates, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "anchor_candidates",
-        lambda: backend.anchor_candidates("Alice", tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.anchor_candidates("Alice", tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_list_image_file_records_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.list_image_file_records, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "list_image_file_records",
-        lambda: backend.list_image_file_records(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.list_image_file_records(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_list_notes_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.list_notes, keyword_only=True, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "list_notes",
-        lambda: backend.list_notes(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.list_notes(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_list_summaries_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.list_summaries, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "list_summaries",
-        lambda: backend.list_summaries(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.list_summaries(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_session_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_session, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_session",
-        lambda: backend.get_session("s1", tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_session("s1", tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_stats_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_stats, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_stats",
-        lambda: backend.get_stats(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_stats(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_memory_exists_with_content_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.memory_exists_with_content, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "memory_exists_with_content",
-        lambda: backend.memory_exists_with_content("Alice", tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.memory_exists_with_content("Alice", tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_flagged_memories_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_flagged_memories, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_flagged_memories",
-        lambda: backend.get_flagged_memories(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_flagged_memories(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_never_accessed_stale_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_never_accessed_stale, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_never_accessed_stale",
-        lambda: backend.get_never_accessed_stale(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_never_accessed_stale(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_high_staleness_useful_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_high_staleness_useful, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_high_staleness_useful",
-        lambda: backend.get_high_staleness_useful(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_high_staleness_useful(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_anomaly_high_staleness_useful_ids_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(
         backend.get_anomaly_high_staleness_useful_ids, keyword_only=False, default=None
     )
-    _assert_read_rejects_tenant(
-        backend,
-        "get_anomaly_high_staleness_useful_ids",
-        lambda: backend.get_anomaly_high_staleness_useful_ids(5.0, 3.0, tenant_id="t1"),
+    _assert_read_tenancy(
+        lambda b, tenant: b.get_anomaly_high_staleness_useful_ids(5.0, 3.0, tenant_id=tenant)
     )
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_anomaly_never_accessed_ids_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(
         backend.get_anomaly_never_accessed_ids, keyword_only=False, default=None
     )
-    _assert_read_rejects_tenant(
-        backend,
-        "get_anomaly_never_accessed_ids",
-        lambda: backend.get_anomaly_never_accessed_ids("2020-01-01T00:00:00+00:00", tenant_id="t1"),
+    _assert_read_tenancy(
+        lambda b, tenant: b.get_anomaly_never_accessed_ids(
+            "2020-01-01T00:00:00+00:00", tenant_id=tenant
+        )
     )
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_anomaly_flagged_ids_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_anomaly_flagged_ids, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_anomaly_flagged_ids",
-        lambda: backend.get_anomaly_flagged_ids(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_anomaly_flagged_ids(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_list_active_memory_ids_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.list_active_memory_ids, keyword_only=True, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "list_active_memory_ids",
-        lambda: backend.list_active_memory_ids(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.list_active_memory_ids(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_stale_archivable_ids_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_stale_archivable_ids, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_stale_archivable_ids",
-        lambda: backend.get_stale_archivable_ids(5.0, "2020-01-01T00:00:00+00:00", tenant_id="t1"),
+    _assert_read_tenancy(
+        lambda b, tenant: b.get_stale_archivable_ids(
+            5.0, "2020-01-01T00:00:00+00:00", tenant_id=tenant
+        )
     )
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_rehabilitable_rows_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.get_rehabilitable_rows, keyword_only=False, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "get_rehabilitable_rows",
-        lambda: backend.get_rehabilitable_rows("2020-01-01T00:00:00+00:00", tenant_id="t1"),
+    _assert_read_tenancy(
+        lambda b, tenant: b.get_rehabilitable_rows("2020-01-01T00:00:00+00:00", tenant_id=tenant)
     )
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_get_existing_relates_to_pairs_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(
         backend.get_existing_relates_to_pairs, keyword_only=False, default=None
     )
-    _assert_read_rejects_tenant(
-        backend,
-        "get_existing_relates_to_pairs",
-        lambda: backend.get_existing_relates_to_pairs(tenant_id="t1"),
-    )
+    _assert_read_tenancy(lambda b, tenant: b.get_existing_relates_to_pairs(tenant_id=tenant))
 
 
 @pytest.mark.l4("C-c6d483c5", "C-da381c66")
 def test_pg_list_memories_tenancy() -> None:
-    backend = _backend()
+    backend, _conn = _read_backend()
     _assert_tenant_parameter(backend.list_memories, keyword_only=True, default=None)
-    _assert_read_rejects_tenant(
-        backend,
-        "list_memories",
-        lambda: backend.list_memories(),
-    )
-    _assert_read_rejects_tenant(
-        backend,
-        "list_memories",
-        lambda: backend.list_memories(tenant_id="t1"),
-    )
-    _assert_read_rejects_tenant(
-        backend,
-        "list_memories",
-        lambda: backend.list_memories(MemoryFilter(), tenant_id="t1", limit=0),
+    _assert_read_tenancy(lambda b, tenant: b.list_memories(tenant_id=tenant))
+    _assert_read_tenancy(
+        lambda b, tenant: b.list_memories(MemoryFilter(), tenant_id=tenant, limit=0)
     )

@@ -26,7 +26,6 @@ from mintmory.core.types import (
     MemorySummary,
     QueryResult,
     QuerySession,
-    TenancyNotSupportedError,
 )
 
 from packages.core.tests.pg_fakes import FakeConnection, FakePool
@@ -454,8 +453,11 @@ def test_guards_stay_on_record_writes_and_keyed_methods_before_pool_access() -> 
         lambda: backend.manifest_get("/a", tenant_id=_TENANT),
         lambda: backend.manifest_paths("default", tenant_id=_TENANT),
     ):
-        with pytest.raises(TenancyNotSupportedError):
-            call()
+        conn.executed.clear()
+        call()
+        sql, params = _find_statement(conn, "tenant_id = %s")
+        assert sql.upper().startswith("SELECT")
+        assert _TENANT in params
 
 
 # ---------------------------------------------------------------------------
