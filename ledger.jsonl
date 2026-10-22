@@ -227,3 +227,4 @@
 {"at":"2026-10-22T00:30:13Z","revision":"f51ba159d91c23be06950be9820680300336aec9","type":"unit.integrated","unit":"kiro:multi-tenancy-postgres-reads"}
 {"at":"2026-10-22T00:30:13Z","attempt":1,"cost_usd":2.057919,"runs":3,"type":"plan.charged","unit":"kiro:multi-tenancy-postgres-reads"}
 {"at":"2026-10-22T00:31:04Z","batch":"tenancy-postgres","profile":"none","revision":"f51ba159d91c23be06950be9820680300336aec9","type":"batch.accepted"}
+{"at":"2026-10-22T00:31:47Z","revision":"f51ba159d91c23be06950be9820680300336aec9","type":"plan.completed"}

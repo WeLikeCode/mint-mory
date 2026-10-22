@@ -1,12 +1,12 @@
 # Delivery plan multitenancy
 
-- Status: stopped
+- Status: completed
 - Repository: https://github.com/WeLikeCode/mint-mory
-- Target: staging at bc8df7cc8b253b845be2786229014df03114b384
+- Target: staging at f51ba159d91c23be06950be9820680300336aec9
 - Merge: auto
 - No promotion target is set. Promotion was not performed.
-- Written: 2026-10-21T09:45:19Z
-- Stopped: unit_halted (kiro:multi-tenancy-postgres): task 1: max_task_attempts (3) reached in red on glm (2), glm-free (3); last failure: vacuous: C-0a8c52fb (none of its tests fails by assertion: packages.core.tests.test_pg_fakes::test_fake_connection_counts_commits_and_rollbacks, packages.core.tests.test_pg_fakes::test_fake_connection_default_respon
+- Written: 2026-10-22T00:31:47Z
+- Completed at: f51ba159d91c23be06950be9820680300336aec9
 
 ## Units
 
@@ -60,34 +60,34 @@
 - Usage: $4.42, 6 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-postgres
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 1 run(s), 1 attempt(s)
+- Result: integrated at 558990c6aefef6e02b37ab7a728a139487b7c319
+- Pull request: 47
+- Merge commit: 558990c6aefef6e02b37ab7a728a139487b7c319
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $1.82, 3 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-postgres-writes
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at 3fce39cca0b6bfa066a0589f0aba92dbaf13050e
+- Pull request: 48
+- Merge commit: 3fce39cca0b6bfa066a0589f0aba92dbaf13050e
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $2.85, 4 run(s), 1 attempt(s)
 
 ### kiro:multi-tenancy-postgres-reads
-- Result: not integrated
-- Pull request: none
-- Merge commit: none
-- Post-merge check: not run
-- Usage: $0.00, 0 run(s), 1 attempt(s)
+- Result: integrated at f51ba159d91c23be06950be9820680300336aec9
+- Pull request: 49
+- Merge commit: f51ba159d91c23be06950be9820680300336aec9
+- Post-merge check: pass with profile all (5 gate(s) passed; skipped (not configured): build, e2e)
+- Usage: $2.06, 3 run(s), 1 attempt(s)
 
 ## Batches
 
 - tenancy-sqlite (profile none): accepted at 47bb91111d99442cc9d5ab63a9396eae5c569a5d
 - tenancy-surfaces (profile none): accepted at bc8df7cc8b253b845be2786229014df03114b384
-- tenancy-postgres (profile none): not checked
+- tenancy-postgres (profile none): accepted at f51ba159d91c23be06950be9820680300336aec9
 
 ## Usage
 
-- Cost: $26.12
+- Cost: $32.85
 - Of which the readiness review: $3.64
-- Runs that dispatched a unit: 34
+- Runs that dispatched a unit: 43
