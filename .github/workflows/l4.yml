@@ -65,7 +65,7 @@ jobs:
         with:
           source: "repository"
           repository: "ssh://git@github.com/ciprianiacobescu/l4.git"
-          commit: "50200202ee2ebedb11e65509f483a0e7c57d36c8"
+          commit: "dc6e50d6080beac354517a11376b5e06ffc1d4d3"
           ssh-key: ${{ secrets.L4_HARNESS_SSH_KEY }}
           self-provision: ${{ vars.L4_SELF_PROVISION || 'true' }}
       - name: doctor
