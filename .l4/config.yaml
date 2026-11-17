@@ -26,19 +26,35 @@ profiles:
     model: opencode-go/deepseek-v4.1-flash
     vendor: deepseek
     auth: api_key
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   glm:                      # OpenCode Go, GLM 5.3 Flash: a second cheap implementer after deepseek (the same key, OPENCODE_API_KEY)
     adapter: opencode
     model: opencode/glm-5.3-flash-free
     vendor: zhipu
     auth: api_key
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   deepseek-free:            # OpenCode Zen's free DeepSeek, no key: the fallback while the OpenCode Go key is rejected
     adapter: opencode
     model: opencode/deepseek-v4.1-flash-free
     vendor: deepseek
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   glm-free:                 # OpenCode Zen's free GLM 5.3 Flash, no key: the last fallback
     adapter: opencode
     model: opencode/glm-5.3-flash-free
     vendor: zhipu
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
+      steps:
+        implement: 2000     # the v2 step bound at its maximum: the wall-clock timeout stays the limit, as on OpenCode 1
   jev:                      # TypeSafe Jev (System One: fast typed decisions), the key in TYPESAFE_API_KEY
     backend: system-one
     engine: jev
@@ -57,6 +73,8 @@ profiles:
     adapter: opencode
     model: opencode/nemotron-3.5-super-vl-free
     vendor: nvidia
+    options:
+      cli_major: 2          # OpenCode 2 (@opencode/cli 2.2.6, binary opencode2)
 roles:
   implementer:              # cheap first: deepseek, then glm when deepseek is unavailable or limited; then the free models
   - deepseek                # (no key) when the OpenCode Go key is rejected or out of credit
