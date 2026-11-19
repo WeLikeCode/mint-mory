@@ -32,6 +32,8 @@ from __future__ import annotations
 import os
 import sys
 import threading
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
 from typing import Any, Final, Literal
 
 # FastMCP import — raises ImportError if mintmory-mcp not installed
@@ -78,9 +80,14 @@ from mintmory.mcp.concise import concise_memory_get, concise_search_response
 # Server initialisation
 # ---------------------------------------------------------------------------
 
+try:
+    _VERSION = _dist_version("mintmory-mcp")
+except PackageNotFoundError:  # running from a source tree without an install
+    _VERSION = "0.0.0+unknown"
+
 mcp: FastMCP[Any] = FastMCP(
     name="mintmory",
-    version="0.1.0",
+    version=_VERSION,
     instructions=(
         "MintMory: typed memory system for LLM agents (8 categories: fact, skill, "
         "preference, identity, context, episodic, temporal, relationship; "

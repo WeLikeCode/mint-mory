@@ -1643,7 +1643,7 @@ wheels = [
 
 [[package]]
 name = "mintmory"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/meta" }
 dependencies = [
     { name = "mintmory-cli" },
@@ -1709,7 +1709,7 @@ provides-extras = ["mcp", "api", "all", "local", "openai", "anthropic", "docs", 
 
 [[package]]
 name = "mintmory-api"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/api" }
 dependencies = [
     { name = "fastapi" },
@@ -1730,7 +1730,7 @@ requires-dist = [
 
 [[package]]
 name = "mintmory-cli"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/cli" }
 dependencies = [
     { name = "mintmory-core" },
@@ -1756,7 +1756,7 @@ provides-extras = ["docs"]
 
 [[package]]
 name = "mintmory-core"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/core" }
 dependencies = [
     { name = "numpy" },
@@ -1828,7 +1828,7 @@ provides-extras = ["local", "openai", "anthropic", "docs", "otel", "image", "ocr
 
 [[package]]
 name = "mintmory-mcp"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/mcp" }
 dependencies = [
     { name = "anthropic" },

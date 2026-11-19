@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _dist_version
 from typing import Annotated
 
 import anyio
@@ -119,9 +121,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         _store = None
 
 
+try:
+    _VERSION = _dist_version("mintmory-api")
+except PackageNotFoundError:  # running from a source tree without an install
+    _VERSION = "0.0.0+unknown"
+
 app = FastAPI(
     title="MintMory Memory API",
-    version="0.1.0",
+    version=_VERSION,
     description=(
         "Palantir-Ontology-inspired typed memory for LLM agents. "
         "See docs/openapi/mintmory.yaml for the full contract."

@@ -1,6 +1,6 @@
 [project]
 name = "mintmory-api"
-version = "0.1.0"
+version = "0.2.0"
 description = "MintMory HTTP REST API via FastAPI"
 requires-python = ">=3.12"
 readme = "README.md"
@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "mintmory-core~=0.1.0",
+    "mintmory-core~=0.2.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "python-multipart>=0.0.12",
