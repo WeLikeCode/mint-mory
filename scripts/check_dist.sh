@@ -12,7 +12,7 @@ echo "--- artifact count"
 [ "$(ls dist/*.tar.gz | wc -l)" -eq 5 ] || { echo "expected 5 sdists"; ls dist; exit 1; }
 
 echo "--- twine check"
-uvx twine check dist/*
+uvx --from 'twine>=7' twine check dist/*  # hatchling 1.33 writes Metadata-Version 2.5; twine reads it from 7.0
 
 echo "--- wheel content assertions"
 python3 - <<'EOF'

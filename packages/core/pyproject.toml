@@ -1,6 +1,6 @@
 [project]
 name = "mintmory-core"
-version = "0.1.0"
+version = "0.2.0"
 description = "MintMory core: Palantir-inspired typed memory ontology with SQLite storage"
 requires-python = ">=3.12"
 readme = "README.md"

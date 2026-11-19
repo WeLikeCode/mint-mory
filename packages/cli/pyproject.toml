@@ -1,6 +1,6 @@
 [project]
 name = "mintmory-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "MintMory CLI — stdio usage via Typer"
 requires-python = ">=3.12"
 readme = "README.md"
@@ -19,14 +19,14 @@ classifiers = [
 ]
 
 dependencies = [
-    "mintmory-core~=0.1.0",
+    "mintmory-core~=0.2.0",
     "typer[all]>=0.12",
     "rich>=13.8",
     "structlog>=24.4",
 ]
 
 [project.optional-dependencies]
-docs = ["mintmory-core[docs]~=0.1.0"]            # pulls markitdown via core's docs extra
+docs = ["mintmory-core[docs]~=0.2.0"]            # pulls markitdown via core's docs extra
 
 [project.urls]
 Homepage = "https://github.com/WeLikeCode/mint-mory"
